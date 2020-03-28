@@ -485,7 +485,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (move->position_in & POS_CENTER) {
 			vec2_set(&pos_a, canvas_width >> 1, canvas_height >> 1);
-			pos_add_center(&pos_a, alignment, cx, cy);
+			if (!move->zoom_in)
+				pos_add_center(&pos_a, alignment, cx, cy);
 		} else if (move->position_in & POS_EDGE) {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
 			calc_edge_position(&pos_a, move->position_in,
@@ -504,7 +505,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (move->position_out & POS_CENTER) {
 			vec2_set(&pos_b, canvas_width >> 1, canvas_height >> 1);
-			pos_add_center(&pos_b, alignment, cx, cy);
+			if (!move->zoom_out)
+				pos_add_center(&pos_b, alignment, cx, cy);
 		} else if (move->position_out & POS_EDGE) {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
 			calc_edge_position(&pos_b, move->position_out,
