@@ -302,9 +302,9 @@ void calc_edge_position(struct vec2 *pos, long long position,
 	} else {
 		pos->x += canvas_width >> 1;
 		if (alignment & OBS_ALIGN_RIGHT) {
-			pos->x -= cx2;
-		} else if (alignment & OBS_ALIGN_LEFT) {
 			pos->x += cx2;
+		} else if (alignment & OBS_ALIGN_LEFT) {
+			pos->x -= cx2;
 		}
 	}
 
@@ -325,6 +325,11 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		}
 	} else {
 		pos->y += canvas_height >> 1;
+		if (alignment & OBS_ALIGN_TOP) {
+			pos->y -= cy2;
+		} else if (alignment & OBS_ALIGN_BOTTOM) {
+			pos->y += cy2;
+		}
 	}
 }
 
