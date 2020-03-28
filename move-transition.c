@@ -197,6 +197,21 @@ void pos_add_center(struct vec2 *pos, uint32_t alignment, uint32_t cx,
 	}
 }
 
+void pos_subtract_center(struct vec2 *pos, uint32_t alignment, uint32_t cx,
+			 uint32_t cy)
+{
+	if (alignment & OBS_ALIGN_LEFT) {
+		pos->x += cx >> 1;
+	} else if (alignment & OBS_ALIGN_RIGHT) {
+		pos->x -= cx >> 1;
+	}
+	if (alignment & OBS_ALIGN_TOP) {
+		pos->y += cy >> 1;
+	} else if (alignment & OBS_ALIGN_BOTTOM) {
+		pos->y -= cy >> 1;
+	}
+}
+
 void calc_edge_position(struct vec2 *pos, long long position,
 			uint32_t canvas_width, uint32_t canvas_height,
 			uint32_t alignment, uint32_t cx, uint32_t cy, bool zoom)
@@ -496,6 +511,9 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 		} else {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
+			if (move->zoom_in)
+				pos_subtract_center(&pos_a, alignment,
+						    original_cx, original_cy);
 		}
 	}
 	struct vec2 pos_b;
@@ -516,6 +534,9 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 		} else {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
+			if (move->zoom_out)
+				pos_subtract_center(&pos_b, alignment,
+						    original_cx, original_cy);
 		}
 	}
 	struct vec2 pos;
@@ -530,7 +551,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	if (item->item_render && !item_texture_enabled(scene_item)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (!item->item_render && item_texture_enabled(scene_item)) {
+	} else if (item_texture_enabled(scene_item)) {
+		gs_texrender_destroy(item->item_render);
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	}
 	if (!move->point_sampler) {
@@ -576,8 +598,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 		enum obs_scale_type type =
 			obs_sceneitem_get_scale_filter(scene_item);
-		uint32_t cx = gs_texture_get_width(tex);
-		uint32_t cy = gs_texture_get_height(tex);
+		cx = gs_texture_get_width(tex);
+		cy = gs_texture_get_height(tex);
 		const char *tech = "Draw";
 		if (type != OBS_SCALE_DISABLE) {
 			if (type == OBS_SCALE_POINT) {
