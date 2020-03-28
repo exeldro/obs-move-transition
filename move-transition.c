@@ -201,6 +201,12 @@ void calc_edge_position(struct vec2 *pos, long long position,
 			uint32_t canvas_width, uint32_t canvas_height,
 			uint32_t alignment, uint32_t cx, uint32_t cy, bool zoom)
 {
+	uint32_t cx2 = cx >> 1;
+	uint32_t cy2 = cy >> 1;
+	if (zoom) {
+		cx2 = 0;
+		cy2 = 0;
+	}
 
 	if (position - POS_EDGE == 0) {
 		if (alignment & OBS_ALIGN_LEFT) {
@@ -218,14 +224,9 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		float diff_y = pos->y - (canvas_height >> 1);
 		float factor_x = fabs(diff_x) / (canvas_width >> 1);
 		float factor_y = fabs(diff_y) / (canvas_height >> 1);
-		uint32_t cx2 = cx >> 1;
-		uint32_t cy2 = cy >> 1;
+
 		if (diff_x == 0.0f && diff_y == 0.0f) {
 			diff_y = 1.0f;
-		}
-		if (zoom) {
-			cx2 = 0;
-			cy2 = 0;
 		}
 		if (factor_x > factor_y) {
 			if (diff_x < 0.0f) {
@@ -276,6 +277,10 @@ void calc_edge_position(struct vec2 *pos, long long position,
 
 		return;
 	}
+	if (zoom) {
+		cx = 0;
+		cy = 0;
+	}
 	vec2_set(pos, 0, 0);
 	if (position & POS_RIGHT) {
 		pos->x += canvas_width;
@@ -284,7 +289,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		} else if (alignment & OBS_ALIGN_LEFT) {
 
 		} else {
-			pos->x += cx >> 1;
+			pos->x += cx2;
 		}
 	} else if (position & POS_LEFT) {
 		if (alignment & OBS_ALIGN_RIGHT) {
@@ -292,14 +297,14 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		} else if (alignment & OBS_ALIGN_LEFT) {
 			pos->x -= cx;
 		} else {
-			pos->x -= cx >> 1;
+			pos->x -= cx2;
 		}
 	} else {
 		pos->x += canvas_width >> 1;
 		if (alignment & OBS_ALIGN_RIGHT) {
-			pos->x -= cx >> 1;
+			pos->x -= cx2;
 		} else if (alignment & OBS_ALIGN_LEFT) {
-			pos->x += cx >> 1;
+			pos->x += cx2;
 		}
 	}
 
@@ -309,14 +314,14 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
 			pos->y += cy;
 		} else {
-			pos->y += cy >> 1;
+			pos->y += cy2;
 		}
 	} else if (position & POS_TOP) {
 		if (alignment & OBS_ALIGN_BOTTOM) {
 		} else if (alignment & OBS_ALIGN_TOP) {
 			pos->y -= cy;
 		} else {
-			pos->y -= cy >> 1;
+			pos->y -= cy2;
 		}
 	} else {
 		pos->y += canvas_height >> 1;
