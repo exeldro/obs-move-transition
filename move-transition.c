@@ -220,6 +220,9 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		float factor_y = fabs(diff_y) / (canvas_height >> 1);
 		uint32_t cx2 = cx >> 1;
 		uint32_t cy2 = cy >> 1;
+		if (diff_x == 0.0f && diff_y == 0.0f) {
+			diff_y = 1.0f;
+		}
 		if (zoom) {
 			cx2 = 0;
 			cy2 = 0;
