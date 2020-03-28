@@ -16,7 +16,7 @@
 #define POS_LEFT (1 << 2)
 #define POS_RIGHT (1 << 3)
 #define POS_TOP (1 << 4)
-#define POS_BOTTOM (1 << 4)
+#define POS_BOTTOM (1 << 5)
 
 struct move_info {
 	obs_source_t *source;
