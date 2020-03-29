@@ -566,7 +566,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		if (width && height &&
 		    gs_texrender_begin(item->item_render, width, height)) {
 			float cx_scale = (float)original_width / (float)width;
-			float cy_scale = (float)original_height / (float)width;
+			float cy_scale = (float)original_height / (float)height;
 			struct vec4 clear_color;
 
 			vec4_zero(&clear_color);
