@@ -8,7 +8,8 @@
 #define S_POSITION_OUT "position_out"
 #define S_ZOOM_IN "zoom_in"
 #define S_ZOOM_OUT "zoom_out"
-#define S_EASE_IN_OUT "ease_in_out"
+#define S_EASE_IN "ease_in"
+#define S_EASE_OUT "ease_out"
 
 #define POS_NONE 0
 #define POS_CENTER (1 << 0)
@@ -26,7 +27,8 @@ struct move_info {
 	obs_source_t *scene_source_a;
 	obs_source_t *scene_source_b;
 	gs_samplerstate_t *point_sampler;
-	bool ease_in_out;
+	bool ease_in;
+	bool ease_out;
 	bool zoom_in;
 	bool zoom_out;
 	long long position_in;
@@ -87,7 +89,8 @@ static void move_destroy(void *data)
 static void move_update(void *data, obs_data_t *settings)
 {
 	struct move_info *move = data;
-	move->ease_in_out = obs_data_get_bool(settings, S_EASE_IN_OUT);
+	move->ease_in = obs_data_get_bool(settings, S_EASE_IN);
+	move->ease_out = obs_data_get_bool(settings, S_EASE_OUT);
 	move->position_in = obs_data_get_int(settings, S_POSITION_IN);
 	move->zoom_in = obs_data_get_bool(settings, S_ZOOM_IN);
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
@@ -237,8 +240,8 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		// pos is center of object
 		float diff_x = pos->x - (canvas_width >> 1);
 		float diff_y = pos->y - (canvas_height >> 1);
-		float factor_x = fabs(diff_x) / (canvas_width >> 1);
-		float factor_y = fabs(diff_y) / (canvas_height >> 1);
+		float factor_x = fabsf(diff_x) / (canvas_width >> 1);
+		float factor_y = fabsf(diff_y) / (canvas_height >> 1);
 
 		if (diff_x == 0.0f && diff_y == 0.0f) {
 			diff_y = 1.0f;
@@ -738,13 +741,27 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	return true;
 }
 
+float ease_in(const float t)
+{
+	return t * t * t;
+}
+
+float ease_out(const float t)
+{
+	return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+}
+
 static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
 	float t = obs_transition_get_time(move->source);
-	if (move->ease_in_out) {
+	if (move->ease_in && move->ease_out) {
 		move->t = cubic_ease_in_out(t);
+	} else if (move->ease_in) {
+		move->t = ease_in(t);
+	} else if (move->ease_out) {
+		move->t = ease_out(t);
 	} else {
 		move->t = t;
 	}
@@ -863,19 +880,19 @@ static obs_properties_t *move_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 	obs_property_t *p;
-	obs_properties_add_bool(ppts, S_EASE_IN_OUT,
-				obs_module_text("EaseInOut"));
+	obs_properties_add_bool(ppts, S_EASE_IN, obs_module_text("EaseIn"));
+	obs_properties_add_bool(ppts, S_ZOOM_IN, obs_module_text("ZoomIn"));
 	p = obs_properties_add_list(ppts, S_POSITION_IN,
 				    obs_module_text("PositionIn"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
-	obs_properties_add_bool(ppts, S_ZOOM_IN, obs_module_text("ZoomIn"));
 
+	obs_properties_add_bool(ppts, S_EASE_OUT, obs_module_text("EaseOut"));
+	obs_properties_add_bool(ppts, S_ZOOM_OUT, obs_module_text("ZoomOut"));
 	p = obs_properties_add_list(ppts, S_POSITION_OUT,
 				    obs_module_text("PositionOut"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
-	obs_properties_add_bool(ppts, S_ZOOM_OUT, obs_module_text("ZoomOut"));
 
 	UNUSED_PARAMETER(data);
 	return ppts;
@@ -883,7 +900,8 @@ static obs_properties_t *move_properties(void *data)
 
 void move_defaults(obs_data_t *settings)
 {
-	obs_data_set_default_bool(settings, S_EASE_IN_OUT, true);
+	obs_data_set_default_bool(settings, S_EASE_IN, true);
+	obs_data_set_default_bool(settings, S_EASE_OUT, true);
 	obs_data_set_default_int(settings, S_POSITION_IN, POS_EDGE | POS_LEFT);
 	obs_data_set_default_bool(settings, S_ZOOM_IN, true);
 	obs_data_set_default_int(settings, S_POSITION_OUT,
