@@ -10,6 +10,7 @@
 #define S_ZOOM_OUT "zoom_out"
 #define S_EASE_IN "ease_in"
 #define S_EASE_OUT "ease_out"
+#define S_CURVE "curve"
 
 #define POS_NONE 0
 #define POS_CENTER (1 << 0)
@@ -24,6 +25,7 @@ struct move_info {
 	bool start_init;
 	DARRAY(struct move_item *) items;
 	float t;
+	float curve;
 	obs_source_t *scene_source_a;
 	obs_source_t *scene_source_b;
 	gs_samplerstate_t *point_sampler;
@@ -95,6 +97,7 @@ static void move_update(void *data, obs_data_t *settings)
 	move->zoom_in = obs_data_get_bool(settings, S_ZOOM_IN);
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
 	move->zoom_out = obs_data_get_bool(settings, S_ZOOM_OUT);
+	move->curve = (float)obs_data_get_double(settings, S_CURVE);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -351,6 +354,26 @@ void calc_edge_position(struct vec2 *pos, long long position,
 	}
 }
 
+float bezier(float point[], float t, int order)
+{
+	const float p = 1.0f - t;
+	if (order < 1)
+		return point[0];
+	if (order == 1)
+		return p * point[0] + t * point[1];
+	return p * bezier(point, t, order - 1) +
+	       t * bezier(&point[1], t, order - 1);
+}
+
+void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
+		 struct vec2 *end, const float t)
+{
+	float x[3] = {begin->x, control->x, end->x};
+	float y[3] = {begin->y, control->y, end->y};
+	dst->x = bezier(x, t, 2);
+	dst->y = bezier(y, t, 2);
+}
+
 bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
 	struct move_info *move = data;
@@ -543,8 +566,28 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		}
 	}
 	struct vec2 pos;
-	vec2_set(&pos, (1.0f - move->t) * pos_a.x + move->t * pos_b.x,
-		 (1.0f - move->t) * pos_a.y + move->t * pos_b.y);
+	if (move->curve != 0.0f) {
+		float diff_x = fabsf(pos_a.x - pos_b.x);
+		float diff_y = fabsf(pos_a.y - pos_b.y);
+		float move_length = sqrtf(diff_x * diff_x + diff_y * diff_y);
+		struct vec2 control_pos;
+		vec2_set(&control_pos, 0.5f * pos_a.x + 0.5f * pos_b.x,
+			 0.5f * pos_a.y + 0.5f * pos_b.y);
+		if (control_pos.x >= (canvas_width >> 1)) {
+			control_pos.x += diff_y * move->curve;
+		} else {
+			control_pos.x -= diff_y * move->curve;
+		}
+		if (control_pos.y >= (canvas_height >> 1)) {
+			control_pos.y += diff_x * move->curve;
+		} else {
+			control_pos.y -= diff_x * move->curve;
+		}
+		vec2_bezier(&pos, &pos_a, &control_pos, &pos_b, move->t);
+	} else {
+		vec2_set(&pos, (1.0f - move->t) * pos_a.x + move->t * pos_b.x,
+			 (1.0f - move->t) * pos_a.y + move->t * pos_b.y);
+	}
 
 	matrix4_translate3f(&draw_transform, &draw_transform, pos.x, pos.y,
 			    0.0f);
@@ -718,13 +761,16 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 			obs_source_t *check_source =
 				obs_sceneitem_get_source(check_item->item_a);
-
+			if(!check_source)
+				continue;
+			
 			if (check_source == source) {
 				item = check_item;
 				break;
 			}
-			if (strcmp(obs_source_get_name(check_source),
-				   obs_source_get_name(source)) == 0) {
+			const char* name_a = obs_source_get_name(check_source);
+			const char* name_b = obs_source_get_name(source);
+			if (name_a && name_b && strcmp(name_a,  name_b) == 0) {
 				item = check_item;
 				break;
 			}
@@ -894,6 +940,8 @@ static obs_properties_t *move_properties(void *data)
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
 
+	obs_properties_add_float_slider(ppts, S_CURVE, obs_module_text("Curve"),
+					-2.0, 2.0, 0.01);
 	UNUSED_PARAMETER(data);
 	return ppts;
 }
@@ -907,6 +955,7 @@ void move_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, S_POSITION_OUT,
 				 POS_EDGE | POS_RIGHT);
 	obs_data_set_default_bool(settings, S_ZOOM_OUT, true);
+	obs_data_set_default_double(settings, S_CURVE, 0.0);
 }
 
 static void move_start(void *data)
