@@ -25,9 +25,9 @@
 #define EASING_SINE 5
 #define EASING_CIRCULAR 6
 #define EASING_EXPONENTIAL 7
-#define EASING_EXPERIMENTAL_ELASTIC 8
-#define EASING_EXPERIMENTAL_BOUNCE 9
-#define EASING_EXPERIMENTAL_BACK 10
+#define EASING_ELASTIC 8
+#define EASING_BOUNCE 9
+#define EASING_BACK 10
 
 #define POS_NONE 0
 #define POS_CENTER (1 << 0)
@@ -426,13 +426,15 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_crop(item->item_a, &crop_a);
 		struct obs_sceneitem_crop crop_b;
 		obs_sceneitem_get_crop(item->item_b, &crop_b);
-		crop.left =
-			(1.0f - move->t) * crop_a.left + move->t * crop_b.left;
-		crop.top = (1.0f - move->t) * crop_a.top + move->t * crop_b.top;
-		crop.right = (1.0f - move->t) * crop_a.right +
-			     move->t * crop_b.right;
-		crop.bottom = (1.0f - move->t) * crop_a.bottom +
-			      move->t * (float)crop_b.bottom;
+		const float mt = min(max(move->t, 0.0f), 1.0f);
+		crop.left = (1.0f - mt) * crop_a.left +
+			    mt * crop_b.left;
+		crop.top = (1.0f - mt) * crop_a.top +
+			   mt * crop_b.top;
+		crop.right = (1.0f - mt) * crop_a.right +
+			     mt * crop_b.right;
+		crop.bottom = (1.0f - mt) * crop_a.bottom +
+			      mt * crop_b.bottom;
 	} else {
 		obs_sceneitem_get_crop(scene_item, &crop);
 	}
@@ -778,16 +780,16 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 			obs_source_t *check_source =
 				obs_sceneitem_get_source(check_item->item_a);
-			if(!check_source)
+			if (!check_source)
 				continue;
-			
+
 			if (check_source == source) {
 				item = check_item;
 				break;
 			}
-			const char* name_a = obs_source_get_name(check_source);
-			const char* name_b = obs_source_get_name(source);
-			if (name_a && name_b && strcmp(name_a,  name_b) == 0) {
+			const char *name_a = obs_source_get_name(check_source);
+			const char *name_b = obs_source_get_name(source);
+			if (name_a && name_b && strcmp(name_a, name_b) == 0) {
 				item = check_item;
 				break;
 			}
@@ -810,109 +812,108 @@ static void move_video_render(void *data, gs_effect_t *effect)
 
 	float t = obs_transition_get_time(move->source);
 
-    if (EASE_NONE == move->easing) {
-        move->t = t;
-    } else if (EASE_IN == move->easing) {
-        switch (move->easing_function) {
-            case EASING_QUADRATIC:
-                move->t = QuadraticEaseIn(t);
-                break;
-            case EASING_CUBIC:
-                move->t = CubicEaseIn(t);
-                break;
-            case EASING_QUARTIC:
-                move->t = QuarticEaseIn(t);
-                break;
-            case EASING_QUINTIC:
-                move->t = QuinticEaseIn(t);
-                break;
-            case EASING_SINE:
-                move->t = SineEaseIn(t);
-                break;
-            case EASING_CIRCULAR:
-                move->t = CircularEaseIn(t);
-                break;
-            case EASING_EXPONENTIAL:
-                move->t = ExponentialEaseIn(t);
-                break;
-            case EASING_EXPERIMENTAL_ELASTIC:
-                move->t = ElasticEaseIn(t);
-                break;
-            case EASING_EXPERIMENTAL_BOUNCE:
-                move->t = BounceEaseIn(t);
-                break;
-            case EASING_EXPERIMENTAL_BACK:
-                move->t = BackEaseIn(t);
-                break;
-        }
+	if (EASE_NONE == move->easing) {
+		move->t = t;
+	} else if (EASE_IN == move->easing) {
+		switch (move->easing_function) {
+		case EASING_QUADRATIC:
+			move->t = QuadraticEaseIn(t);
+			break;
+		case EASING_CUBIC:
+			move->t = CubicEaseIn(t);
+			break;
+		case EASING_QUARTIC:
+			move->t = QuarticEaseIn(t);
+			break;
+		case EASING_QUINTIC:
+			move->t = QuinticEaseIn(t);
+			break;
+		case EASING_SINE:
+			move->t = SineEaseIn(t);
+			break;
+		case EASING_CIRCULAR:
+			move->t = CircularEaseIn(t);
+			break;
+		case EASING_EXPONENTIAL:
+			move->t = ExponentialEaseIn(t);
+			break;
+		case EASING_ELASTIC:
+			move->t = ElasticEaseIn(t);
+			break;
+		case EASING_BOUNCE:
+			move->t = BounceEaseIn(t);
+			break;
+		case EASING_BACK:
+			move->t = BackEaseIn(t);
+			break;
+		}
 	} else if (EASE_OUT == move->easing) {
-        switch (move->easing_function) {
-            case EASING_QUADRATIC:
-                move->t = QuadraticEaseOut(t);
-                break;
-            case EASING_CUBIC:
-                move->t = CubicEaseOut(t);
-                break;
-            case EASING_QUARTIC:
-                move->t = QuarticEaseOut(t);
-                break;
-            case EASING_QUINTIC:
-                move->t = QuinticEaseOut(t);
-                break;
-            case EASING_SINE:
-                move->t = SineEaseOut(t);
-                break;
-            case EASING_CIRCULAR:
-                move->t = CircularEaseOut(t);
-                break;
-            case EASING_EXPONENTIAL:
-                move->t = ExponentialEaseOut(t);
-                break;
-            case EASING_EXPERIMENTAL_ELASTIC:
-                move->t = ElasticEaseOut(t);
-                break;
-            case EASING_EXPERIMENTAL_BOUNCE:
-                move->t = BounceEaseOut(t);
-                break;
-            case EASING_EXPERIMENTAL_BACK:
-                move->t = BackEaseOut(t);
-                break;
-        }
+		switch (move->easing_function) {
+		case EASING_QUADRATIC:
+			move->t = QuadraticEaseOut(t);
+			break;
+		case EASING_CUBIC:
+			move->t = CubicEaseOut(t);
+			break;
+		case EASING_QUARTIC:
+			move->t = QuarticEaseOut(t);
+			break;
+		case EASING_QUINTIC:
+			move->t = QuinticEaseOut(t);
+			break;
+		case EASING_SINE:
+			move->t = SineEaseOut(t);
+			break;
+		case EASING_CIRCULAR:
+			move->t = CircularEaseOut(t);
+			break;
+		case EASING_EXPONENTIAL:
+			move->t = ExponentialEaseOut(t);
+			break;
+		case EASING_ELASTIC:
+			move->t = ElasticEaseOut(t);
+			break;
+		case EASING_BOUNCE:
+			move->t = BounceEaseOut(t);
+			break;
+		case EASING_BACK:
+			move->t = BackEaseOut(t);
+			break;
+		}
 	} else if (EASE_IN_OUT == move->easing) {
-        switch (move->easing_function) {
-            case EASING_QUADRATIC:
-                move->t = QuadraticEaseInOut(t);
-                break;
-            case EASING_CUBIC:
-                move->t = CubicEaseInOut(t);
-                break;
-            case EASING_QUARTIC:
-                move->t = QuarticEaseInOut(t);
-                break;
-            case EASING_QUINTIC:
-                move->t = QuinticEaseInOut(t);
-                break;
-            case EASING_SINE:
-                move->t = SineEaseInOut(t);
-                break;
-            case EASING_CIRCULAR:
-                move->t = CircularEaseInOut(t);
-                break;
-            case EASING_EXPONENTIAL:
-                move->t = ExponentialEaseInOut(t);
-                break;
-            case EASING_EXPERIMENTAL_ELASTIC:
-                move->t = ElasticEaseInOut(t);
-                break;
-            case EASING_EXPERIMENTAL_BOUNCE:
-                move->t = BounceEaseInOut(t);
-                break;
-            case EASING_EXPERIMENTAL_BACK:
-                move->t = BackEaseInOut(t);
-                break;
-        }
+		switch (move->easing_function) {
+		case EASING_QUADRATIC:
+			move->t = QuadraticEaseInOut(t);
+			break;
+		case EASING_CUBIC:
+			move->t = CubicEaseInOut(t);
+			break;
+		case EASING_QUARTIC:
+			move->t = QuarticEaseInOut(t);
+			break;
+		case EASING_QUINTIC:
+			move->t = QuinticEaseInOut(t);
+			break;
+		case EASING_SINE:
+			move->t = SineEaseInOut(t);
+			break;
+		case EASING_CIRCULAR:
+			move->t = CircularEaseInOut(t);
+			break;
+		case EASING_EXPONENTIAL:
+			move->t = ExponentialEaseInOut(t);
+			break;
+		case EASING_ELASTIC:
+			move->t = ElasticEaseInOut(t);
+			break;
+		case EASING_BOUNCE:
+			move->t = BounceEaseInOut(t);
+			break;
+		case EASING_BACK:
+			move->t = BackEaseInOut(t);
+			break;
+		}
 	}
-
 
 	if (move->start_init) {
 		if (move->scene_source_a)
@@ -1024,45 +1025,64 @@ void prop_list_add_positions(obs_property_t *p)
 				  POS_EDGE | POS_LEFT);
 }
 
-void prop_list_add_easings(obs_property_t *p) {
-    obs_property_list_add_int(p, obs_module_text("Easing.None"), EASE_NONE);
-    obs_property_list_add_int(p, obs_module_text("Easing.In"), EASE_IN);
-    obs_property_list_add_int(p, obs_module_text("Easing.Out"), EASE_OUT);
-    obs_property_list_add_int(p, obs_module_text("Easing.InOut"), EASE_IN_OUT);
+void prop_list_add_easings(obs_property_t *p)
+{
+	obs_property_list_add_int(p, obs_module_text("Easing.None"), EASE_NONE);
+	obs_property_list_add_int(p, obs_module_text("Easing.In"), EASE_IN);
+	obs_property_list_add_int(p, obs_module_text("Easing.Out"), EASE_OUT);
+	obs_property_list_add_int(p, obs_module_text("Easing.InOut"),
+				  EASE_IN_OUT);
 }
 
-void prop_list_add_easing_functions(obs_property_t *p) {
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Quadratic"), EASING_QUADRATIC);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Cubic"), EASING_CUBIC);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Quartic"), EASING_QUARTIC);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Quintic"), EASING_QUINTIC);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Sine"), EASING_SINE);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Circular"), EASING_CIRCULAR);
-    obs_property_list_add_int(p, obs_module_text("EasingFunction.Exponential"), EASING_EXPONENTIAL);
-    obs_property_list_add_int(p, obs_module_text("EasingFunctionExperimental.Elastic"), EASING_EXPERIMENTAL_ELASTIC);
-    obs_property_list_add_int(p, obs_module_text("EasingFunctionExperimental.Bounce"), EASING_EXPERIMENTAL_BOUNCE);
-    obs_property_list_add_int(p, obs_module_text("EasingFunctionExperimental.Back"), EASING_EXPERIMENTAL_BACK);
-
+void prop_list_add_easing_functions(obs_property_t *p)
+{
+	obs_property_list_add_int(p,
+				  obs_module_text("EasingFunction.Quadratic"),
+				  EASING_QUADRATIC);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Cubic"),
+				  EASING_CUBIC);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Quartic"),
+				  EASING_QUARTIC);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Quintic"),
+				  EASING_QUINTIC);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Sine"),
+				  EASING_SINE);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Circular"),
+				  EASING_CIRCULAR);
+	obs_property_list_add_int(p,
+				  obs_module_text("EasingFunction.Exponential"),
+				  EASING_EXPONENTIAL);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Elastic"),
+				  EASING_ELASTIC);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Bounce"),
+				  EASING_BOUNCE);
+	obs_property_list_add_int(p, obs_module_text("EasingFunction.Back"),
+				  EASING_BACK);
 }
 
-static bool easing_modified(obs_properties_t *ppts, obs_property_t *p, obs_data_t *settings) {
-    long long easing = obs_data_get_int(settings, S_EASING);
-    p = obs_properties_get(ppts, S_EASING_FUNCTION);
+static bool easing_modified(obs_properties_t *ppts, obs_property_t *p,
+			    obs_data_t *settings)
+{
+	long long easing = obs_data_get_int(settings, S_EASING);
+	p = obs_properties_get(ppts, S_EASING_FUNCTION);
 
-    obs_property_set_visible(p, EASE_NONE != easing);
+	obs_property_set_visible(p, EASE_NONE != easing);
 
-    return true;
+	return true;
 }
 
 static obs_properties_t *move_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 	obs_property_t *p;
-	p = obs_properties_add_list(ppts, S_EASING, obs_module_text("Easing"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	p = obs_properties_add_list(ppts, S_EASING, obs_module_text("Easing"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_easings(p);
 	obs_property_set_modified_callback(p, easing_modified);
 
-	p = obs_properties_add_list(ppts, S_EASING_FUNCTION, obs_module_text("EasingFunction"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	p = obs_properties_add_list(ppts, S_EASING_FUNCTION,
+				    obs_module_text("EasingFunction"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_easing_functions(p);
 
 	obs_properties_add_bool(ppts, S_ZOOM_IN, obs_module_text("ZoomIn"));
@@ -1085,8 +1105,8 @@ static obs_properties_t *move_properties(void *data)
 
 void move_defaults(obs_data_t *settings)
 {
-    obs_data_set_default_int(settings, S_EASING, EASE_IN_OUT);
-    obs_data_set_default_int(settings, S_EASING_FUNCTION, EASING_CUBIC);
+	obs_data_set_default_int(settings, S_EASING, EASE_IN_OUT);
+	obs_data_set_default_int(settings, S_EASING_FUNCTION, EASING_CUBIC);
 	obs_data_set_default_int(settings, S_POSITION_IN, POS_EDGE | POS_LEFT);
 	obs_data_set_default_bool(settings, S_ZOOM_IN, true);
 	obs_data_set_default_int(settings, S_POSITION_OUT,
