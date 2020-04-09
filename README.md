@@ -13,8 +13,18 @@ Add a Move transition.
 # Move transition
 Transition that moves all sources to a new position
 ## Properties
-* **Ease in**
-Eases the start of the movement of the sources.
+* **Easing**
+  * **No easing**
+  Linear movement of the sources.
+  * **Ease in**
+  Eases the start of the movement of the sources.
+  * **Ease out**
+  Eases the end of the movement of the sources.
+  * **Ease in and out**
+  Eases the start and end of the movement of the sources.
+* **Easing Function**
+
+  See https://easings.net/en
 * **Zoom in**
 New sources are zooming in on appearing, instead of staying the same size.
 * **Position in**
