@@ -1,11 +1,13 @@
 project(move-transition)
 
 set(move-transition_HEADERS
-	move-transition.h)
+	move-transition.h
+	easing.h)
 set(move-transition_SOURCES
-	move-transition.c)
+	move-transition.c
+	easing.c)
 
-add_library( move-transition MODULE
+add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
 target_link_libraries(move-transition
