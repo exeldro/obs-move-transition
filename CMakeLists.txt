@@ -11,6 +11,7 @@ add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
 target_link_libraries(move-transition
+	obs-frontend-api
 	libobs)
 
 install_obs_plugin_with_data(move-transition data)

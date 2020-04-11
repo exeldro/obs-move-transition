@@ -1,4 +1,5 @@
 #include <obs-module.h>
+#include <../UI/obs-frontend-api/obs-frontend-api.h>
 #include "../obs-transitions/easings.h"
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
@@ -12,6 +13,8 @@
 #define S_EASING "easing"
 #define S_EASING_FUNCTION "easing_function"
 #define S_CURVE "curve"
+#define S_TRANSITION_IN "transition_in"
+#define S_TRANSITION_OUT "transition_out"
 
 #define EASE_NONE 0
 #define EASE_IN 1
@@ -41,6 +44,7 @@ struct move_info {
 	obs_source_t *source;
 	bool start_init;
 	DARRAY(struct move_item *) items;
+	float ot;
 	float t;
 	float curve;
 	obs_source_t *scene_source_a;
@@ -52,12 +56,15 @@ struct move_info {
 	bool zoom_out;
 	long long position_in;
 	long long position_out;
+	char *transition_in;
+	char *transition_out;
 };
 
 struct move_item {
 	obs_sceneitem_t *item_a;
 	obs_sceneitem_t *item_b;
 	gs_texrender_t *item_render;
+	obs_source_t *transition;
 };
 
 static const char *move_get_name(void *type_data)
@@ -72,7 +79,6 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	move = bzalloc(sizeof(struct move_info));
 	move->source = source;
 	da_init(move->items);
-
 	obs_source_update(source, settings);
 
 	return move;
@@ -88,6 +94,7 @@ static void clear_items(struct move_info *move)
 		item->item_b = NULL;
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
+		obs_source_release(item->transition);
 		bfree(item);
 	}
 	move->items.num = 0;
@@ -98,10 +105,10 @@ static void move_destroy(void *data)
 	struct move_info *move = data;
 	clear_items(move);
 	da_free(move->items);
-	if (move->scene_source_a)
-		obs_source_release(move->scene_source_a);
-	if (move->scene_source_b)
-		obs_source_release(move->scene_source_b);
+	obs_source_release(move->scene_source_a);
+	obs_source_release(move->scene_source_b);
+	bfree(move->transition_in);
+	bfree(move->transition_out);
 	bfree(move);
 }
 
@@ -115,6 +122,12 @@ static void move_update(void *data, obs_data_t *settings)
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
 	move->zoom_out = obs_data_get_bool(settings, S_ZOOM_OUT);
 	move->curve = (float)obs_data_get_double(settings, S_CURVE);
+	bfree(move->transition_in);
+	move->transition_in =
+		bstrdup(obs_data_get_string(settings, S_TRANSITION_IN));
+	bfree(move->transition_out);
+	move->transition_out =
+		bstrdup(obs_data_get_string(settings, S_TRANSITION_OUT));
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -391,6 +404,26 @@ void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 	dst->y = bezier(y, t, 2);
 }
 
+static obs_source_t *obs_frontend_get_transition(const char *name)
+{
+	if (!name)
+		return NULL;
+	struct obs_frontend_source_list transitions = {0};
+	obs_frontend_get_transitions(&transitions);
+	for (size_t i = 0; i < transitions.sources.num; i++) {
+		const char *n =
+			obs_source_get_name(transitions.sources.array[i]);
+		if (n && strcmp(n, name) == 0) {
+			obs_source_t *transition = transitions.sources.array[i];
+			obs_source_addref(transition);
+			obs_frontend_source_list_free(&transitions);
+			return transition;
+		}
+	}
+	obs_frontend_source_list_free(&transitions);
+	return NULL;
+}
+
 bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
 	struct move_info *move = data;
@@ -408,16 +441,65 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 	if (!item)
 		return true;
+
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	uint32_t width = obs_source_get_width(source);
+	uint32_t height = obs_source_get_height(source);
 	bool move_out = item->item_a == scene_item;
 	if (item->item_a && item->item_b) {
 		if (item->item_a == scene_item && move->t > 0.5f)
 			return true;
 		if (item->item_b == scene_item && move->t <= 0.5f)
 			return true;
+	} else if (move_out && move->transition_out && !item->transition) {
+		obs_source_t *transition =
+			obs_frontend_get_transition(move->transition_out);
+		if (transition) {
+			if (obs_source_get_type(transition) ==
+			    OBS_SOURCE_TYPE_TRANSITION) {
+				item->transition = obs_source_duplicate(
+					transition, NULL, true);
+				obs_transition_set_size(item->transition, width,
+							height);
+				obs_transition_set_alignment(item->transition,
+							     OBS_ALIGN_CENTER);
+				obs_transition_set_scale_type(
+					item->transition,
+					OBS_TRANSITION_SCALE_ASPECT);
+				obs_transition_set(item->transition, source);
+				obs_transition_start(
+					item->transition,
+					OBS_TRANSITION_MODE_MANUAL,
+					obs_frontend_get_transition_duration(),
+					NULL);
+			}
+			obs_source_release(transition);
+		}
+	} else if (!move_out && move->transition_in && !item->transition) {
+		obs_source_t *transition =
+			obs_frontend_get_transition(move->transition_in);
+		if (transition) {
+			if (obs_source_get_type(transition) ==
+			    OBS_SOURCE_TYPE_TRANSITION) {
+				item->transition = obs_source_duplicate(
+					transition, NULL, true);
+				obs_transition_set_size(item->transition, width,
+							height);
+				obs_transition_set_alignment(item->transition,
+							     OBS_ALIGN_CENTER);
+				obs_transition_set_scale_type(
+					item->transition,
+					OBS_TRANSITION_SCALE_ASPECT);
+				obs_transition_set(item->transition, NULL);
+				obs_transition_start(
+					item->transition,
+					OBS_TRANSITION_MODE_MANUAL,
+					obs_frontend_get_transition_duration(),
+					source);
+			}
+			obs_source_release(transition);
+		}
 	}
-	obs_source_t *source = obs_sceneitem_get_source(scene_item);
-	uint32_t width = obs_source_get_width(source);
-	uint32_t height = obs_source_get_height(source);
 	uint32_t original_width = width;
 	uint32_t original_height = height;
 	struct obs_sceneitem_crop crop;
@@ -427,14 +509,10 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		struct obs_sceneitem_crop crop_b;
 		obs_sceneitem_get_crop(item->item_b, &crop_b);
 		const float mt = min(max(move->t, 0.0f), 1.0f);
-		crop.left = (1.0f - mt) * crop_a.left +
-			    mt * crop_b.left;
-		crop.top = (1.0f - mt) * crop_a.top +
-			   mt * crop_b.top;
-		crop.right = (1.0f - mt) * crop_a.right +
-			     mt * crop_b.right;
-		crop.bottom = (1.0f - mt) * crop_a.bottom +
-			      mt * crop_b.bottom;
+		crop.left = (1.0f - mt) * crop_a.left + mt * crop_b.left;
+		crop.top = (1.0f - mt) * crop_a.top + mt * crop_b.top;
+		crop.right = (1.0f - mt) * crop_a.right + mt * crop_b.right;
+		crop.bottom = (1.0f - mt) * crop_a.bottom + mt * crop_b.bottom;
 	} else {
 		obs_sceneitem_get_crop(scene_item, &crop);
 	}
@@ -643,7 +721,14 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			gs_matrix_translate3f(-(float)crop.left,
 					      -(float)crop.top, 0.0f);
 
-			obs_source_video_render(source);
+			if (item->transition) {
+				obs_transition_set_manual_time(item->transition,
+							       move->ot);
+
+				obs_source_video_render(item->transition);
+			} else {
+				obs_source_video_render(source);
+			}
 
 			gs_texrender_end(item->item_render);
 		}
@@ -729,7 +814,14 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 		gs_blend_state_pop();
 	} else {
-		obs_source_video_render(obs_sceneitem_get_source(scene_item));
+		if (item->transition) {
+			obs_transition_set_manual_time(item->transition,
+						       move->ot);
+
+			obs_source_video_render(item->transition);
+		} else {
+			obs_source_video_render(source);
+		}
 	}
 	gs_matrix_pop();
 	return true;
@@ -811,7 +903,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	struct move_info *move = data;
 
 	float t = obs_transition_get_time(move->source);
-
+	move->ot = t;
 	if (EASE_NONE == move->easing) {
 		move->t = t;
 	} else if (EASE_IN == move->easing) {
@@ -1071,6 +1163,20 @@ static bool easing_modified(obs_properties_t *ppts, obs_property_t *p,
 	return true;
 }
 
+static void prop_list_add_transitions(obs_property_t *p)
+{
+	struct obs_frontend_source_list transitions = {0};
+	obs_property_list_add_string(p, obs_module_text("Transition.None"),
+				     NULL);
+	obs_frontend_get_transitions(&transitions);
+	for (size_t i = 0; i < transitions.sources.num; i++) {
+		const char *name =
+			obs_source_get_name(transitions.sources.array[i]);
+		obs_property_list_add_string(p, name, name);
+	}
+	obs_frontend_source_list_free(&transitions);
+}
+
 static obs_properties_t *move_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
@@ -1099,6 +1205,19 @@ static obs_properties_t *move_properties(void *data)
 
 	obs_properties_add_float_slider(ppts, S_CURVE, obs_module_text("Curve"),
 					-2.0, 2.0, 0.01);
+
+	p = obs_properties_add_list(ppts, S_TRANSITION_IN,
+				    obs_module_text("TransitionIn"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	prop_list_add_transitions(p);
+
+	p = obs_properties_add_list(ppts, S_TRANSITION_OUT,
+				    obs_module_text("TransitionOut"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	prop_list_add_transitions(p);
+
 	UNUSED_PARAMETER(data);
 	return ppts;
 }
