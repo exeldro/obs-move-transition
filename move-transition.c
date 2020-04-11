@@ -881,9 +881,33 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			}
 			const char *name_a = obs_source_get_name(check_source);
 			const char *name_b = obs_source_get_name(source);
-			if (name_a && name_b && strcmp(name_a, name_b) == 0) {
-				item = check_item;
-				break;
+			if (name_a && name_b) {
+				if (strcmp(name_a, name_b) == 0) {
+					item = check_item;
+					break;
+				}
+			} else {
+				if (obs_source_get_type(check_source) ==
+				    obs_source_get_type(source)) {
+					obs_data_t *settings =
+						obs_source_get_settings(source);
+					obs_data_t *check_settings =
+						obs_source_get_settings(
+							check_source);
+					if (settings && check_settings &&
+					    strcmp(obs_data_get_json(settings),
+						   obs_data_get_json(
+							   check_settings)) ==
+						    0) {
+						item = check_item;
+						obs_data_release(
+							check_settings);
+						obs_data_release(settings);
+						break;
+					}
+					obs_data_release(check_settings);
+					obs_data_release(settings);
+				}
 			}
 		}
 		if (!item) {
