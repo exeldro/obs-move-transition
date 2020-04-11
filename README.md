@@ -24,7 +24,7 @@ Transition that moves all sources to a new position
   Eases the start and end of the movement of the sources.
 * **Easing Function**
 
-  See https://easings.net/en
+  See https://easings.net
 * **Zoom in**
 New sources are zooming in on appearing, instead of staying the same size.
 * **Position in**
@@ -37,3 +37,11 @@ Old sources are zooming out on disappearing, instead of staying the same size.
 The position old sources are going to.
 * **Curve**
 The amount of curve for the path between the start and end position. 0.00 is no curve. Postive is curve away from canvas center. Negative is curve towards canvas center.
+* **Transition in**
+New sources are transitioning in using this transition on appearing.
+* **Transition out**
+Old sources are transitioning out using this transition on disappearing.
+* **Transition move**
+Matched sources are transitioning in using this transition.
+* **Match if source name contains the other source name**
+Match sources that contain the name of an other source.
