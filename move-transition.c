@@ -16,6 +16,7 @@
 #define S_TRANSITION_IN "transition_in"
 #define S_TRANSITION_OUT "transition_out"
 #define S_TRANSITION_MOVE "transition_move"
+#define S_TRANSITION_MOVE_SCALE "transition_move_scale"
 #define S_NAME_PART_MATCH "name_part_match"
 
 #define EASE_NONE 0
@@ -63,6 +64,7 @@ struct move_info {
 	char *transition_move;
 	bool part_match;
 	bool stopped;
+	enum obs_transition_scale_type transition_move_scale;
 };
 
 struct move_item {
@@ -139,6 +141,8 @@ static void move_update(void *data, obs_data_t *settings)
 	move->transition_move =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_MOVE));
 	move->part_match = obs_data_get_bool(settings, S_NAME_PART_MATCH);
+	move->transition_move_scale =
+		obs_data_get_int(settings, S_TRANSITION_MOVE_SCALE);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -223,6 +227,8 @@ static inline bool crop_enabled(const struct obs_sceneitem_crop *crop)
 
 static inline bool item_texture_enabled(struct obs_scene_item *item)
 {
+	if (!item)
+		false;
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
 	return crop_enabled(&crop) || scale_filter_enabled(item) ||
@@ -459,6 +465,10 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	uint32_t height = obs_source_get_height(source);
 	bool move_out = item->item_a == scene_item;
 	if (item->item_a && item->item_b) {
+		if (item->item_a == scene_item && move->t > 0.5f)
+			return true;
+		if (item->item_b == scene_item && move->t <= 0.5f)
+			return true;
 		if (move->transition_move && !item->transition) {
 			obs_source_t *transition = obs_frontend_get_transition(
 				move->transition_move);
@@ -475,7 +485,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 						OBS_ALIGN_CENTER);
 					obs_transition_set_scale_type(
 						item->transition,
-						OBS_TRANSITION_SCALE_ASPECT);
+						move->transition_move_scale);
 					obs_transition_set(
 						item->transition,
 						obs_sceneitem_get_source(
@@ -490,10 +500,21 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 				obs_source_release(transition);
 			}
 		}
-		if (item->item_a == scene_item && move->t > 0.5f)
-			return true;
-		if (item->item_b == scene_item && move->t <= 0.5f)
-			return true;
+		if (item->transition) {
+			uint32_t width_a = obs_source_get_width(
+				obs_sceneitem_get_source(item->item_a));
+			uint32_t width_b = obs_source_get_width(
+				obs_sceneitem_get_source(item->item_b));
+			uint32_t height_a = obs_source_get_height(
+				obs_sceneitem_get_source(item->item_a));
+			uint32_t height_b = obs_source_get_height(
+				obs_sceneitem_get_source(item->item_b));
+			width = (1.0f - move->t) * width_a + move->t * width_b;
+			height = (1.0f - move->t) * height_a +
+				 move->t * height_b;
+			obs_transition_set_size(item->transition, width,
+						height);
+		}
 	} else if (move_out && move->transition_out && !item->transition) {
 		obs_source_t *transition =
 			obs_frontend_get_transition(move->transition_out);
@@ -739,10 +760,12 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 	struct vec2 output_scale = scale;
 
-	if (item->item_render && !item_texture_enabled(scene_item)) {
+	if (item->item_render && !item_texture_enabled(item->item_a) &&
+	    !item_texture_enabled(item->item_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (item_texture_enabled(scene_item)) {
+	} else if (item_texture_enabled(item->item_a) ||
+		   item_texture_enabled(item->item_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	}
@@ -1277,6 +1300,16 @@ static bool easing_modified(obs_properties_t *ppts, obs_property_t *p,
 	return true;
 }
 
+static bool transition_move_modified(obs_properties_t *ppts, obs_property_t *p,
+				     obs_data_t *settings)
+{
+	const char *transition_move =
+		obs_data_get_string(settings, S_TRANSITION_MOVE);
+	p = obs_properties_get(ppts, S_TRANSITION_MOVE_SCALE);
+	obs_property_set_visible(p, strlen(transition_move));
+	return true;
+}
+
 static void prop_list_add_transitions(obs_property_t *p)
 {
 	struct obs_frontend_source_list transitions = {0};
@@ -1344,7 +1377,19 @@ static obs_properties_t *move_properties(void *data)
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
 	prop_list_add_transitions(p);
-
+	obs_property_set_modified_callback(p, transition_move_modified);
+	p = obs_properties_add_list(ppts, S_TRANSITION_MOVE_SCALE,
+				    obs_module_text("TransitionMoveScaleType"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(
+		p, obs_module_text("TransitionMoveScale.MaxOnly"),
+		OBS_TRANSITION_SCALE_MAX_ONLY);
+	obs_property_list_add_int(p,
+				  obs_module_text("TransitionMoveScale.Aspect"),
+				  OBS_TRANSITION_SCALE_ASPECT);
+	obs_property_list_add_int(
+		p, obs_module_text("TransitionMoveScale.Stretch"),
+		OBS_TRANSITION_SCALE_STRETCH);
 	UNUSED_PARAMETER(data);
 	return ppts;
 }

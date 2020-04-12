@@ -41,7 +41,14 @@ The amount of curve for the path between the start and end position. 0.00 is no 
 New sources are transitioning in using this transition on appearing.
 * **Transition out**
 Old sources are transitioning out using this transition on disappearing.
-* **Transition move**
-Matched sources are transitioning in using this transition.
 * **Match if source name contains the other source name**
 Match sources that contain the name of an other source.
+* **Transition move**
+Matched sources are transitioning in using this transition.
+* **Transition move scale type**
+  * **Max only**
+  Scale to aspect ratio, but only to the maximum size of each source
+  * **Aspect**
+  Always scale the sources, but keep aspect ratio
+  * **Stretch**
+  Scale and stretch the sources to the size of the transition
