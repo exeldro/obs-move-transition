@@ -435,6 +435,7 @@ static obs_source_t *obs_frontend_get_transition(const char *name)
 
 bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
+	UNUSED_PARAMETER(scene);
 	struct move_info *move = data;
 	if (!obs_sceneitem_visible(scene_item))
 		return true;
@@ -548,11 +549,17 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_crop(item->item_a, &crop_a);
 		struct obs_sceneitem_crop crop_b;
 		obs_sceneitem_get_crop(item->item_b, &crop_b);
-		const float mt = min(max(move->t, 0.0f), 1.0f);
-		crop.left = (1.0f - mt) * crop_a.left + mt * crop_b.left;
-		crop.top = (1.0f - mt) * crop_a.top + mt * crop_b.top;
-		crop.right = (1.0f - mt) * crop_a.right + mt * crop_b.right;
-		crop.bottom = (1.0f - mt) * crop_a.bottom + mt * crop_b.bottom;
+		crop.left =
+			(int)((float)(1.0f - move->ot) * (float)crop_a.left +
+			      move->ot * (float)crop_b.left);
+		crop.top = (int)((float)(1.0f - move->ot) * (float)crop_a.top +
+				 move->ot * (float)crop_b.top);
+		crop.right =
+			(int)((float)(1.0f - move->ot) * (float)crop_a.right +
+			      move->ot * (float)crop_b.right);
+		crop.bottom =
+			(int)((float)(1.0f - move->ot) * (float)crop_a.bottom +
+			      move->ot * (float)crop_b.bottom);
 	} else {
 		obs_sceneitem_get_crop(scene_item, &crop);
 	}
@@ -706,7 +713,6 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	if (move->curve != 0.0f) {
 		float diff_x = fabsf(pos_a.x - pos_b.x);
 		float diff_y = fabsf(pos_a.y - pos_b.y);
-		float move_length = sqrtf(diff_x * diff_x + diff_y * diff_y);
 		struct vec2 control_pos;
 		vec2_set(&control_pos, 0.5f * pos_a.x + 0.5f * pos_b.x,
 			 0.5f * pos_a.y + 0.5f * pos_b.y);
@@ -991,8 +997,6 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		}
 		item->item_b = scene_item;
 		obs_sceneitem_addref(item->item_b);
-	} else {
-		int p = 0;
 	}
 	return true;
 }
@@ -1003,6 +1007,10 @@ static void move_video_render(void *data, gs_effect_t *effect)
 
 	float t = obs_transition_get_time(move->source);
 	move->ot = t;
+	if (t > 1.0f)
+		move->ot = 1.0f;
+	else if (t < 0.0f)
+		move->ot = 0.0f;
 	if (EASE_NONE == move->easing) {
 		move->t = t;
 	} else if (EASE_IN == move->easing) {
