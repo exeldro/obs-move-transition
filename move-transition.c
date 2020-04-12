@@ -62,6 +62,7 @@ struct move_info {
 	char *transition_out;
 	char *transition_move;
 	bool part_match;
+	bool stopped;
 };
 
 struct move_item {
@@ -99,6 +100,7 @@ static void clear_items(struct move_info *move)
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
 		obs_source_release(item->transition);
+		item->transition = NULL;
 		bfree(item);
 	}
 	move->items.num = 0;
@@ -1133,6 +1135,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
 		move->start_init = false;
+		move->stopped = false;
 	}
 
 	if (t > 0.0f && t < 1.0f) {
@@ -1171,6 +1174,10 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	} else {
 		obs_transition_video_render_direct(move->source,
 						   OBS_TRANSITION_SOURCE_B);
+		if (!move->stopped) {
+			move->stopped = true;
+			obs_transition_force_stop(move->source);
+		}
 	}
 
 	UNUSED_PARAMETER(effect);
