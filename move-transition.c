@@ -1008,11 +1008,6 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	struct move_info *move = data;
 
 	float t = obs_transition_get_time(move->source);
-	move->ot = t;
-	if (t > 1.0f)
-		move->ot = 1.0f;
-	else if (t < 0.0f)
-		move->ot = 0.0f;
 	if (EASE_NONE == move->easing) {
 		move->t = t;
 	} else if (EASE_IN == move->easing) {
@@ -1115,6 +1110,11 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			break;
 		}
 	}
+	move->ot = move->t;
+	if (move->t > 1.0f)
+		move->ot = 1.0f;
+	else if (move->t < 0.0f)
+		move->ot = 0.0f;
 
 	if (move->start_init) {
 		if (move->scene_source_a)
