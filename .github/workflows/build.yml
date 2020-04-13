@@ -1,0 +1,184 @@
+name: build obs plugin
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  win64:
+    name: Windows 64-bit
+    runs-on: [windows-latest]
+    env:
+      QT_VERSION: 5.10.1
+      CMAKE_GENERATOR: "Visual Studio 16 2019"
+      CMAKE_SYSTEM_VERSION: "10.0.18363.657"
+    steps:
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.0.0
+      - name: Checkout obs
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          submodules: 'recursive'
+      - name: Checkout plugin
+        uses: actions/checkout@v2
+        with:
+          path: plugins/move-transition
+      - name: Add plugin to obs cmake
+        shell: cmd
+        run: echo add_subdirectory(move-transition) >> plugins/CMakeLists.txt
+      - name: Fetch Git Tags
+        run: git fetch --prune --tags --unshallow
+      - name: 'Install prerequisite: QT'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/Qt_${{ env.QT_VERSION }}.7z -f --retry 5 -C -
+          7z x Qt_${{ env.QT_VERSION }}.7z -o"${{ github.workspace }}/cmbuild/QT"
+      - name: 'Install prerequisite: Pre-built dependencies'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/dependencies2017.zip -f --retry 5 -C -
+          7z x dependencies2017.zip -o"${{ github.workspace }}/cmbuild/deps"
+      - name: Configure
+        run: |
+          mkdir ./build
+          mkdir ./build64
+          cd ./build64
+          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"x64" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win64" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2017_64" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+      - name: Build
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\obs-studio.sln
+      - name: Package
+        if: success()
+        run: |
+          $env:FILE_DATE=(Get-Date -UFormat "%F")
+          $env:FILENAME="${env:FILE_DATE}-${{ github.sha }}-win64.zip"
+          move-transition
+          robocopy .\build64\rundir\RelWithDebInfo\obs-plugins\64bit\move-transition.* .\build\obs-plugins\64bit /E /XF .gitignore
+          robocopy .\build64\rundir\RelWithDebInfo\data\obs-plugins\move-transition\ .\build\data\obs-plugins\move-transition\ /E /XF .gitignore
+          7z a ${env:FILENAME} .\build\*
+      - name: Publish
+        if: success()
+        uses: actions/upload-artifact@v2-preview
+        with:
+          name: '${{ env.FILENAME }}'
+          path: '*-win64.zip'
+  win32:
+    name: Windows 32-bit
+    runs-on: [windows-latest]
+    env:
+      QT_VERSION: 5.10.1
+      CMAKE_GENERATOR: "Visual Studio 16 2019"
+      CMAKE_SYSTEM_VERSION: "10.0.18363.657"
+    steps:
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.0.0
+      - name: Checkout obs
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          submodules: 'recursive'
+      - name: Checkout plugin
+        uses: actions/checkout@v2
+        with:
+          path: plugins/move-transition
+      - name: Add plugin to obs cmake
+        shell: cmd
+        run: echo add_subdirectory(move-transition) >> plugins/CMakeLists.txt
+      - name: Fetch Git Tags
+        run: git fetch --prune --tags --unshallow
+      - name: 'Install prerequisite: QT'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/Qt_${{ env.QT_VERSION }}.7z -f --retry 5 -C -
+          7z x Qt_${{ env.QT_VERSION }}.7z -o"${{ github.workspace }}/cmbuild/QT"
+      - name: 'Install prerequisite: Pre-built dependencies'
+        run: |
+          curl -kLO https://cdn-fastly.obsproject.com/downloads/dependencies2017.zip -f --retry 5 -C -
+          7z x dependencies2017.zip -o"${{ github.workspace }}/cmbuild/deps"
+      - name: Configure
+        run: |
+          mkdir ./build
+          mkdir ./build32
+          cd ./build32
+          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"Win32" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win32" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2017" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+      - name: Build
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\obs-studio.sln
+      - name: Package
+        if: success()
+        run: |
+          $env:FILE_DATE=(Get-Date -UFormat "%F")
+          $env:FILENAME="${env:FILE_DATE}-${{ github.sha }}-win32.zip"
+          robocopy .\build32\rundir\RelWithDebInfo\obs-plugins\32bit\move-transition.* .\build\obs-plugins\32bit /E /XF .gitignore
+          robocopy .\build32\rundir\RelWithDebInfo\data\obs-plugins\move-transition\ .\build\data\obs-plugins\move-transition\ /E /XF .gitignore
+          7z a ${env:FILENAME} .\build\*
+      - name: Publish
+        if: success()
+        uses: actions/upload-artifact@v2-preview
+        with:
+          name: '${{ env.FILENAME }}'
+          path: '*-win32.zip'
+  macos64:
+    name: "macOS 64-bit"
+    runs-on: [macos-latest]
+    env:
+      OSX_DEPS_VERSION: '2020-04-07'
+      SPARKLE_VERSION: 1.23.0
+      QT_VERSION: 5.14.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          submodules: 'recursive'
+      - name: Checkout plugin
+        uses: actions/checkout@v2
+        with:
+          path: plugins/move-transition
+      - name: Add plugin to obs cmake
+        shell: bash
+        run: echo 'add_subdirectory(move-transition)' >> plugins/CMakeLists.txt
+      - name: Fetch Git Tags
+        run: git fetch --prune --tags --unshallow
+      - name: 'Install prerequisites (Homebrew)'
+        shell: bash
+        run: |
+          brew update
+          brew install jack speexdsp cmake freetype fdk-aac
+          brew install https://gist.githubusercontent.com/DDRBoxman/9c7a2b08933166f4b61ed9a44b242609/raw/ef4de6c587c6bd7f50210eccd5bd51ff08e6de13/qt.rb
+          brew unlink swig
+          brew install https://gist.githubusercontent.com/DDRBoxman/4cada55c51803a2f963fa40ce55c9d3e/raw/572c67e908bfbc1bcb8c476ea77ea3935133f5b5/swig.rb
+      - name: 'Install prerequisite: Pre-built dependencies'
+        shell: bash
+        run: |
+          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.OSX_DEPS_VERSION }}/osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz
+          tar -xf ./osx-deps-${{ env.OSX_DEPS_VERSION }}.tar.gz -C "/tmp"
+      - name: 'Install prerequisite: Sparkle'
+        shell: bash
+        run: |
+          curl -L -o sparkle.tar.bz2 https://github.com/sparkle-project/Sparkle/releases/download/${{ env.SPARKLE_VERSION }}/Sparkle-${{ env.SPARKLE_VERSION }}.tar.bz2
+          mkdir ${{ github.workspace }}/cmbuild/sparkle
+          tar -xf ./sparkle.tar.bz2 -C ${{ github.workspace }}/cmbuild/sparkle
+          sudo cp -R ${{ github.workspace }}/cmbuild/sparkle/Sparkle.framework /Library/Frameworks/Sparkle.framework
+      - name: Configure
+        shell: bash
+        run: |
+          mkdir ./build
+          cd ./build
+          cmake -DENABLE_SPARKLE_UPDATER=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.11 -DQTDIR="/usr/local/Cellar/qt/${{ env.QT_VERSION }}" -DDepsPath="/tmp/obsdeps" -DBUILD_BROWSER=OFF -DBROWSER_DEPLOY=OFF -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF ..
+      - name: Build
+        shell: bash
+        run: |
+          set -e
+          cd ./build
+          make -j4
+          cd -
+      - name: 'Install prerequisite: Packages app'
+        if: success()
+        shell: bash
+        run: |
+          curl -L -O https://s3-us-west-2.amazonaws.com/obs-nightly/Packages.pkg
+          sudo installer -pkg ./Packages.pkg -target /
+      - name: 'Install prerequisite: DMGbuild'
+        if: success()
+        shell: bash
+        run: |
+          pip3 install dmgbuild
