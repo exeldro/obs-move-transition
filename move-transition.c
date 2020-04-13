@@ -18,6 +18,8 @@
 #define S_TRANSITION_MOVE "transition_move"
 #define S_TRANSITION_MOVE_SCALE "transition_move_scale"
 #define S_NAME_PART_MATCH "name_part_match"
+#define S_NAME_NUMBER_MATCH "name_number_match"
+#define S_NAME_LAST_WORD_MATCH "name_last_word_match"
 
 #define EASE_NONE 0
 #define EASE_IN 1
@@ -63,6 +65,8 @@ struct move_info {
 	char *transition_out;
 	char *transition_move;
 	bool part_match;
+	bool number_match;
+	bool last_word_match;
 	bool stopped;
 	enum obs_transition_scale_type transition_move_scale;
 };
@@ -137,10 +141,13 @@ static void move_update(void *data, obs_data_t *settings)
 	bfree(move->transition_out);
 	move->transition_out =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_OUT));
+	move->part_match = obs_data_get_bool(settings, S_NAME_PART_MATCH);
+	move->number_match = obs_data_get_bool(settings, S_NAME_NUMBER_MATCH);
+	move->last_word_match =
+		obs_data_get_bool(settings, S_NAME_LAST_WORD_MATCH);
 	bfree(move->transition_move);
 	move->transition_move =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_MOVE));
-	move->part_match = obs_data_get_bool(settings, S_NAME_PART_MATCH);
 	move->transition_move_scale =
 		obs_data_get_int(settings, S_TRANSITION_MOVE_SCALE);
 }
@@ -909,6 +916,15 @@ bool same_transform_type(struct obs_transform_info *info_a,
 	       info_a->bounds_alignment == info_b->bounds_alignment;
 }
 
+bool is_number_match(const char c)
+{
+	if (c >= '0' && c <= '9')
+		return true;
+	if (c == '(' || c == ')' || c == ' ' || c == '.' || c == ',')
+		return true;
+	return false;
+}
+
 struct move_item *match_item2(struct move_info *move,
 			      obs_sceneitem_t *scene_item, bool part_match)
 {
@@ -949,32 +965,81 @@ struct move_item *match_item2(struct move_info *move,
 				break;
 			}
 			if (part_match) {
-				const size_t len_a = strlen(name_a);
-				const size_t len_b = strlen(name_b);
+				size_t len_a = strlen(name_a);
+				size_t len_b = strlen(name_b);
 				if (!len_a || !len_b)
 					continue;
 				if (len_a > len_b) {
-					for (size_t pos = 0;
-					     pos <= len_a - len_b; pos++) {
-						if (memcmp(name_a + pos, name_b,
-							   len_b) == 0) {
-							item = check_item;
-							break;
+					if (move->last_word_match) {
+						char *last_space =
+							strrchr(name_b, ' ');
+						if (last_space &&
+						    last_space > name_b) {
+							len_b = last_space -
+								name_b;
 						}
 					}
-					if (item)
+					while (len_b > 0 &&
+					       move->number_match &&
+					       is_number_match(
+						       name_b[len_b - 1]))
+						len_b--;
+					if (len_b > 0 && move->part_match) {
+						for (size_t pos = 0;
+						     pos <= len_a - len_b;
+						     pos++) {
+							if (memcmp(name_a + pos,
+								   name_b,
+								   len_b) ==
+							    0) {
+								item = check_item;
+								break;
+							}
+						}
+						if (item)
+							break;
+					} else if (len_b > 0 &&
+						   memcmp(name_a, name_b,
+							  len_b) == 0) {
+						item = check_item;
 						break;
+					}
+
 				} else {
-					for (size_t pos = 0;
-					     pos <= len_b - len_a; pos++) {
-						if (memcmp(name_a, name_b + pos,
-							   len_a) == 0) {
-							item = check_item;
-							break;
+					if (move->last_word_match) {
+						char *last_space =
+							strrchr(name_a, ' ');
+						if (last_space &&
+						    last_space > name_a) {
+							len_a = last_space -
+								name_a;
 						}
 					}
-					if (item)
+					while (len_a > 0 &&
+					       move->number_match &&
+					       is_number_match(
+						       name_a[len_a - 1]))
+						len_a--;
+					if (len_a > 0 && move->part_match) {
+						for (size_t pos = 0;
+						     pos <= len_b - len_a;
+						     pos++) {
+							if (memcmp(name_a,
+								   name_b + pos,
+								   len_a) ==
+							    0) {
+								item = check_item;
+								break;
+							}
+						}
+						if (item)
+							break;
+					} else if (len_a > 0 &&
+						   memcmp(name_a, name_b,
+							  len_a) == 0) {
+						item = check_item;
 						break;
+					}
 				}
 			}
 		} else if (!part_match) {
@@ -1013,7 +1078,8 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		da_push_back(move->items, &item);
 	} else if (scene == obs_scene_from_source(move->scene_source_b)) {
 		item = match_item2(move, scene_item, false);
-		if (!item && move->part_match) {
+		if (!item && (move->part_match || move->number_match ||
+			      move->last_word_match)) {
 			item = match_item2(move, scene_item, true);
 		}
 		if (!item) {
@@ -1371,6 +1437,10 @@ static obs_properties_t *move_properties(void *data)
 
 	obs_properties_add_bool(ppts, S_NAME_PART_MATCH,
 				obs_module_text("NamePartMatch"));
+	obs_properties_add_bool(ppts, S_NAME_NUMBER_MATCH,
+				obs_module_text("NameNumberMatch"));
+	obs_properties_add_bool(ppts, S_NAME_LAST_WORD_MATCH,
+				obs_module_text("NameLastWordMatch"));
 
 	p = obs_properties_add_list(ppts, S_TRANSITION_MOVE,
 				    obs_module_text("TransitionMove"),
