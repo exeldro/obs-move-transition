@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  PLUGIN_NAME: move-transition
+
 jobs:
   win64:
     name: Windows 64-bit
@@ -25,10 +28,10 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v2
         with:
-          path: plugins/move-transition
+          path: plugins/${{ env.PLUGIN_NAME}}
       - name: Add plugin to obs cmake
         shell: cmd
-        run: echo add_subdirectory(move-transition) >> plugins/CMakeLists.txt
+        run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) >> plugins/CMakeLists.txt
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
       - name: 'Install prerequisite: QT'
@@ -51,10 +54,9 @@ jobs:
         if: success()
         run: |
           $env:FILE_DATE=(Get-Date -UFormat "%F")
-          $env:FILENAME="${env:FILE_DATE}-${{ github.sha }}-win64.zip"
-          move-transition
-          robocopy .\build64\rundir\RelWithDebInfo\obs-plugins\64bit\move-transition.* .\build\obs-plugins\64bit /E /XF .gitignore
-          robocopy .\build64\rundir\RelWithDebInfo\data\obs-plugins\move-transition\ .\build\data\obs-plugins\move-transition\ /E /XF .gitignore
+          $env:FILENAME="${{ env.PLUGIN_NAME }}-${env:FILE_DATE}-${{ github.sha }}-win64.zip"
+          robocopy .\build64\rundir\RelWithDebInfo\obs-plugins\64bit\ .\build\obs-plugins\64bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore 
+          robocopy .\build64\rundir\RelWithDebInfo\data\obs-plugins\${{ env.PLUGIN_NAME }}\ .\build\data\obs-plugins\${{ env.PLUGIN_NAME }}\ /E /XF .gitignore
           7z a ${env:FILENAME} .\build\*
       - name: Publish
         if: success()
@@ -80,10 +82,10 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v2
         with:
-          path: plugins/move-transition
+          path: plugins/${{ env.PLUGIN_NAME }}
       - name: Add plugin to obs cmake
         shell: cmd
-        run: echo add_subdirectory(move-transition) >> plugins/CMakeLists.txt
+        run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) >> plugins/CMakeLists.txt
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
       - name: 'Install prerequisite: QT'
@@ -106,9 +108,9 @@ jobs:
         if: success()
         run: |
           $env:FILE_DATE=(Get-Date -UFormat "%F")
-          $env:FILENAME="${env:FILE_DATE}-${{ github.sha }}-win32.zip"
-          robocopy .\build32\rundir\RelWithDebInfo\obs-plugins\32bit\move-transition.* .\build\obs-plugins\32bit /E /XF .gitignore
-          robocopy .\build32\rundir\RelWithDebInfo\data\obs-plugins\move-transition\ .\build\data\obs-plugins\move-transition\ /E /XF .gitignore
+          $env:FILENAME="${{ env.PLUGIN_NAME }}-${env:FILE_DATE}-${{ github.sha }}-win32.zip"
+          robocopy .\build32\rundir\RelWithDebInfo\obs-plugins\32bit\ .\build\obs-plugins\32bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore
+          robocopy .\build32\rundir\RelWithDebInfo\data\obs-plugins\${{ env.PLUGIN_NAME }}\ .\build\data\obs-plugins\${{ env.PLUGIN_NAME }}\ /E /XF .gitignore
           7z a ${env:FILENAME} .\build\*
       - name: Publish
         if: success()
