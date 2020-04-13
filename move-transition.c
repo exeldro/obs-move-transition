@@ -507,7 +507,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 				obs_source_release(transition);
 			}
 		}
-		if (item->transition) {
+		if (item->transition && !move->start_init) {
 			uint32_t width_a = obs_source_get_width(
 				obs_sceneitem_get_source(item->item_a));
 			uint32_t width_b = obs_source_get_width(
@@ -799,7 +799,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			gs_matrix_translate3f(-(float)crop.left,
 					      -(float)crop.top, 0.0f);
 
-			if (item->transition) {
+			if (item->transition && !move->start_init) {
 				obs_transition_set_manual_time(item->transition,
 							       move->ot);
 
@@ -892,7 +892,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 		gs_blend_state_pop();
 	} else {
-		if (item->transition) {
+		if (item->transition && !move->start_init) {
 			obs_transition_set_manual_time(item->transition,
 						       move->ot);
 
@@ -1223,7 +1223,6 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
-		move->start_init = false;
 		move->stopped = false;
 	}
 
@@ -1268,6 +1267,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			obs_transition_force_stop(move->source);
 		}
 	}
+	move->start_init = false;
 
 	UNUSED_PARAMETER(effect);
 }
