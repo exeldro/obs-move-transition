@@ -67,7 +67,6 @@ struct move_info {
 	bool part_match;
 	bool number_match;
 	bool last_word_match;
-	bool stopped;
 	enum obs_transition_scale_type transition_move_scale;
 };
 
@@ -86,12 +85,10 @@ static const char *move_get_name(void *type_data)
 
 static void *move_create(obs_data_t *settings, obs_source_t *source)
 {
-	struct move_info *move;
-	move = bzalloc(sizeof(struct move_info));
+	struct move_info *move = bzalloc(sizeof(struct move_info));
 	move->source = source;
 	da_init(move->items);
 	obs_source_update(source, settings);
-
 	return move;
 }
 
@@ -105,8 +102,11 @@ static void clear_items(struct move_info *move)
 		item->item_b = NULL;
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-		obs_source_release(item->transition);
-		item->transition = NULL;
+		if (item->transition) {
+			obs_transition_force_stop(item->transition);
+			obs_source_release(item->transition);
+			item->transition = NULL;
+		}
 		bfree(item);
 	}
 	move->items.num = 0;
@@ -122,6 +122,7 @@ static void move_destroy(void *data)
 	bfree(move->transition_in);
 	bfree(move->transition_out);
 	bfree(move->transition_move);
+	gs_samplerstate_destroy(move->point_sampler);
 	bfree(move);
 }
 
@@ -771,10 +772,11 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	    !item_texture_enabled(item->item_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (item_texture_enabled(item->item_a) ||
-		   item_texture_enabled(item->item_b)) {
-		gs_texrender_destroy(item->item_render);
+	} else if (!item->item_render && (item_texture_enabled(item->item_a) ||
+					  item_texture_enabled(item->item_b))) {
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+	} else if (item->item_render) {
+		gs_texrender_reset(item->item_render);
 	}
 	if (!move->point_sampler) {
 		struct gs_sampler_info point_sampler_info = {0};
@@ -1096,7 +1098,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
-	float t = obs_transition_get_time(move->source);
+	const float t = obs_transition_get_time(move->source);
 	if (EASE_NONE == move->easing) {
 		move->t = t;
 	} else if (EASE_IN == move->easing) {
@@ -1223,7 +1225,6 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
-		move->stopped = false;
 	}
 
 	if (t > 0.0f && t < 1.0f) {
@@ -1256,16 +1257,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_blend_state_pop();
 		gs_matrix_pop();
 
-	} else if (t <= 0.5f) {
-		obs_transition_video_render_direct(move->source,
-						   OBS_TRANSITION_SOURCE_A);
 	} else {
-		obs_transition_video_render_direct(move->source,
-						   OBS_TRANSITION_SOURCE_B);
-		if (!move->stopped) {
-			move->stopped = true;
-			obs_transition_force_stop(move->source);
-		}
+		obs_transition_video_render(move->source, NULL);
 	}
 	move->start_init = false;
 
