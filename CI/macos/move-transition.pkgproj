@@ -36,7 +36,7 @@
 																		<key>GID</key>
 																		<integer>80</integer>
 																		<key>PATH</key>
-																		<string>../../../../build/plugins/obs-move-transition/move-transition.so</string>
+																		<string>../../../../build/plugins/move-transition/move-transition.so</string>
 																		<key>PATH_TYPE</key>
 																		<integer>3</integer>
 																		<key>PERMISSIONS</key>
@@ -550,7 +550,7 @@
 			<key>FOLLOW_SYMBOLIC_LINKS</key>
 			<false/>
 			<key>IDENTIFIER</key>
-			<string>com.exeldro.obs-move-transition</string>
+			<string>com.exeldro.move-transition</string>
 			<key>LOCATION</key>
 			<integer>0</integer>
 			<key>NAME</key>
@@ -763,7 +763,7 @@
 				</dict>
 			</array>
 			<key>NAME</key>
-			<string>obs-move-transition</string>
+			<string>move-transition</string>
 			<key>PAYLOAD_ONLY</key>
 			<false/>
 		</dict>
