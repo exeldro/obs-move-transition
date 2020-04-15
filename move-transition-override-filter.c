@@ -25,16 +25,35 @@ void prop_list_add_positions(obs_property_t *p);
 void prop_list_add_transitions(obs_property_t *p);
 void prop_list_add_scales(obs_property_t *p);
 
+bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
+{
+	obs_property_t *p = data;
+	const char *name = obs_source_get_name(obs_sceneitem_get_source(item));
+	obs_property_list_add_string(p, name, name);
+	return true;
+}
+
 static obs_properties_t *move_filter_properties(void *data)
 {
+	struct move_filter_info *move_filter = data;
 	obs_properties_t *ppts = obs_properties_create();
+	obs_property_t *p;
+	obs_source_t *parent = obs_filter_get_parent(move_filter->source);
+	obs_scene_t *scene = obs_scene_from_source(parent);
+
+	if (scene) {
+		p = obs_properties_add_list(ppts, S_SOURCE,
+					    obs_module_text("Source"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_STRING);
+		obs_scene_enum_items(scene, prop_list_add_source, p);
+	}
 
 	//Matched items
 	obs_properties_t *group = obs_properties_create();
-	obs_property_t *p = obs_properties_add_list(group, S_EASING_MATCH,
-						    obs_module_text("Easing"),
-						    OBS_COMBO_TYPE_LIST,
-						    OBS_COMBO_FORMAT_INT);
+	p = obs_properties_add_list(group, S_EASING_MATCH,
+				    obs_module_text("Easing"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("NoOverride"),
 				  NO_OVERRIDE);
 	prop_list_add_easings(p);

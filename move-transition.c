@@ -34,6 +34,7 @@ struct move_info {
 	bool number_match;
 	bool last_word_match;
 	enum obs_transition_scale_type transition_move_scale;
+	bool render_match;
 };
 
 struct move_item {
@@ -354,9 +355,10 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		cx = 0;
 		cy = 0;
 	}
-	vec2_set(pos, 0, 0);
+	if (position & POS_EDGE)
+		vec2_set(pos, 0, 0);
 	if (position & POS_RIGHT) {
-		pos->x += canvas_width;
+		pos->x = canvas_width;
 		if (alignment & OBS_ALIGN_RIGHT) {
 			pos->x += cx;
 		} else if (alignment & OBS_ALIGN_LEFT) {
@@ -365,6 +367,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 			pos->x += cx2;
 		}
 	} else if (position & POS_LEFT) {
+		pos->x = 0;
 		if (alignment & OBS_ALIGN_RIGHT) {
 
 		} else if (alignment & OBS_ALIGN_LEFT) {
@@ -372,8 +375,8 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		} else {
 			pos->x -= cx2;
 		}
-	} else {
-		pos->x += canvas_width >> 1;
+	} else if (position & POS_EDGE) {
+		pos->x = canvas_width >> 1;
 		if (alignment & OBS_ALIGN_RIGHT) {
 			pos->x += cx2;
 		} else if (alignment & OBS_ALIGN_LEFT) {
@@ -382,7 +385,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 	}
 
 	if (position & POS_BOTTOM) {
-		pos->y += canvas_height;
+		pos->y = canvas_height;
 		if (alignment & OBS_ALIGN_TOP) {
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
 			pos->y += cy;
@@ -390,14 +393,15 @@ void calc_edge_position(struct vec2 *pos, long long position,
 			pos->y += cy2;
 		}
 	} else if (position & POS_TOP) {
+		pos->y = 0;
 		if (alignment & OBS_ALIGN_BOTTOM) {
 		} else if (alignment & OBS_ALIGN_TOP) {
 			pos->y -= cy;
 		} else {
 			pos->y -= cy2;
 		}
-	} else {
-		pos->y += canvas_height >> 1;
+	} else if (position & POS_EDGE) {
+		pos->y = canvas_height >> 1;
 		if (alignment & OBS_ALIGN_TOP) {
 			pos->y -= cy2;
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
@@ -463,6 +467,11 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	}
 
 	if (!item)
+		return true;
+
+	if (move->render_match && (!item->item_a || !item->item_b))
+		return true;
+	if (!move->render_match && item->item_a && item->item_b)
 		return true;
 
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
@@ -804,7 +813,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			vec2_set(&pos_a, canvas_width >> 1, canvas_height >> 1);
 			if (!item->zoom)
 				pos_add_center(&pos_a, alignment, cx, cy);
-		} else if (item->position & POS_EDGE) {
+		} else if (item->position & POS_EDGE ||
+			   item->position & POS_SWIPE) {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
 			calc_edge_position(&pos_a, item->position, canvas_width,
 					   canvas_height, alignment,
@@ -827,7 +837,8 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			vec2_set(&pos_b, canvas_width >> 1, canvas_height >> 1);
 			if (!item->zoom)
 				pos_add_center(&pos_b, alignment, cx, cy);
-		} else if (item->position & POS_EDGE) {
+		} else if (item->position & POS_EDGE ||
+			   item->position & POS_SWIPE) {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
 			calc_edge_position(&pos_b, item->position, canvas_width,
 					   canvas_height, alignment,
@@ -1201,24 +1212,54 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
 			 void *param)
 {
+
 	if (strcmp(obs_source_get_unversioned_id(filter),
-		   "move_transition_override_filter") == 0) {
+		   "move_transition_override_filter") != 0)
+		return;
+	obs_source_t *target = *(obs_source_t **)param;
+	if (!target) {
 		*(obs_source_t **)param = filter;
+		return;
 	}
+
+	if (obs_source_get_type(target) == OBS_SOURCE_TYPE_FILTER)
+		return;
+	obs_data_t *settings = obs_source_get_settings(filter);
+	if (!settings)
+		return;
+	const char *sn = obs_data_get_string(settings, S_SOURCE);
+	if (sn && strlen(sn)) {
+		if (strcmp(obs_source_get_name(target), sn) == 0) {
+			*(obs_source_t **)param = filter;
+		}
+	}
+	obs_data_release(settings);
 }
 
 obs_data_t *get_override_filter_settings(obs_sceneitem_t *item)
 {
 	if (!item)
 		return NULL;
+	obs_source_t *filter = obs_sceneitem_get_source(item);
+	obs_scene_t *scene = obs_sceneitem_get_scene(item);
+	if (scene) {
+		obs_source_t *scene_source = obs_scene_get_source(scene);
+		obs_source_enum_filters(scene_source, get_override_filter,
+					&filter);
+	}
+
 	obs_source_t *source = obs_sceneitem_get_source(item);
 	if (!source)
 		return NULL;
-	obs_source_t *filter = NULL;
+
+	if (filter && filter != source)
+		return obs_source_get_settings(filter);
+
+	filter = NULL;
 	obs_source_enum_filters(source, get_override_filter, &filter);
-	if (!filter)
-		return NULL;
-	return obs_source_get_settings(filter);
+	if (filter && filter != source)
+		return obs_source_get_settings(filter);
+	return NULL;
 }
 
 static void move_video_render(void *data, gs_effect_t *effect)
@@ -1258,12 +1299,14 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				item->easing = move->easing_in;
 				item->easing_function =
 					move->easing_function_in;
+				item->position = move->position_in;
 				item->zoom = move->zoom_in;
 				item->curve = move->curve_in;
 			} else if (item->item_b) {
 				item->easing = move->easing_out;
 				item->easing_function =
 					move->easing_function_out;
+				item->position = move->position_out;
 				item->zoom = move->zoom_out;
 				item->curve = move->curve_out;
 			}
@@ -1330,7 +1373,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 							       S_EASING_MATCH);
 				else
 					val = obs_data_get_int(settings_a,
-							       S_EASING_IN);
+							       S_EASING_OUT);
 				if (val != NO_OVERRIDE) {
 					item->easing = val;
 				}
@@ -1341,16 +1384,16 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				else
 					val = obs_data_get_int(
 						settings_a,
-						S_EASING_FUNCTION_IN);
+						S_EASING_FUNCTION_OUT);
 				if (val != NO_OVERRIDE) {
 					item->easing_function = val;
 				}
-				val = obs_data_get_int(settings_a, S_ZOOM_IN);
+				val = obs_data_get_int(settings_a, S_ZOOM_OUT);
 				if (val != NO_OVERRIDE) {
 					item->zoom = !!val;
 				}
 				val = obs_data_get_int(settings_a,
-						       S_POSITION_IN);
+						       S_POSITION_OUT);
 				if (val != NO_OVERRIDE) {
 					item->position = val;
 				}
@@ -1360,7 +1403,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					item->transition_scale = val;
 				}
 				const char *ti = obs_data_get_string(
-					settings_a, S_TRANSITION_IN);
+					settings_a, S_TRANSITION_OUT);
 				if (ti && strlen(ti) && item->item_a &&
 				    !item->item_b) {
 					item->transition_name = bstrdup(ti);
@@ -1379,10 +1422,9 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				} else if (item->item_a && !item->item_b &&
 					   obs_data_get_bool(
 						   settings_a,
-						   S_CURVE_OVERRIDE_IN)) {
-					item->curve =
-						(float)obs_data_get_double(
-							settings_a, S_CURVE_IN);
+						   S_CURVE_OVERRIDE_OUT)) {
+					item->curve = (float)obs_data_get_double(
+						settings_a, S_CURVE_OUT);
 				}
 			} else if (settings_b) {
 				long long val;
@@ -1391,7 +1433,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 							       S_EASING_MATCH);
 				else
 					val = obs_data_get_int(settings_b,
-							       S_EASING_OUT);
+							       S_EASING_IN);
 				if (val != NO_OVERRIDE) {
 					item->easing = val;
 				}
@@ -1402,16 +1444,16 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				else
 					val = obs_data_get_int(
 						settings_b,
-						S_EASING_FUNCTION_OUT);
+						S_EASING_FUNCTION_IN);
 				if (val != NO_OVERRIDE) {
 					item->easing_function = val;
 				}
-				val = obs_data_get_int(settings_b, S_ZOOM_OUT);
+				val = obs_data_get_int(settings_b, S_ZOOM_IN);
 				if (val != NO_OVERRIDE) {
 					item->zoom = !!val;
 				}
 				val = obs_data_get_int(settings_b,
-						       S_POSITION_OUT);
+						       S_POSITION_IN);
 				if (val != NO_OVERRIDE) {
 					item->position = val;
 				}
@@ -1421,7 +1463,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					item->transition_scale = val;
 				}
 				const char *to = obs_data_get_string(
-					settings_b, S_TRANSITION_OUT);
+					settings_b, S_TRANSITION_IN);
 				if (to && strlen(to) && !item->item_a &&
 				    item->item_b) {
 					item->transition_name = bstrdup(to);
@@ -1440,9 +1482,10 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				} else if (!item->item_a && item->item_b &&
 					   obs_data_get_bool(
 						   settings_b,
-						   S_CURVE_OVERRIDE_OUT)) {
-					item->curve = (float)obs_data_get_double(
-						settings_b, S_CURVE_OUT);
+						   S_CURVE_OVERRIDE_IN)) {
+					item->curve =
+						(float)obs_data_get_double(
+							settings_b, S_CURVE_IN);
 				}
 			}
 			obs_data_release(settings_a);
@@ -1477,6 +1520,14 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_blend_state_push();
 		gs_reset_blend_state();
 		if (move->t <= 0.5f) {
+			move->render_match = true;
+			obs_scene_enum_items(
+				obs_scene_from_source(move->scene_source_b),
+				render2_item, data);
+			obs_scene_enum_items(
+				obs_scene_from_source(move->scene_source_a),
+				render2_item, data);
+			move->render_match = false;
 			obs_scene_enum_items(
 				obs_scene_from_source(move->scene_source_b),
 				render2_item, data);
@@ -1484,6 +1535,14 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				obs_scene_from_source(move->scene_source_a),
 				render2_item, data);
 		} else {
+			move->render_match = true;
+			obs_scene_enum_items(
+				obs_scene_from_source(move->scene_source_a),
+				render2_item, data);
+			obs_scene_enum_items(
+				obs_scene_from_source(move->scene_source_b),
+				render2_item, data);
+			move->render_match = false;
 			obs_scene_enum_items(
 				obs_scene_from_source(move->scene_source_a),
 				render2_item, data);
@@ -1495,8 +1554,12 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_blend_state_pop();
 		gs_matrix_pop();
 
+	} else if (move->t <= 0.5f) {
+		obs_transition_video_render_direct(move->source,
+						   OBS_TRANSITION_SOURCE_A);
 	} else {
-		obs_transition_video_render(move->source, NULL);
+		obs_transition_video_render_direct(move->source,
+						   OBS_TRANSITION_SOURCE_B);
 	}
 	move->start_init = false;
 
@@ -1549,6 +1612,14 @@ void prop_list_add_positions(obs_property_t *p)
 				  POS_EDGE | POS_BOTTOM | POS_LEFT);
 	obs_property_list_add_int(p, obs_module_text("Position.CenterLeft"),
 				  POS_EDGE | POS_LEFT);
+	obs_property_list_add_int(p, obs_module_text("Position.Left"),
+				  POS_SWIPE | POS_LEFT);
+	obs_property_list_add_int(p, obs_module_text("Position.Top"),
+				  POS_SWIPE | POS_TOP);
+	obs_property_list_add_int(p, obs_module_text("Position.Right"),
+				  POS_SWIPE | POS_RIGHT);
+	obs_property_list_add_int(p, obs_module_text("Position.Bottom"),
+				  POS_SWIPE | POS_BOTTOM);
 }
 
 void prop_list_add_easings(obs_property_t *p)

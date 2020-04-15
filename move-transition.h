@@ -9,6 +9,7 @@
 #define S_NAME_NUMBER_MATCH "name_number_match"
 #define S_NAME_LAST_WORD_MATCH "name_last_word_match"
 
+#define S_SOURCE "source"
 #define S_POSITION_IN "position_in"
 #define S_POSITION_OUT "position_out"
 #define S_ZOOM_IN "zoom_in"
@@ -58,3 +59,4 @@
 #define POS_RIGHT (1 << 3)
 #define POS_TOP (1 << 4)
 #define POS_BOTTOM (1 << 5)
+#define POS_SWIPE (1 << 6)
