@@ -5,6 +5,7 @@ set(move-transition_HEADERS
 	easing.h)
 set(move-transition_SOURCES
 	move-transition.c
+	move-transition-override-filter.c
 	easing.c)
 
 add_library(move-transition MODULE

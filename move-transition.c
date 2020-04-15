@@ -6,64 +6,30 @@
 #include "move-transition.h"
 #include "easing.h"
 
-#define S_POSITION_IN "position_in"
-#define S_POSITION_OUT "position_out"
-#define S_ZOOM_IN "zoom_in"
-#define S_ZOOM_OUT "zoom_out"
-#define S_EASING "easing"
-#define S_EASING_FUNCTION "easing_function"
-#define S_CURVE "curve"
-#define S_TRANSITION_IN "transition_in"
-#define S_TRANSITION_OUT "transition_out"
-#define S_TRANSITION_MOVE "transition_move"
-#define S_TRANSITION_MOVE_SCALE "transition_move_scale"
-#define S_NAME_PART_MATCH "name_part_match"
-#define S_NAME_NUMBER_MATCH "name_number_match"
-#define S_NAME_LAST_WORD_MATCH "name_last_word_match"
-
-#define EASE_NONE 0
-#define EASE_IN 1
-#define EASE_OUT 2
-#define EASE_IN_OUT 3
-
-#define EASING_QUADRATIC 1
-#define EASING_CUBIC 2
-#define EASING_QUARTIC 3
-#define EASING_QUINTIC 4
-#define EASING_SINE 5
-#define EASING_CIRCULAR 6
-#define EASING_EXPONENTIAL 7
-#define EASING_ELASTIC 8
-#define EASING_BOUNCE 9
-#define EASING_BACK 10
-
-#define POS_NONE 0
-#define POS_CENTER (1 << 0)
-#define POS_EDGE (1 << 1)
-#define POS_LEFT (1 << 2)
-#define POS_RIGHT (1 << 3)
-#define POS_TOP (1 << 4)
-#define POS_BOTTOM (1 << 5)
-
 struct move_info {
 	obs_source_t *source;
 	bool start_init;
 	DARRAY(struct move_item *) items;
-	float ot;
 	float t;
-	float curve;
+	float curve_move;
+	float curve_in;
+	float curve_out;
 	obs_source_t *scene_source_a;
 	obs_source_t *scene_source_b;
 	gs_samplerstate_t *point_sampler;
-	long long easing;
-	long long easing_function;
+	long long easing_move;
+	long long easing_in;
+	long long easing_out;
+	long long easing_function_move;
+	long long easing_function_in;
+	long long easing_function_out;
 	bool zoom_in;
 	bool zoom_out;
 	long long position_in;
 	long long position_out;
+	char *transition_move;
 	char *transition_in;
 	char *transition_out;
-	char *transition_move;
 	bool part_match;
 	bool number_match;
 	bool last_word_match;
@@ -75,12 +41,19 @@ struct move_item {
 	obs_sceneitem_t *item_b;
 	gs_texrender_t *item_render;
 	obs_source_t *transition;
+	long long easing;
+	long long easing_function;
+	bool zoom;
+	long long position;
+	char *transition_name;
+	enum obs_transition_scale_type transition_scale;
+	float curve;
 };
 
 static const char *move_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
-	return obs_module_text("Name");
+	return obs_module_text("Move");
 }
 
 static void *move_create(obs_data_t *settings, obs_source_t *source)
@@ -94,21 +67,32 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 
 static void clear_items(struct move_info *move)
 {
+	bool graphics = false;
+
 	for (size_t i = 0; i < move->items.num; i++) {
 		struct move_item *item = move->items.array[i];
 		obs_sceneitem_release(item->item_a);
 		item->item_a = NULL;
 		obs_sceneitem_release(item->item_b);
 		item->item_b = NULL;
-		gs_texrender_destroy(item->item_render);
-		item->item_render = NULL;
+		if (item->item_render) {
+			if (!graphics) {
+				obs_enter_graphics();
+				graphics = true;
+			}
+			gs_texrender_destroy(item->item_render);
+			item->item_render = NULL;
+		}
 		if (item->transition) {
 			obs_transition_force_stop(item->transition);
 			obs_source_release(item->transition);
 			item->transition = NULL;
 		}
+		bfree(item->transition_name);
 		bfree(item);
 	}
+	if (graphics)
+		obs_leave_graphics();
 	move->items.num = 0;
 }
 
@@ -122,20 +106,33 @@ static void move_destroy(void *data)
 	bfree(move->transition_in);
 	bfree(move->transition_out);
 	bfree(move->transition_move);
-	gs_samplerstate_destroy(move->point_sampler);
+	if (move->point_sampler) {
+		obs_enter_graphics();
+		gs_samplerstate_destroy(move->point_sampler);
+		obs_leave_graphics();
+	}
 	bfree(move);
 }
 
 static void move_update(void *data, obs_data_t *settings)
 {
 	struct move_info *move = data;
-	move->easing = obs_data_get_int(settings, S_EASING);
-	move->easing_function = obs_data_get_int(settings, S_EASING_FUNCTION);
+	move->easing_move = obs_data_get_int(settings, S_EASING_MATCH);
+	move->easing_in = obs_data_get_int(settings, S_EASING_IN);
+	move->easing_out = obs_data_get_int(settings, S_EASING_OUT);
+	move->easing_function_move =
+		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
+	move->easing_function_in =
+		obs_data_get_int(settings, S_EASING_FUNCTION_IN);
+	move->easing_function_out =
+		obs_data_get_int(settings, S_EASING_FUNCTION_OUT);
 	move->position_in = obs_data_get_int(settings, S_POSITION_IN);
 	move->zoom_in = obs_data_get_bool(settings, S_ZOOM_IN);
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
 	move->zoom_out = obs_data_get_bool(settings, S_ZOOM_OUT);
-	move->curve = (float)obs_data_get_double(settings, S_CURVE);
+	move->curve_move = (float)obs_data_get_double(settings, S_CURVE_MATCH);
+	move->curve_in = (float)obs_data_get_double(settings, S_CURVE_IN);
+	move->curve_out = (float)obs_data_get_double(settings, S_CURVE_OUT);
 	bfree(move->transition_in);
 	move->transition_in =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_IN));
@@ -148,9 +145,9 @@ static void move_update(void *data, obs_data_t *settings)
 		obs_data_get_bool(settings, S_NAME_LAST_WORD_MATCH);
 	bfree(move->transition_move);
 	move->transition_move =
-		bstrdup(obs_data_get_string(settings, S_TRANSITION_MOVE));
+		bstrdup(obs_data_get_string(settings, S_TRANSITION_MATCH));
 	move->transition_move_scale =
-		obs_data_get_int(settings, S_TRANSITION_MOVE_SCALE);
+		obs_data_get_int(settings, S_TRANSITION_SCALE);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -477,9 +474,9 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			return true;
 		if (item->item_b == scene_item && move->t <= 0.5f)
 			return true;
-		if (move->transition_move && !item->transition) {
+		if (item->transition_name && !item->transition) {
 			obs_source_t *transition = obs_frontend_get_transition(
-				move->transition_move);
+				item->transition_name);
 			if (transition) {
 				if (obs_source_get_type(transition) ==
 				    OBS_SOURCE_TYPE_TRANSITION) {
@@ -493,7 +490,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 						OBS_ALIGN_CENTER);
 					obs_transition_set_scale_type(
 						item->transition,
-						move->transition_move_scale);
+						item->transition_scale);
 					obs_transition_set(
 						item->transition,
 						obs_sceneitem_get_source(
@@ -508,24 +505,9 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 				obs_source_release(transition);
 			}
 		}
-		if (item->transition && !move->start_init) {
-			uint32_t width_a = obs_source_get_width(
-				obs_sceneitem_get_source(item->item_a));
-			uint32_t width_b = obs_source_get_width(
-				obs_sceneitem_get_source(item->item_b));
-			uint32_t height_a = obs_source_get_height(
-				obs_sceneitem_get_source(item->item_a));
-			uint32_t height_b = obs_source_get_height(
-				obs_sceneitem_get_source(item->item_b));
-			width = (1.0f - move->t) * width_a + move->t * width_b;
-			height = (1.0f - move->t) * height_a +
-				 move->t * height_b;
-			obs_transition_set_size(item->transition, width,
-						height);
-		}
-	} else if (move_out && move->transition_out && !item->transition) {
+	} else if (move_out && item->transition_name && !item->transition) {
 		obs_source_t *transition =
-			obs_frontend_get_transition(move->transition_out);
+			obs_frontend_get_transition(item->transition_name);
 		if (transition) {
 			if (obs_source_get_type(transition) ==
 			    OBS_SOURCE_TYPE_TRANSITION) {
@@ -547,9 +529,9 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			}
 			obs_source_release(transition);
 		}
-	} else if (!move_out && move->transition_in && !item->transition) {
+	} else if (!move_out && item->transition_name && !item->transition) {
 		obs_source_t *transition =
-			obs_frontend_get_transition(move->transition_in);
+			obs_frontend_get_transition(item->transition_name);
 		if (transition) {
 			if (obs_source_get_type(transition) ==
 			    OBS_SOURCE_TYPE_TRANSITION) {
@@ -572,6 +554,133 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			obs_source_release(transition);
 		}
 	}
+
+	float t = move->t;
+	if (EASE_NONE == item->easing) {
+	} else if (EASE_IN == item->easing) {
+		switch (item->easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseIn(move->t);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseIn(move->t);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseIn(move->t);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseIn(move->t);
+			break;
+		case EASING_SINE:
+			t = SineEaseIn(move->t);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseIn(move->t);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseIn(move->t);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseIn(move->t);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseIn(move->t);
+			break;
+		case EASING_BACK:
+			t = BackEaseIn(move->t);
+			break;
+		default:;
+		}
+	} else if (EASE_OUT == item->easing) {
+		switch (item->easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseOut(move->t);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseOut(move->t);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseOut(move->t);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseOut(move->t);
+			break;
+		case EASING_SINE:
+			t = SineEaseOut(move->t);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseOut(move->t);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseOut(move->t);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseOut(move->t);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseOut(move->t);
+			break;
+		case EASING_BACK:
+			t = BackEaseOut(move->t);
+			break;
+		default:;
+		}
+	} else if (EASE_IN_OUT == item->easing) {
+		switch (item->easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseInOut(move->t);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseInOut(move->t);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseInOut(move->t);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseInOut(move->t);
+			break;
+		case EASING_SINE:
+			t = SineEaseInOut(move->t);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseInOut(move->t);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseInOut(move->t);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseInOut(move->t);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseInOut(move->t);
+			break;
+		case EASING_BACK:
+			t = BackEaseInOut(move->t);
+			break;
+		default:;
+		}
+	}
+	float ot = t;
+	if (t > 1.0f)
+		ot = 1.0f;
+	else if (t < 0.0f)
+		ot = 0.0f;
+
+	if (item->item_a && item->item_b && item->transition &&
+	    !move->start_init) {
+		uint32_t width_a = obs_source_get_width(
+			obs_sceneitem_get_source(item->item_a));
+		uint32_t width_b = obs_source_get_width(
+			obs_sceneitem_get_source(item->item_b));
+		uint32_t height_a = obs_source_get_height(
+			obs_sceneitem_get_source(item->item_a));
+		uint32_t height_b = obs_source_get_height(
+			obs_sceneitem_get_source(item->item_b));
+		width = (1.0f - t) * width_a + t * width_b;
+		height = (1.0f - t) * height_a + t * height_b;
+		obs_transition_set_size(item->transition, width, height);
+	}
+
 	uint32_t original_width = width;
 	uint32_t original_height = height;
 	struct obs_sceneitem_crop crop;
@@ -580,17 +689,14 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_crop(item->item_a, &crop_a);
 		struct obs_sceneitem_crop crop_b;
 		obs_sceneitem_get_crop(item->item_b, &crop_b);
-		crop.left =
-			(int)((float)(1.0f - move->ot) * (float)crop_a.left +
-			      move->ot * (float)crop_b.left);
-		crop.top = (int)((float)(1.0f - move->ot) * (float)crop_a.top +
-				 move->ot * (float)crop_b.top);
-		crop.right =
-			(int)((float)(1.0f - move->ot) * (float)crop_a.right +
-			      move->ot * (float)crop_b.right);
-		crop.bottom =
-			(int)((float)(1.0f - move->ot) * (float)crop_a.bottom +
-			      move->ot * (float)crop_b.bottom);
+		crop.left = (int)((float)(1.0f - ot) * (float)crop_a.left +
+				  ot * (float)crop_b.left);
+		crop.top = (int)((float)(1.0f - ot) * (float)crop_a.top +
+				 ot * (float)crop_b.top);
+		crop.right = (int)((float)(1.0f - ot) * (float)crop_a.right +
+				   ot * (float)crop_b.right);
+		crop.bottom = (int)((float)(1.0f - ot) * (float)crop_a.bottom +
+				    ot * (float)crop_b.bottom);
 	} else {
 		obs_sceneitem_get_crop(scene_item, &crop);
 	}
@@ -606,21 +712,19 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_scale(item->item_a, &scale_a);
 		struct vec2 scale_b;
 		obs_sceneitem_get_scale(item->item_b, &scale_b);
-		vec2_set(&scale,
-			 (1.0f - move->t) * scale_a.x + move->t * scale_b.x,
-			 (1.0f - move->t) * scale_a.y + move->t * scale_b.y);
+		vec2_set(&scale, (1.0f - t) * scale_a.x + t * scale_b.x,
+			 (1.0f - t) * scale_a.y + t * scale_b.y);
 	} else {
 		if (obs_sceneitem_get_bounds_type(scene_item) !=
 		    OBS_BOUNDS_NONE) {
 			obs_sceneitem_get_scale(scene_item, &scale);
 		} else {
 			obs_sceneitem_get_scale(scene_item, &scale);
-			if (!move_out && move->zoom_in) {
-				vec2_set(&scale, move->t * scale.x,
-					 move->t * scale.y);
-			} else if (move_out && move->zoom_out) {
-				vec2_set(&scale, (1.0f - move->t) * scale.x,
-					 (1.0f - move->t) * scale.y);
+			if (!move_out && item->zoom) {
+				vec2_set(&scale, t * scale.x, t * scale.y);
+			} else if (move_out && item->zoom) {
+				vec2_set(&scale, (1.0f - t) * scale.x,
+					 (1.0f - t) * scale.y);
 			}
 		}
 	}
@@ -644,18 +748,15 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			struct vec2 bounds_b;
 			obs_sceneitem_get_bounds(item->item_b, &bounds_b);
 			vec2_set(&bounds,
-				 (1.0f - move->t) * bounds_a.x +
-					 move->t * bounds_b.x,
-				 (1.0f - move->t) * bounds_a.y +
-					 move->t * bounds_b.y);
+				 (1.0f - t) * bounds_a.x + t * bounds_b.x,
+				 (1.0f - t) * bounds_a.y + t * bounds_b.y);
 		} else {
 			obs_sceneitem_get_bounds(scene_item, &bounds);
-			if (!move_out && move->zoom_in) {
-				vec2_set(&bounds, move->t * bounds.x,
-					 move->t * bounds.y);
-			} else if (move_out && move->zoom_out) {
-				vec2_set(&bounds, (1.0f - move->t) * bounds.x,
-					 (1.0f - move->t) * bounds.y);
+			if (!move_out && item->zoom) {
+				vec2_set(&bounds, t * bounds.x, t * bounds.y);
+			} else if (move_out && item->zoom) {
+				vec2_set(&bounds, (1.0f - t) * bounds.x,
+					 (1.0f - t) * bounds.y);
 			}
 		}
 		calculate_bounds_data(scene_item, &origin, &scale, &cx, &cy,
@@ -685,7 +786,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	if (item->item_a && item->item_b) {
 		float rot_a = obs_sceneitem_get_rot(item->item_a);
 		float rot_b = obs_sceneitem_get_rot(item->item_b);
-		rot = (1.0f - move->t) * rot_a + move->t * rot_b;
+		rot = (1.0f - t) * rot_a + t * rot_b;
 	} else {
 		rot = obs_sceneitem_get_rot(scene_item);
 	}
@@ -699,20 +800,20 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_pos(item->item_a, &pos_a);
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
-		if (move->position_in & POS_CENTER) {
+		if (item->position & POS_CENTER) {
 			vec2_set(&pos_a, canvas_width >> 1, canvas_height >> 1);
-			if (!move->zoom_in)
+			if (!item->zoom)
 				pos_add_center(&pos_a, alignment, cx, cy);
-		} else if (move->position_in & POS_EDGE) {
+		} else if (item->position & POS_EDGE) {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
-			calc_edge_position(&pos_a, move->position_in,
-					   canvas_width, canvas_height,
-					   alignment, original_cx, original_cy,
-					   move->zoom_in);
+			calc_edge_position(&pos_a, item->position, canvas_width,
+					   canvas_height, alignment,
+					   original_cx, original_cy,
+					   item->zoom);
 
 		} else {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
-			if (move->zoom_in)
+			if (item->zoom)
 				pos_subtract_center(&pos_a, alignment,
 						    original_cx, original_cy);
 		}
@@ -722,45 +823,45 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		obs_sceneitem_get_pos(item->item_b, &pos_b);
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
-		if (move->position_out & POS_CENTER) {
+		if (item->position & POS_CENTER) {
 			vec2_set(&pos_b, canvas_width >> 1, canvas_height >> 1);
-			if (!move->zoom_out)
+			if (!item->zoom)
 				pos_add_center(&pos_b, alignment, cx, cy);
-		} else if (move->position_out & POS_EDGE) {
+		} else if (item->position & POS_EDGE) {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
-			calc_edge_position(&pos_b, move->position_out,
-					   canvas_width, canvas_height,
-					   alignment, original_cx, original_cy,
-					   move->zoom_out);
+			calc_edge_position(&pos_b, item->position, canvas_width,
+					   canvas_height, alignment,
+					   original_cx, original_cy,
+					   item->zoom);
 
 		} else {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
-			if (move->zoom_out)
+			if (item->zoom)
 				pos_subtract_center(&pos_b, alignment,
 						    original_cx, original_cy);
 		}
 	}
 	struct vec2 pos;
-	if (move->curve != 0.0f) {
+	if (item->curve != 0.0f) {
 		float diff_x = fabsf(pos_a.x - pos_b.x);
 		float diff_y = fabsf(pos_a.y - pos_b.y);
 		struct vec2 control_pos;
 		vec2_set(&control_pos, 0.5f * pos_a.x + 0.5f * pos_b.x,
 			 0.5f * pos_a.y + 0.5f * pos_b.y);
 		if (control_pos.x >= (canvas_width >> 1)) {
-			control_pos.x += diff_y * move->curve;
+			control_pos.x += diff_y * item->curve;
 		} else {
-			control_pos.x -= diff_y * move->curve;
+			control_pos.x -= diff_y * item->curve;
 		}
 		if (control_pos.y >= (canvas_height >> 1)) {
-			control_pos.y += diff_x * move->curve;
+			control_pos.y += diff_x * item->curve;
 		} else {
-			control_pos.y -= diff_x * move->curve;
+			control_pos.y -= diff_x * item->curve;
 		}
-		vec2_bezier(&pos, &pos_a, &control_pos, &pos_b, move->t);
+		vec2_bezier(&pos, &pos_a, &control_pos, &pos_b, t);
 	} else {
-		vec2_set(&pos, (1.0f - move->t) * pos_a.x + move->t * pos_b.x,
-			 (1.0f - move->t) * pos_a.y + move->t * pos_b.y);
+		vec2_set(&pos, (1.0f - t) * pos_a.x + t * pos_b.x,
+			 (1.0f - t) * pos_a.y + t * pos_b.y);
 	}
 
 	matrix4_translate3f(&draw_transform, &draw_transform, pos.x, pos.y,
@@ -803,7 +904,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 			if (item->transition && !move->start_init) {
 				obs_transition_set_manual_time(item->transition,
-							       move->ot);
+							       ot);
 
 				obs_source_video_render(item->transition);
 			} else {
@@ -895,9 +996,7 @@ bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		gs_blend_state_pop();
 	} else {
 		if (item->transition && !move->start_init) {
-			obs_transition_set_manual_time(item->transition,
-						       move->ot);
-
+			obs_transition_set_manual_time(item->transition, ot);
 			obs_source_video_render(item->transition);
 		} else {
 			obs_source_video_render(source);
@@ -1068,13 +1167,19 @@ struct move_item *match_item2(struct move_info *move,
 	return item;
 }
 
+struct move_item *create_move_item()
+{
+	struct move_item *item = bzalloc(sizeof(struct move_item));
+	return item;
+}
+
 bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
 	struct move_info *move = data;
 	struct move_item *item = NULL;
 
 	if (scene == obs_scene_from_source(move->scene_source_a)) {
-		item = bzalloc(sizeof(struct move_item));
+		item = create_move_item();
 		item->item_a = scene_item;
 		obs_sceneitem_addref(item->item_a);
 		da_push_back(move->items, &item);
@@ -1085,7 +1190,7 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			item = match_item2(move, scene_item, true);
 		}
 		if (!item) {
-			item = bzalloc(sizeof(struct move_item));
+			item = create_move_item();
 			da_push_back(move->items, &item);
 		}
 		item->item_b = scene_item;
@@ -1093,119 +1198,34 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	}
 	return true;
 }
+void get_override_filter(obs_source_t *source, obs_source_t *filter,
+			 void *param)
+{
+	if (strcmp(obs_source_get_unversioned_id(filter),
+		   "move_transition_override_filter") == 0) {
+		*(obs_source_t **)param = filter;
+	}
+}
+
+obs_data_t *get_override_filter_settings(obs_sceneitem_t *item)
+{
+	if (!item)
+		return NULL;
+	obs_source_t *source = obs_sceneitem_get_source(item);
+	if (!source)
+		return NULL;
+	obs_source_t *filter = NULL;
+	obs_source_enum_filters(source, get_override_filter, &filter);
+	if (!filter)
+		return NULL;
+	return obs_source_get_settings(filter);
+}
 
 static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
-	const float t = obs_transition_get_time(move->source);
-	if (EASE_NONE == move->easing) {
-		move->t = t;
-	} else if (EASE_IN == move->easing) {
-		switch (move->easing_function) {
-		case EASING_QUADRATIC:
-			move->t = QuadraticEaseIn(t);
-			break;
-		case EASING_CUBIC:
-			move->t = CubicEaseIn(t);
-			break;
-		case EASING_QUARTIC:
-			move->t = QuarticEaseIn(t);
-			break;
-		case EASING_QUINTIC:
-			move->t = QuinticEaseIn(t);
-			break;
-		case EASING_SINE:
-			move->t = SineEaseIn(t);
-			break;
-		case EASING_CIRCULAR:
-			move->t = CircularEaseIn(t);
-			break;
-		case EASING_EXPONENTIAL:
-			move->t = ExponentialEaseIn(t);
-			break;
-		case EASING_ELASTIC:
-			move->t = ElasticEaseIn(t);
-			break;
-		case EASING_BOUNCE:
-			move->t = BounceEaseIn(t);
-			break;
-		case EASING_BACK:
-			move->t = BackEaseIn(t);
-			break;
-		}
-	} else if (EASE_OUT == move->easing) {
-		switch (move->easing_function) {
-		case EASING_QUADRATIC:
-			move->t = QuadraticEaseOut(t);
-			break;
-		case EASING_CUBIC:
-			move->t = CubicEaseOut(t);
-			break;
-		case EASING_QUARTIC:
-			move->t = QuarticEaseOut(t);
-			break;
-		case EASING_QUINTIC:
-			move->t = QuinticEaseOut(t);
-			break;
-		case EASING_SINE:
-			move->t = SineEaseOut(t);
-			break;
-		case EASING_CIRCULAR:
-			move->t = CircularEaseOut(t);
-			break;
-		case EASING_EXPONENTIAL:
-			move->t = ExponentialEaseOut(t);
-			break;
-		case EASING_ELASTIC:
-			move->t = ElasticEaseOut(t);
-			break;
-		case EASING_BOUNCE:
-			move->t = BounceEaseOut(t);
-			break;
-		case EASING_BACK:
-			move->t = BackEaseOut(t);
-			break;
-		}
-	} else if (EASE_IN_OUT == move->easing) {
-		switch (move->easing_function) {
-		case EASING_QUADRATIC:
-			move->t = QuadraticEaseInOut(t);
-			break;
-		case EASING_CUBIC:
-			move->t = CubicEaseInOut(t);
-			break;
-		case EASING_QUARTIC:
-			move->t = QuarticEaseInOut(t);
-			break;
-		case EASING_QUINTIC:
-			move->t = QuinticEaseInOut(t);
-			break;
-		case EASING_SINE:
-			move->t = SineEaseInOut(t);
-			break;
-		case EASING_CIRCULAR:
-			move->t = CircularEaseInOut(t);
-			break;
-		case EASING_EXPONENTIAL:
-			move->t = ExponentialEaseInOut(t);
-			break;
-		case EASING_ELASTIC:
-			move->t = ElasticEaseInOut(t);
-			break;
-		case EASING_BOUNCE:
-			move->t = BounceEaseInOut(t);
-			break;
-		case EASING_BACK:
-			move->t = BackEaseInOut(t);
-			break;
-		}
-	}
-	move->ot = move->t;
-	if (move->t > 1.0f)
-		move->ot = 1.0f;
-	else if (move->t < 0.0f)
-		move->ot = 0.0f;
+	move->t = obs_transition_get_time(move->source);
 
 	if (move->start_init) {
 		if (move->scene_source_a)
@@ -1225,9 +1245,227 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
+		for (size_t i = 0; i < move->items.num; i++) {
+			struct move_item *item = move->items.array[i];
+			if (item->item_a && item->item_b) {
+				item->easing = move->easing_move;
+				item->easing_function =
+					move->easing_function_move;
+				item->transition_scale =
+					move->transition_move_scale;
+				item->curve = move->curve_move;
+			} else if (item->item_a) {
+				item->easing = move->easing_in;
+				item->easing_function =
+					move->easing_function_in;
+				item->zoom = move->zoom_in;
+				item->curve = move->curve_in;
+			} else if (item->item_b) {
+				item->easing = move->easing_out;
+				item->easing_function =
+					move->easing_function_out;
+				item->zoom = move->zoom_out;
+				item->curve = move->curve_out;
+			}
+
+			obs_data_t *settings_a =
+				get_override_filter_settings(item->item_a);
+			obs_data_t *settings_b =
+				get_override_filter_settings(item->item_b);
+			if (settings_a && settings_b) {
+				long long val_a = obs_data_get_int(
+					settings_a, S_EASING_MATCH);
+				long long val_b = obs_data_get_int(
+					settings_b, S_EASING_MATCH);
+				if (val_a != NO_OVERRIDE &&
+				    val_b != NO_OVERRIDE) {
+					item->easing = (val_a & EASE_IN) |
+						       (val_b & EASE_OUT);
+				} else if (val_a != NO_OVERRIDE) {
+					item->easing = val_a;
+				} else if (val_b != NO_OVERRIDE) {
+					item->easing = val_b;
+				}
+				val_a = obs_data_get_int(
+					settings_a, S_EASING_FUNCTION_MATCH);
+				val_b = obs_data_get_int(
+					settings_b, S_EASING_FUNCTION_MATCH);
+				if (val_a != NO_OVERRIDE) {
+					item->easing_function = val_a;
+				} else if (val_b != NO_OVERRIDE) {
+					item->easing_function = val_b;
+				}
+				const char *cv_a = obs_data_get_string(
+					settings_a, S_TRANSITION_MATCH);
+				const char *cv_b = obs_data_get_string(
+					settings_b, S_TRANSITION_MATCH);
+				if (cv_a && strlen(cv_a)) {
+					item->transition_name = bstrdup(cv_a);
+				} else if (cv_b && strlen(cv_b)) {
+					item->transition_name = bstrdup(cv_b);
+				}
+				val_a = obs_data_get_int(settings_a,
+							 S_TRANSITION_SCALE);
+				val_b = obs_data_get_int(settings_b,
+							 S_TRANSITION_SCALE);
+				if (val_a != NO_OVERRIDE) {
+					item->transition_scale = val_a;
+				} else if (val_b != NO_OVERRIDE) {
+					item->transition_scale = val_b;
+				}
+				if (obs_data_get_bool(settings_a,
+						      S_CURVE_OVERRIDE_MATCH)) {
+					item->curve = (float)obs_data_get_double(
+						settings_a, S_CURVE_MATCH);
+				} else if (obs_data_get_bool(
+						   settings_b,
+						   S_CURVE_OVERRIDE_MATCH)) {
+					item->curve = (float)obs_data_get_double(
+						settings_b, S_CURVE_MATCH);
+				}
+			} else if (settings_a) {
+				long long val;
+				if (item->item_a && item->item_b)
+					val = obs_data_get_int(settings_a,
+							       S_EASING_MATCH);
+				else
+					val = obs_data_get_int(settings_a,
+							       S_EASING_IN);
+				if (val != NO_OVERRIDE) {
+					item->easing = val;
+				}
+				if (item->item_a && item->item_b)
+					val = obs_data_get_int(
+						settings_a,
+						S_EASING_FUNCTION_MATCH);
+				else
+					val = obs_data_get_int(
+						settings_a,
+						S_EASING_FUNCTION_IN);
+				if (val != NO_OVERRIDE) {
+					item->easing_function = val;
+				}
+				val = obs_data_get_int(settings_a, S_ZOOM_IN);
+				if (val != NO_OVERRIDE) {
+					item->zoom = !!val;
+				}
+				val = obs_data_get_int(settings_a,
+						       S_POSITION_IN);
+				if (val != NO_OVERRIDE) {
+					item->position = val;
+				}
+				val = obs_data_get_int(settings_a,
+						       S_TRANSITION_SCALE);
+				if (val != NO_OVERRIDE) {
+					item->transition_scale = val;
+				}
+				const char *ti = obs_data_get_string(
+					settings_a, S_TRANSITION_IN);
+				if (ti && strlen(ti) && item->item_a &&
+				    !item->item_b) {
+					item->transition_name = bstrdup(ti);
+				}
+				const char *tm = obs_data_get_string(
+					settings_a, S_TRANSITION_MATCH);
+				if (tm && strlen(tm) && item->item_a &&
+				    item->item_b) {
+					item->transition_name = bstrdup(tm);
+				}
+				if (item->item_a && item->item_b &&
+				    obs_data_get_bool(settings_a,
+						      S_CURVE_OVERRIDE_MATCH)) {
+					item->curve = (float)obs_data_get_double(
+						settings_a, S_CURVE_MATCH);
+				} else if (item->item_a && !item->item_b &&
+					   obs_data_get_bool(
+						   settings_a,
+						   S_CURVE_OVERRIDE_IN)) {
+					item->curve =
+						(float)obs_data_get_double(
+							settings_a, S_CURVE_IN);
+				}
+			} else if (settings_b) {
+				long long val;
+				if (item->item_a && item->item_b)
+					val = obs_data_get_int(settings_b,
+							       S_EASING_MATCH);
+				else
+					val = obs_data_get_int(settings_b,
+							       S_EASING_OUT);
+				if (val != NO_OVERRIDE) {
+					item->easing = val;
+				}
+				if (item->item_a && item->item_b)
+					val = obs_data_get_int(
+						settings_b,
+						S_EASING_FUNCTION_MATCH);
+				else
+					val = obs_data_get_int(
+						settings_b,
+						S_EASING_FUNCTION_OUT);
+				if (val != NO_OVERRIDE) {
+					item->easing_function = val;
+				}
+				val = obs_data_get_int(settings_b, S_ZOOM_OUT);
+				if (val != NO_OVERRIDE) {
+					item->zoom = !!val;
+				}
+				val = obs_data_get_int(settings_b,
+						       S_POSITION_OUT);
+				if (val != NO_OVERRIDE) {
+					item->position = val;
+				}
+				val = obs_data_get_int(settings_b,
+						       S_TRANSITION_SCALE);
+				if (val != NO_OVERRIDE) {
+					item->transition_scale = val;
+				}
+				const char *to = obs_data_get_string(
+					settings_b, S_TRANSITION_OUT);
+				if (to && strlen(to) && !item->item_a &&
+				    item->item_b) {
+					item->transition_name = bstrdup(to);
+				}
+				const char *tm = obs_data_get_string(
+					settings_b, S_TRANSITION_MATCH);
+				if (tm && strlen(tm) && item->item_a &&
+				    item->item_b) {
+					item->transition_name = bstrdup(tm);
+				}
+				if (item->item_a && item->item_b &&
+				    obs_data_get_bool(settings_b,
+						      S_CURVE_OVERRIDE_MATCH)) {
+					item->curve = (float)obs_data_get_double(
+						settings_b, S_CURVE_MATCH);
+				} else if (!item->item_a && item->item_b &&
+					   obs_data_get_bool(
+						   settings_b,
+						   S_CURVE_OVERRIDE_OUT)) {
+					item->curve = (float)obs_data_get_double(
+						settings_b, S_CURVE_OUT);
+				}
+			}
+			obs_data_release(settings_a);
+			obs_data_release(settings_b);
+			if (!item->transition_name && item->item_a &&
+			    !item->item_b && move->transition_in &&
+			    strlen(move->transition_in))
+				item->transition_name =
+					bstrdup(move->transition_in);
+			if (!item->transition_name && !item->item_a &&
+			    item->item_b && move->transition_out &&
+			    strlen(move->transition_out))
+				item->transition_name =
+					bstrdup(move->transition_out);
+			if (!item->transition_name && item->item_a &&
+			    item->item_b && move->transition_move &&
+			    strlen(move->transition_move))
+				item->transition_name =
+					bstrdup(move->transition_move);
+		}
 	}
 
-	if (t > 0.0f && t < 1.0f) {
+	if (move->t > 0.0f && move->t < 1.0f) {
 		if (!move->scene_source_a)
 			move->scene_source_a = obs_transition_get_source(
 				move->source, OBS_TRANSITION_SOURCE_A);
@@ -1238,7 +1476,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_matrix_push();
 		gs_blend_state_push();
 		gs_reset_blend_state();
-		if (t <= 0.5f) {
+		if (move->t <= 0.5f) {
 			obs_scene_enum_items(
 				obs_scene_from_source(move->scene_source_b),
 				render2_item, data);
@@ -1348,28 +1586,7 @@ void prop_list_add_easing_functions(obs_property_t *p)
 				  EASING_BACK);
 }
 
-static bool easing_modified(obs_properties_t *ppts, obs_property_t *p,
-			    obs_data_t *settings)
-{
-	long long easing = obs_data_get_int(settings, S_EASING);
-	p = obs_properties_get(ppts, S_EASING_FUNCTION);
-
-	obs_property_set_visible(p, EASE_NONE != easing);
-
-	return true;
-}
-
-static bool transition_move_modified(obs_properties_t *ppts, obs_property_t *p,
-				     obs_data_t *settings)
-{
-	const char *transition_move =
-		obs_data_get_string(settings, S_TRANSITION_MOVE);
-	p = obs_properties_get(ppts, S_TRANSITION_MOVE_SCALE);
-	obs_property_set_visible(p, strlen(transition_move));
-	return true;
-}
-
-static void prop_list_add_transitions(obs_property_t *p)
+void prop_list_add_transitions(obs_property_t *p)
 {
 	struct obs_frontend_source_list transitions = {0};
 	obs_property_list_add_string(p, obs_module_text("Transition.None"),
@@ -1387,86 +1604,145 @@ static void prop_list_add_transitions(obs_property_t *p)
 	obs_frontend_source_list_free(&transitions);
 }
 
+void prop_list_add_scales(obs_property_t *p)
+{
+	obs_property_list_add_int(p, obs_module_text("TransitionScale.MaxOnly"),
+				  OBS_TRANSITION_SCALE_MAX_ONLY);
+	obs_property_list_add_int(p, obs_module_text("TransitionScale.Aspect"),
+				  OBS_TRANSITION_SCALE_ASPECT);
+	obs_property_list_add_int(p, obs_module_text("TransitionScale.Stretch"),
+				  OBS_TRANSITION_SCALE_STRETCH);
+}
+
 static obs_properties_t *move_properties(void *data)
 {
-	obs_properties_t *ppts = obs_properties_create();
 	obs_property_t *p;
-	p = obs_properties_add_list(ppts, S_EASING, obs_module_text("Easing"),
+	obs_properties_t *ppts = obs_properties_create();
+	obs_properties_t *group = obs_properties_create();
+	obs_properties_add_bool(group, S_NAME_PART_MATCH,
+				obs_module_text("NamePartMatch"));
+	obs_properties_add_bool(group, S_NAME_NUMBER_MATCH,
+				obs_module_text("NameNumberMatch"));
+	obs_properties_add_bool(group, S_NAME_LAST_WORD_MATCH,
+				obs_module_text("NameLastWordMatch"));
+
+	obs_properties_add_group(ppts, S_MATCH, obs_module_text("MatchName"),
+				 OBS_GROUP_NORMAL, group);
+
+	//Matched items
+	group = obs_properties_create();
+	p = obs_properties_add_list(group, S_EASING_MATCH,
+				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_easings(p);
-	obs_property_set_modified_callback(p, easing_modified);
 
-	p = obs_properties_add_list(ppts, S_EASING_FUNCTION,
+	p = obs_properties_add_list(group, S_EASING_FUNCTION_MATCH,
 				    obs_module_text("EasingFunction"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_easing_functions(p);
 
-	obs_properties_add_bool(ppts, S_ZOOM_IN, obs_module_text("ZoomIn"));
-	p = obs_properties_add_list(ppts, S_POSITION_IN,
-				    obs_module_text("PositionIn"),
+	p = obs_properties_add_list(group, S_TRANSITION_MATCH,
+				    obs_module_text("Transition"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	prop_list_add_transitions(p);
+
+	p = obs_properties_add_list(group, S_TRANSITION_SCALE,
+				    obs_module_text("ScaleType"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_scales(p);
+
+	obs_properties_add_float_slider(group, S_CURVE_MATCH,
+					obs_module_text("Curve"), -2.0, 2.0,
+					0.01);
+
+	obs_properties_add_group(ppts, S_MOVE_MATCH,
+				 obs_module_text("MoveMatch"), OBS_GROUP_NORMAL,
+				 group);
+
+	//Move in
+	group = obs_properties_create();
+
+	p = obs_properties_add_list(group, S_EASING_IN,
+				    obs_module_text("Easing"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_easings(p);
+
+	p = obs_properties_add_list(group, S_EASING_FUNCTION_IN,
+				    obs_module_text("EasingFunction"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_easing_functions(p);
+
+	obs_properties_add_bool(group, S_ZOOM_IN, obs_module_text("Zoom"));
+	p = obs_properties_add_list(group, S_POSITION_IN,
+				    obs_module_text("Position"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
 
-	obs_properties_add_bool(ppts, S_ZOOM_OUT, obs_module_text("ZoomOut"));
-	p = obs_properties_add_list(ppts, S_POSITION_OUT,
-				    obs_module_text("PositionOut"),
+	p = obs_properties_add_list(group, S_TRANSITION_IN,
+				    obs_module_text("Transition"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	prop_list_add_transitions(p);
+
+	obs_properties_add_float_slider(
+		group, S_CURVE_IN, obs_module_text("Curve"), -2.0, 2.0, 0.01);
+
+	obs_properties_add_group(ppts, S_MOVE_IN, obs_module_text("MoveIn"),
+				 OBS_GROUP_NORMAL, group);
+
+	//Move out
+	group = obs_properties_create();
+
+	p = obs_properties_add_list(group, S_EASING_OUT,
+				    obs_module_text("Easing"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_easings(p);
+
+	p = obs_properties_add_list(group, S_EASING_FUNCTION_OUT,
+				    obs_module_text("EasingFunction"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_easing_functions(p);
+
+	obs_properties_add_bool(group, S_ZOOM_OUT, obs_module_text("Zoom"));
+	p = obs_properties_add_list(group, S_POSITION_OUT,
+				    obs_module_text("Position"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
 
-	obs_properties_add_float_slider(ppts, S_CURVE, obs_module_text("Curve"),
-					-2.0, 2.0, 0.01);
-
-	p = obs_properties_add_list(ppts, S_TRANSITION_IN,
-				    obs_module_text("TransitionIn"),
+	p = obs_properties_add_list(group, S_TRANSITION_OUT,
+				    obs_module_text("Transition"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
 	prop_list_add_transitions(p);
 
-	p = obs_properties_add_list(ppts, S_TRANSITION_OUT,
-				    obs_module_text("TransitionOut"),
-				    OBS_COMBO_TYPE_LIST,
-				    OBS_COMBO_FORMAT_STRING);
-	prop_list_add_transitions(p);
+	obs_properties_add_float_slider(
+		group, S_CURVE_OUT, obs_module_text("Curve"), -2.0, 2.0, 0.01);
 
-	obs_properties_add_bool(ppts, S_NAME_PART_MATCH,
-				obs_module_text("NamePartMatch"));
-	obs_properties_add_bool(ppts, S_NAME_NUMBER_MATCH,
-				obs_module_text("NameNumberMatch"));
-	obs_properties_add_bool(ppts, S_NAME_LAST_WORD_MATCH,
-				obs_module_text("NameLastWordMatch"));
+	obs_properties_add_group(ppts, S_MOVE_OUT, obs_module_text("MoveOut"),
+				 OBS_GROUP_NORMAL, group);
 
-	p = obs_properties_add_list(ppts, S_TRANSITION_MOVE,
-				    obs_module_text("TransitionMove"),
-				    OBS_COMBO_TYPE_LIST,
-				    OBS_COMBO_FORMAT_STRING);
-	prop_list_add_transitions(p);
-	obs_property_set_modified_callback(p, transition_move_modified);
-	p = obs_properties_add_list(ppts, S_TRANSITION_MOVE_SCALE,
-				    obs_module_text("TransitionMoveScaleType"),
-				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(
-		p, obs_module_text("TransitionMoveScale.MaxOnly"),
-		OBS_TRANSITION_SCALE_MAX_ONLY);
-	obs_property_list_add_int(p,
-				  obs_module_text("TransitionMoveScale.Aspect"),
-				  OBS_TRANSITION_SCALE_ASPECT);
-	obs_property_list_add_int(
-		p, obs_module_text("TransitionMoveScale.Stretch"),
-		OBS_TRANSITION_SCALE_STRETCH);
 	UNUSED_PARAMETER(data);
 	return ppts;
 }
 
 void move_defaults(obs_data_t *settings)
 {
-	obs_data_set_default_int(settings, S_EASING, EASE_IN_OUT);
-	obs_data_set_default_int(settings, S_EASING_FUNCTION, EASING_CUBIC);
+	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
+	obs_data_set_default_int(settings, S_EASING_IN, EASE_IN_OUT);
+	obs_data_set_default_int(settings, S_EASING_OUT, EASE_IN_OUT);
+	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
+				 EASING_CUBIC);
+	obs_data_set_default_int(settings, S_EASING_FUNCTION_IN, EASING_CUBIC);
+	obs_data_set_default_int(settings, S_EASING_FUNCTION_OUT, EASING_CUBIC);
 	obs_data_set_default_int(settings, S_POSITION_IN, POS_EDGE | POS_LEFT);
 	obs_data_set_default_bool(settings, S_ZOOM_IN, true);
 	obs_data_set_default_int(settings, S_POSITION_OUT,
 				 POS_EDGE | POS_RIGHT);
 	obs_data_set_default_bool(settings, S_ZOOM_OUT, true);
-	obs_data_set_default_double(settings, S_CURVE, 0.0);
+	obs_data_set_default_double(settings, S_CURVE_MATCH, 0.0);
+	obs_data_set_default_double(settings, S_CURVE_IN, 0.0);
+	obs_data_set_default_double(settings, S_CURVE_OUT, 0.0);
 }
 
 static void move_start(void *data)
@@ -1508,8 +1784,11 @@ MODULE_EXPORT const char *obs_module_description(void)
 	return obs_module_text("Description");
 }
 
+struct obs_source_info move_transition_override_filter;
+
 bool obs_module_load(void)
 {
 	obs_register_source(&move_transition);
+	obs_register_source(&move_transition_override_filter);
 	return true;
 }
