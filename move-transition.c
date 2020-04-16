@@ -1295,14 +1295,14 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				item->transition_scale =
 					move->transition_move_scale;
 				item->curve = move->curve_move;
-			} else if (item->item_a) {
+			} else if (item->item_b) {
 				item->easing = move->easing_in;
 				item->easing_function =
 					move->easing_function_in;
 				item->position = move->position_in;
 				item->zoom = move->zoom_in;
 				item->curve = move->curve_in;
-			} else if (item->item_b) {
+			} else if (item->item_a) {
 				item->easing = move->easing_out;
 				item->easing_function =
 					move->easing_function_out;
@@ -1490,13 +1490,13 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			}
 			obs_data_release(settings_a);
 			obs_data_release(settings_b);
-			if (!item->transition_name && item->item_a &&
-			    !item->item_b && move->transition_in &&
+			if (!item->transition_name && !item->item_a &&
+			    item->item_b && move->transition_in &&
 			    strlen(move->transition_in))
 				item->transition_name =
 					bstrdup(move->transition_in);
-			if (!item->transition_name && !item->item_a &&
-			    item->item_b && move->transition_out &&
+			if (!item->transition_name && item->item_a &&
+			    !item->item_b && move->transition_out &&
 			    strlen(move->transition_out))
 				item->transition_name =
 					bstrdup(move->transition_out);
