@@ -8,6 +8,11 @@ set(move-transition_SOURCES
 	move-transition-override-filter.c
 	easing.c)
 
+if(WIN32)
+	list(APPEND move-transition_SOURCES
+		move-transition.rc)
+endif()
+
 add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
