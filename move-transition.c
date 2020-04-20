@@ -34,7 +34,7 @@ struct move_info {
 	bool number_match;
 	bool last_word_match;
 	enum obs_transition_scale_type transition_move_scale;
-	bool render_match;
+	uint64_t z_order;
 };
 
 struct move_item {
@@ -49,6 +49,7 @@ struct move_item {
 	char *transition_name;
 	enum obs_transition_scale_type transition_scale;
 	float curve;
+	uint64_t z_order;
 };
 
 static const char *move_get_name(void *type_data)
@@ -450,39 +451,25 @@ static obs_source_t *obs_frontend_get_transition(const char *name)
 	return NULL;
 }
 
-bool render2_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
+bool render2_item(struct move_info *move, struct move_item *item)
 {
-	UNUSED_PARAMETER(scene);
-	struct move_info *move = data;
-	if (!obs_sceneitem_visible(scene_item))
-		return true;
-	struct move_item *item = NULL;
-	for (size_t i = 0; i < move->items.num; i++) {
-		struct move_item *check_item = move->items.array[i];
-		if (check_item->item_a == scene_item ||
-		    check_item->item_b == scene_item) {
-			item = check_item;
-			break;
+	obs_sceneitem_t *scene_item = NULL;
+	if (item->item_a && item->item_b) {
+		if (move->t <= 0.5) {
+			scene_item = item->item_a;
+		} else {
+			scene_item = item->item_b;
 		}
+	} else if (item->item_a) {
+		scene_item = item->item_a;
+	} else if (item->item_b) {
+		scene_item = item->item_b;
 	}
-
-	if (!item)
-		return true;
-
-	if (move->render_match && (!item->item_a || !item->item_b))
-		return true;
-	if (!move->render_match && item->item_a && item->item_b)
-		return true;
-
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
 	uint32_t width = obs_source_get_width(source);
 	uint32_t height = obs_source_get_height(source);
 	bool move_out = item->item_a == scene_item;
 	if (item->item_a && item->item_b) {
-		if (item->item_a == scene_item && move->t > 0.5f)
-			return true;
-		if (item->item_b == scene_item && move->t <= 0.5f)
-			return true;
 		if (item->transition_name && !item->transition) {
 			obs_source_t *transition = obs_frontend_get_transition(
 				item->transition_name);
@@ -1038,7 +1025,8 @@ bool is_number_match(const char c)
 }
 
 struct move_item *match_item2(struct move_info *move,
-			      obs_sceneitem_t *scene_item, bool part_match)
+			      obs_sceneitem_t *scene_item, bool part_match,
+			      size_t *found_pos)
 {
 	struct move_item *item = NULL;
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
@@ -1067,6 +1055,7 @@ struct move_item *match_item2(struct move_info *move,
 
 		if (check_source == source) {
 			item = check_item;
+			*found_pos = i;
 			break;
 		}
 		const char *name_a = obs_source_get_name(check_source);
@@ -1074,6 +1063,7 @@ struct move_item *match_item2(struct move_info *move,
 		if (name_a && name_b) {
 			if (strcmp(name_a, name_b) == 0) {
 				item = check_item;
+				*found_pos = i;
 				break;
 			}
 			if (part_match) {
@@ -1105,6 +1095,7 @@ struct move_item *match_item2(struct move_info *move,
 								   len_b) ==
 							    0) {
 								item = check_item;
+								*found_pos = i;
 								break;
 							}
 						}
@@ -1114,6 +1105,7 @@ struct move_item *match_item2(struct move_info *move,
 						   memcmp(name_a, name_b,
 							  len_b) == 0) {
 						item = check_item;
+						*found_pos = i;
 						break;
 					}
 
@@ -1141,6 +1133,7 @@ struct move_item *match_item2(struct move_info *move,
 								   len_a) ==
 							    0) {
 								item = check_item;
+								*found_pos = i;
 								break;
 							}
 						}
@@ -1150,6 +1143,7 @@ struct move_item *match_item2(struct move_info *move,
 						   memcmp(name_a, name_b,
 							  len_a) == 0) {
 						item = check_item;
+						*found_pos = i;
 						break;
 					}
 				}
@@ -1166,6 +1160,7 @@ struct move_item *match_item2(struct move_info *move,
 					   obs_data_get_json(check_settings)) ==
 					    0) {
 					item = check_item;
+					*found_pos = i;
 					obs_data_release(check_settings);
 					obs_data_release(settings);
 					break;
@@ -1178,9 +1173,21 @@ struct move_item *match_item2(struct move_info *move,
 	return item;
 }
 
-struct move_item *create_move_item()
+struct move_item *create_move_item(struct move_info *move, uint64_t order,
+				   bool search_pos)
 {
 	struct move_item *item = bzalloc(sizeof(struct move_item));
+	item->z_order = order;
+	if (!search_pos) {
+		da_push_back(move->items, &item);
+		return item;
+	}
+	size_t pos = 0;
+	for (size_t i = 0; i < move->items.num; i++) {
+		if (move->items.array[i]->z_order <= order)
+			pos = i + 1;
+	}
+	da_insert(move->items, pos, &item);
 	return item;
 }
 
@@ -1188,25 +1195,69 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
 	struct move_info *move = data;
 	struct move_item *item = NULL;
-
+	if (!obs_sceneitem_visible(scene_item)) {
+		move->z_order++;
+		return true;
+	}
 	if (scene == obs_scene_from_source(move->scene_source_a)) {
-		item = create_move_item();
+		item = create_move_item(move, move->z_order << 1, false);
 		item->item_a = scene_item;
 		obs_sceneitem_addref(item->item_a);
-		da_push_back(move->items, &item);
 	} else if (scene == obs_scene_from_source(move->scene_source_b)) {
-		item = match_item2(move, scene_item, false);
+		size_t old_pos;
+		item = match_item2(move, scene_item, false, &old_pos);
 		if (!item && (move->part_match || move->number_match ||
 			      move->last_word_match)) {
-			item = match_item2(move, scene_item, true);
+			item = match_item2(move, scene_item, true, &old_pos);
 		}
 		if (!item) {
-			item = create_move_item();
-			da_push_back(move->items, &item);
+			item = create_move_item(move, move->z_order << 1, true);
+		} else if (item->z_order != (move->z_order << 1)) {
+			const uint64_t new_z_order =
+				(item->z_order + (move->z_order << 1)) >> 1;
+			if (new_z_order > item->z_order) {
+				if (old_pos < move->items.num - 1) {
+					for (size_t pos = old_pos + 1;
+					     pos < move->items.num; pos++) {
+						if (move->items.array[pos]
+							    ->z_order >
+						    new_z_order) {
+							da_move_item(
+								move->items,
+								old_pos,
+								pos - 1);
+							break;
+						} else if (pos ==
+							   move->items.num -
+								   1) {
+							da_move_item(
+								move->items,
+								old_pos,
+								move->items.num -
+									1);
+						}
+					}
+				}
+			} else if (old_pos > 0) {
+				for (size_t d = 1; d <= old_pos; d++) {
+					if (move->items.array[old_pos - d]
+						    ->z_order <= new_z_order) {
+						da_move_item(move->items,
+							     old_pos,
+							     old_pos - d + 1);
+						break;
+					} else if (old_pos == d) {
+						da_move_item(move->items,
+							     old_pos, 0);
+					}
+				}
+			}
+			item->z_order = new_z_order;
 		}
 		item->item_b = scene_item;
 		obs_sceneitem_addref(item->item_b);
 	}
+	move->z_order++;
 	return true;
 }
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
@@ -1279,10 +1330,11 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			move->source, OBS_TRANSITION_SOURCE_B);
 
 		clear_items(move);
-
+		move->z_order = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_a), match_item,
 			data);
+		move->z_order = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
@@ -1519,36 +1571,9 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_matrix_push();
 		gs_blend_state_push();
 		gs_reset_blend_state();
-		if (move->t <= 0.5f) {
-			move->render_match = true;
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_b),
-				render2_item, data);
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_a),
-				render2_item, data);
-			move->render_match = false;
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_b),
-				render2_item, data);
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_a),
-				render2_item, data);
-		} else {
-			move->render_match = true;
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_a),
-				render2_item, data);
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_b),
-				render2_item, data);
-			move->render_match = false;
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_a),
-				render2_item, data);
-			obs_scene_enum_items(
-				obs_scene_from_source(move->scene_source_b),
-				render2_item, data);
+		for (size_t i = 0; i < move->items.num; i++) {
+			struct move_item *item = move->items.array[i];
+			render2_item(move, item);
 		}
 
 		gs_blend_state_pop();
