@@ -900,11 +900,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			gs_matrix_translate3f(-(float)crop.left,
 					      -(float)crop.top, 0.0f);
 
-			if (item->transition && !move->start_init) {
+			if (item->transition) {
 				obs_transition_set_manual_time(item->transition,
 							       ot);
-
-				obs_source_video_render(item->transition);
+				if (!move->start_init) {
+					obs_source_video_render(
+						item->transition);
+				} else if (item->item_a) {
+					obs_source_video_render(source);
+				}
 			} else {
 				obs_source_video_render(source);
 			}
@@ -1880,7 +1884,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 	return obs_module_text("Description");
 }
 
-struct obs_source_info move_transition_override_filter;
+extern struct obs_source_info move_transition_override_filter;
 
 bool obs_module_load(void)
 {
