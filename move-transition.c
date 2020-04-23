@@ -1267,7 +1267,8 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
 			 void *param)
 {
-
+	if (!obs_source_enabled(filter))
+		return;
 	if (strcmp(obs_source_get_unversioned_id(filter),
 		   "move_transition_override_filter") != 0)
 		return;
