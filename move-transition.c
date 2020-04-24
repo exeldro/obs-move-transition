@@ -34,7 +34,7 @@ struct move_info {
 	bool number_match;
 	bool last_word_match;
 	enum obs_transition_scale_type transition_move_scale;
-	uint64_t z_order;
+	size_t item_pos;
 };
 
 struct move_item {
@@ -49,7 +49,6 @@ struct move_item {
 	char *transition_name;
 	enum obs_transition_scale_type transition_scale;
 	float curve;
-	uint64_t z_order;
 };
 
 static const char *move_get_name(void *type_data)
@@ -1177,21 +1176,9 @@ struct move_item *match_item2(struct move_info *move,
 	return item;
 }
 
-struct move_item *create_move_item(struct move_info *move, uint64_t order,
-				   bool search_pos)
+struct move_item *create_move_item()
 {
 	struct move_item *item = bzalloc(sizeof(struct move_item));
-	item->z_order = order;
-	if (!search_pos) {
-		da_push_back(move->items, &item);
-		return item;
-	}
-	size_t pos = 0;
-	for (size_t i = 0; i < move->items.num; i++) {
-		if (move->items.array[i]->z_order <= order)
-			pos = i + 1;
-	}
-	da_insert(move->items, pos, &item);
 	return item;
 }
 
@@ -1200,13 +1187,13 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	struct move_info *move = data;
 	struct move_item *item = NULL;
 	if (!obs_sceneitem_visible(scene_item)) {
-		move->z_order++;
 		return true;
 	}
 	if (scene == obs_scene_from_source(move->scene_source_a)) {
-		item = create_move_item(move, move->z_order << 1, false);
+		item = create_move_item();
 		item->item_a = scene_item;
 		obs_sceneitem_addref(item->item_a);
+		da_push_back(move->items, &item);
 	} else if (scene == obs_scene_from_source(move->scene_source_b)) {
 		size_t old_pos;
 		item = match_item2(move, scene_item, false, &old_pos);
@@ -1214,54 +1201,17 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			      move->last_word_match)) {
 			item = match_item2(move, scene_item, true, &old_pos);
 		}
-		if (!item) {
-			item = create_move_item(move, move->z_order << 1, true);
-		} else if (item->z_order != (move->z_order << 1)) {
-			const uint64_t new_z_order =
-				(item->z_order + (move->z_order << 1)) >> 1;
-			if (new_z_order > item->z_order) {
-				if (old_pos < move->items.num - 1) {
-					for (size_t pos = old_pos + 1;
-					     pos < move->items.num; pos++) {
-						if (move->items.array[pos]
-							    ->z_order >
-						    new_z_order) {
-							da_move_item(
-								move->items,
-								old_pos,
-								pos - 1);
-							break;
-						} else if (pos ==
-							   move->items.num -
-								   1) {
-							da_move_item(
-								move->items,
-								old_pos,
-								move->items.num -
-									1);
-						}
-					}
-				}
-			} else if (old_pos > 0) {
-				for (size_t d = 1; d <= old_pos; d++) {
-					if (move->items.array[old_pos - d]
-						    ->z_order <= new_z_order) {
-						da_move_item(move->items,
-							     old_pos,
-							     old_pos - d + 1);
-						break;
-					} else if (old_pos == d) {
-						da_move_item(move->items,
-							     old_pos, 0);
-					}
-				}
-			}
-			item->z_order = new_z_order;
+		if (item) {
+			if (old_pos >= move->item_pos)
+				move->item_pos = old_pos + 1;
+		} else {
+			item = create_move_item();
+			da_insert(move->items, move->item_pos, &item);
+			move->item_pos++;
 		}
 		item->item_b = scene_item;
 		obs_sceneitem_addref(item->item_b);
 	}
-	move->z_order++;
 	return true;
 }
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
@@ -1335,11 +1285,10 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			move->source, OBS_TRANSITION_SOURCE_B);
 
 		clear_items(move);
-		move->z_order = 0;
+		move->item_pos = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_a), match_item,
 			data);
-		move->z_order = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
