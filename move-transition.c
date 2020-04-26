@@ -450,6 +450,115 @@ static obs_source_t *obs_frontend_get_transition(const char *name)
 	return NULL;
 }
 
+float get_eased(float f, long long easing, long long easing_function)
+{
+	float t = f;
+	if (EASE_NONE == easing) {
+	} else if (EASE_IN == easing) {
+		switch (easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseIn(f);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseIn(f);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseIn(f);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseIn(f);
+			break;
+		case EASING_SINE:
+			t = SineEaseIn(f);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseIn(f);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseIn(f);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseIn(f);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseIn(f);
+			break;
+		case EASING_BACK:
+			t = BackEaseIn(f);
+			break;
+		default:;
+		}
+	} else if (EASE_OUT == easing) {
+		switch (easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseOut(f);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseOut(f);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseOut(f);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseOut(f);
+			break;
+		case EASING_SINE:
+			t = SineEaseOut(f);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseOut(f);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseOut(f);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseOut(f);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseOut(f);
+			break;
+		case EASING_BACK:
+			t = BackEaseOut(f);
+			break;
+		default:;
+		}
+	} else if (EASE_IN_OUT == easing) {
+		switch (easing_function) {
+		case EASING_QUADRATIC:
+			t = QuadraticEaseInOut(f);
+			break;
+		case EASING_CUBIC:
+			t = CubicEaseInOut(f);
+			break;
+		case EASING_QUARTIC:
+			t = QuarticEaseInOut(f);
+			break;
+		case EASING_QUINTIC:
+			t = QuinticEaseInOut(f);
+			break;
+		case EASING_SINE:
+			t = SineEaseInOut(f);
+			break;
+		case EASING_CIRCULAR:
+			t = CircularEaseInOut(f);
+			break;
+		case EASING_EXPONENTIAL:
+			t = ExponentialEaseInOut(f);
+			break;
+		case EASING_ELASTIC:
+			t = ElasticEaseInOut(f);
+			break;
+		case EASING_BOUNCE:
+			t = BounceEaseInOut(f);
+			break;
+		case EASING_BACK:
+			t = BackEaseInOut(f);
+			break;
+		default:;
+		}
+	}
+}
+
 bool render2_item(struct move_info *move, struct move_item *item)
 {
 	obs_sceneitem_t *scene_item = NULL;
@@ -550,111 +659,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 	}
 
-	float t = move->t;
-	if (EASE_NONE == item->easing) {
-	} else if (EASE_IN == item->easing) {
-		switch (item->easing_function) {
-		case EASING_QUADRATIC:
-			t = QuadraticEaseIn(move->t);
-			break;
-		case EASING_CUBIC:
-			t = CubicEaseIn(move->t);
-			break;
-		case EASING_QUARTIC:
-			t = QuarticEaseIn(move->t);
-			break;
-		case EASING_QUINTIC:
-			t = QuinticEaseIn(move->t);
-			break;
-		case EASING_SINE:
-			t = SineEaseIn(move->t);
-			break;
-		case EASING_CIRCULAR:
-			t = CircularEaseIn(move->t);
-			break;
-		case EASING_EXPONENTIAL:
-			t = ExponentialEaseIn(move->t);
-			break;
-		case EASING_ELASTIC:
-			t = ElasticEaseIn(move->t);
-			break;
-		case EASING_BOUNCE:
-			t = BounceEaseIn(move->t);
-			break;
-		case EASING_BACK:
-			t = BackEaseIn(move->t);
-			break;
-		default:;
-		}
-	} else if (EASE_OUT == item->easing) {
-		switch (item->easing_function) {
-		case EASING_QUADRATIC:
-			t = QuadraticEaseOut(move->t);
-			break;
-		case EASING_CUBIC:
-			t = CubicEaseOut(move->t);
-			break;
-		case EASING_QUARTIC:
-			t = QuarticEaseOut(move->t);
-			break;
-		case EASING_QUINTIC:
-			t = QuinticEaseOut(move->t);
-			break;
-		case EASING_SINE:
-			t = SineEaseOut(move->t);
-			break;
-		case EASING_CIRCULAR:
-			t = CircularEaseOut(move->t);
-			break;
-		case EASING_EXPONENTIAL:
-			t = ExponentialEaseOut(move->t);
-			break;
-		case EASING_ELASTIC:
-			t = ElasticEaseOut(move->t);
-			break;
-		case EASING_BOUNCE:
-			t = BounceEaseOut(move->t);
-			break;
-		case EASING_BACK:
-			t = BackEaseOut(move->t);
-			break;
-		default:;
-		}
-	} else if (EASE_IN_OUT == item->easing) {
-		switch (item->easing_function) {
-		case EASING_QUADRATIC:
-			t = QuadraticEaseInOut(move->t);
-			break;
-		case EASING_CUBIC:
-			t = CubicEaseInOut(move->t);
-			break;
-		case EASING_QUARTIC:
-			t = QuarticEaseInOut(move->t);
-			break;
-		case EASING_QUINTIC:
-			t = QuinticEaseInOut(move->t);
-			break;
-		case EASING_SINE:
-			t = SineEaseInOut(move->t);
-			break;
-		case EASING_CIRCULAR:
-			t = CircularEaseInOut(move->t);
-			break;
-		case EASING_EXPONENTIAL:
-			t = ExponentialEaseInOut(move->t);
-			break;
-		case EASING_ELASTIC:
-			t = ElasticEaseInOut(move->t);
-			break;
-		case EASING_BOUNCE:
-			t = BounceEaseInOut(move->t);
-			break;
-		case EASING_BACK:
-			t = BackEaseInOut(move->t);
-			break;
-		default:;
-		}
-	}
+	float t = get_eased(move->t, item->easing, item->easing_function);
 	float ot = t;
 	if (t > 1.0f)
 		ot = 1.0f;
@@ -1828,17 +1833,25 @@ struct obs_source_info move_transition = {.id = "move_transition",
 					  .transition_stop = move_stop};
 
 OBS_DECLARE_MODULE()
+OBS_MODULE_AUTHOR("Exeldro");
 OBS_MODULE_USE_DEFAULT_LOCALE("move-transition", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
 {
 	return obs_module_text("Description");
 }
 
+MODULE_EXPORT const char *obs_module_name(void)
+{
+	return obs_module_text("MoveTransition");
+}
+
 extern struct obs_source_info move_transition_override_filter;
+extern struct obs_source_info move_source_filter;
 
 bool obs_module_load(void)
 {
 	obs_register_source(&move_transition);
 	obs_register_source(&move_transition_override_filter);
+	obs_register_source(&move_source_filter);
 	return true;
 }

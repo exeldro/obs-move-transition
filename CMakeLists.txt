@@ -6,6 +6,7 @@ set(move-transition_HEADERS
 set(move-transition_SOURCES
 	move-transition.c
 	move-transition-override-filter.c
+	move-source-filter.c
 	easing.c)
 
 if(WIN32)

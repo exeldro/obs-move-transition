@@ -30,6 +30,16 @@
 #define S_TRANSITION_SCALE "transition_scale_match"
 #define S_TRANSITION_IN "transition_in"
 #define S_TRANSITION_OUT "transition_out"
+#define S_DURATION "duration"
+#define S_ROT "rot"
+#define S_POS "pos"
+#define S_SCALE "scale"
+#define S_BOUNDS "bounds"
+#define S_CROP_LEFT "crop_left"
+#define S_CROP_TOP "crop_top"
+#define S_CROP_RIGHT "crop_right"
+#define S_CROP_BOTTOM "crop_bottom"
+#define S_TRANSFORM_TEXT "transform_text"
 
 #define NO_OVERRIDE (-1)
 
