@@ -393,7 +393,7 @@ void move_source_tick(void *data, float seconds)
 			 (1.0f - t) * move_source->pos_from.y +
 				 t * move_source->pos_to.y);
 	}
-
+	obs_sceneitem_defer_update_begin(move_source->scene_item);
 	obs_sceneitem_set_pos(move_source->scene_item, &pos);
 	const float rot =
 		(1.0f - t) * move_source->rot_from + t * move_source->rot_to;
@@ -426,6 +426,7 @@ void move_source_tick(void *data, float seconds)
 				    (float)move_source->crop_from.bottom +
 			    ot * (float)move_source->crop_to.bottom);
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
+	obs_sceneitem_defer_update_end(move_source->scene_item);
 }
 
 struct obs_source_info move_source_filter = {
