@@ -217,6 +217,7 @@ bool move_source_get_transform(obs_properties_t *props,
 	obs_data_set_int(settings, S_CROP_TOP, crop.top);
 	obs_data_set_int(settings, S_CROP_RIGHT, crop.right);
 	obs_data_set_int(settings, S_CROP_BOTTOM, crop.bottom);
+	move_source_update(data, settings);
 	update_transform_text(settings);
 	obs_data_release(settings);
 
