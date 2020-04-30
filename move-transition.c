@@ -35,6 +35,9 @@ struct move_info {
 	bool last_word_match;
 	enum obs_transition_scale_type transition_move_scale;
 	size_t item_pos;
+	uint32_t matched_items;
+	bool matched_scene_a;
+	bool matched_scene_b;
 };
 
 struct move_item {
@@ -49,6 +52,7 @@ struct move_item {
 	char *transition_name;
 	enum obs_transition_scale_type transition_scale;
 	float curve;
+	bool move_scene;
 };
 
 static const char *move_get_name(void *type_data)
@@ -577,7 +581,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	uint32_t width = obs_source_get_width(source);
 	uint32_t height = obs_source_get_height(source);
 	bool move_out = item->item_a == scene_item;
-	if (item->item_a && item->item_b) {
+	if (item->move_scene) {
 		if (item->transition_name && !item->transition) {
 			obs_source_t *transition = obs_frontend_get_transition(
 				item->transition_name);
@@ -585,7 +589,44 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				if (obs_source_get_type(transition) ==
 				    OBS_SOURCE_TYPE_TRANSITION) {
 					item->transition = obs_source_duplicate(
-						transition, NULL, true);
+						transition,
+						item->transition_name, true);
+					obs_transition_set_size(
+						item->transition, width,
+						height);
+					obs_transition_set_alignment(
+						item->transition,
+						OBS_ALIGN_CENTER);
+					obs_transition_set_scale_type(
+						item->transition,
+						item->transition_scale);
+					obs_transition_set(
+						item->transition,
+						obs_sceneitem_get_source(
+							scene_item));
+					obs_transition_start(
+						item->transition,
+						obs_transition_fixed(
+							item->transition)
+							? OBS_TRANSITION_MODE_AUTO
+							: OBS_TRANSITION_MODE_MANUAL,
+						obs_frontend_get_transition_duration(),
+						obs_sceneitem_get_source(
+							scene_item));
+				}
+				obs_source_release(transition);
+			}
+		}
+	} else if (item->item_a && item->item_b) {
+		if (item->transition_name && !item->transition) {
+			obs_source_t *transition = obs_frontend_get_transition(
+				item->transition_name);
+			if (transition) {
+				if (obs_source_get_type(transition) ==
+				    OBS_SOURCE_TYPE_TRANSITION) {
+					item->transition = obs_source_duplicate(
+						transition,
+						item->transition_name, true);
 					obs_transition_set_size(
 						item->transition, width,
 						height);
@@ -601,7 +642,10 @@ bool render2_item(struct move_info *move, struct move_item *item)
 							item->item_a));
 					obs_transition_start(
 						item->transition,
-						OBS_TRANSITION_MODE_MANUAL,
+						obs_transition_fixed(
+							item->transition)
+							? OBS_TRANSITION_MODE_AUTO
+							: OBS_TRANSITION_MODE_MANUAL,
 						obs_frontend_get_transition_duration(),
 						obs_sceneitem_get_source(
 							item->item_b));
@@ -616,7 +660,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			if (obs_source_get_type(transition) ==
 			    OBS_SOURCE_TYPE_TRANSITION) {
 				item->transition = obs_source_duplicate(
-					transition, NULL, true);
+					transition, item->transition_name,
+					true);
 				obs_transition_set_size(item->transition, width,
 							height);
 				obs_transition_set_alignment(item->transition,
@@ -627,7 +672,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set(item->transition, source);
 				obs_transition_start(
 					item->transition,
-					OBS_TRANSITION_MODE_MANUAL,
+					obs_transition_fixed(item->transition)
+						? OBS_TRANSITION_MODE_AUTO
+						: OBS_TRANSITION_MODE_MANUAL,
 					obs_frontend_get_transition_duration(),
 					NULL);
 			}
@@ -640,7 +687,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			if (obs_source_get_type(transition) ==
 			    OBS_SOURCE_TYPE_TRANSITION) {
 				item->transition = obs_source_duplicate(
-					transition, NULL, true);
+					transition, item->transition_name,
+					true);
 				obs_transition_set_size(item->transition, width,
 							height);
 				obs_transition_set_alignment(item->transition,
@@ -651,7 +699,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set(item->transition, NULL);
 				obs_transition_start(
 					item->transition,
-					OBS_TRANSITION_MODE_MANUAL,
+					obs_transition_fixed(item->transition)
+						? OBS_TRANSITION_MODE_AUTO
+						: OBS_TRANSITION_MODE_MANUAL,
 					obs_frontend_get_transition_duration(),
 					source);
 			}
@@ -684,7 +734,23 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	uint32_t original_width = width;
 	uint32_t original_height = height;
 	struct obs_sceneitem_crop crop;
-	if (item->item_a && item->item_b) {
+	if (item->move_scene) {
+		obs_sceneitem_get_crop(scene_item, &crop);
+		if (item->item_a) {
+			crop.left =
+				(int)((float)(1.0f - ot) * (float)crop.left);
+			crop.top = (int)((float)(1.0f - ot) * (float)crop.top);
+			crop.right =
+				(int)((float)(1.0f - ot) * (float)crop.right);
+			crop.bottom =
+				(int)((float)(1.0f - ot) * (float)crop.bottom);
+		} else if (item->item_b) {
+			crop.left = (int)((float)ot * (float)crop.left);
+			crop.top = (int)((float)ot * (float)crop.top);
+			crop.right = (int)((float)ot * (float)crop.right);
+			crop.bottom = (int)((float)ot * (float)crop.bottom);
+		}
+	} else if (item->item_a && item->item_b) {
 		struct obs_sceneitem_crop crop_a;
 		obs_sceneitem_get_crop(item->item_a, &crop_a);
 		struct obs_sceneitem_crop crop_b;
@@ -720,7 +786,17 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			obs_sceneitem_get_scale(scene_item, &scale);
 		} else {
 			obs_sceneitem_get_scale(scene_item, &scale);
-			if (!move_out && item->zoom) {
+			if (item->move_scene) {
+				if (item->item_a) {
+					vec2_set(&scale,
+						 (1.0f - t) * scale.x + t,
+						 (1.0f - t) * scale.y + t);
+				} else if (item->item_b) {
+					vec2_set(&scale,
+						 (1.0f - t) + t * scale.x,
+						 (1.0f - t) + t * scale.y);
+				}
+			} else if (!move_out && item->zoom) {
 				vec2_set(&scale, t * scale.x, t * scale.y);
 			} else if (move_out && item->zoom) {
 				vec2_set(&scale, (1.0f - t) * scale.x,
@@ -740,9 +816,27 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	vec2_zero(&origin);
 	vec2_zero(&origin2);
 
+	uint32_t canvas_width = obs_source_get_width(move->source);
+	uint32_t canvas_height = obs_source_get_height(move->source);
+
 	if (obs_sceneitem_get_bounds_type(scene_item) != OBS_BOUNDS_NONE) {
 		struct vec2 bounds;
-		if (item->item_a && item->item_b) {
+		if (item->move_scene) {
+			obs_sceneitem_get_bounds(scene_item, &bounds);
+			if (item->item_a) {
+				vec2_set(&bounds,
+					 (1.0f - t) * bounds.x +
+						 t * canvas_width,
+					 (1.0f - t) * bounds.y +
+						 t * canvas_height);
+			} else if (item->item_b) {
+				vec2_set(&bounds,
+					 (1.0f - t) * canvas_width +
+						 t * bounds.x,
+					 (1.0f - t) * canvas_height +
+						 t * bounds.y);
+			}
+		} else if (item->item_a && item->item_b) {
 			struct vec2 bounds_a;
 			obs_sceneitem_get_bounds(item->item_a, &bounds_a);
 			struct vec2 bounds_b;
@@ -783,7 +877,14 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	matrix4_translate3f(&draw_transform, &draw_transform, -origin.x,
 			    -origin.y, 0.0f);
 	float rot;
-	if (item->item_a && item->item_b) {
+	if (item->move_scene) {
+		rot = obs_sceneitem_get_rot(scene_item);
+		if (item->item_a) {
+			rot *= (1.0f - t);
+		} else if (item->item_b) {
+			rot *= t;
+		}
+	} else if (item->item_a && item->item_b) {
 		float rot_a = obs_sceneitem_get_rot(item->item_a);
 		float rot_b = obs_sceneitem_get_rot(item->item_b);
 		rot = (1.0f - t) * rot_a + t * rot_b;
@@ -793,11 +894,26 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	matrix4_rotate_aa4f(&draw_transform, &draw_transform, 0.0f, 0.0f, 1.0f,
 			    RAD(rot));
 
-	uint32_t canvas_width = obs_source_get_width(move->source);
-	uint32_t canvas_height = obs_source_get_height(move->source);
 	struct vec2 pos_a;
 	if (item->item_a) {
 		obs_sceneitem_get_pos(item->item_a, &pos_a);
+	} else if (item->move_scene) {
+		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
+		vec2_set(&pos_a, 0, 0);
+		if (alignment & OBS_ALIGN_RIGHT) {
+			pos_a.x += canvas_width;
+		} else if (alignment & OBS_ALIGN_LEFT) {
+
+		} else {
+			pos_a.x += canvas_width >> 1;
+		}
+		if (alignment & OBS_ALIGN_BOTTOM) {
+			pos_a.y += canvas_height;
+		} else if (alignment & OBS_ALIGN_TOP) {
+
+		} else {
+			pos_a.x += canvas_height >> 1;
+		}
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
@@ -822,6 +938,23 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	struct vec2 pos_b;
 	if (item->item_b) {
 		obs_sceneitem_get_pos(item->item_b, &pos_b);
+	} else if (item->move_scene) {
+		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
+		vec2_set(&pos_b, 0, 0);
+		if (alignment & OBS_ALIGN_RIGHT) {
+			pos_b.x += canvas_width;
+		} else if (alignment & OBS_ALIGN_LEFT) {
+
+		} else {
+			pos_b.x += canvas_width >> 1;
+		}
+		if (alignment & OBS_ALIGN_BOTTOM) {
+			pos_b.y += canvas_height;
+		} else if (alignment & OBS_ALIGN_TOP) {
+
+		} else {
+			pos_b.x += canvas_height >> 1;
+		}
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
@@ -1197,6 +1330,10 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	if (scene == obs_scene_from_source(move->scene_source_a)) {
 		item = create_move_item();
 		item->item_a = scene_item;
+		item->move_scene = obs_sceneitem_get_source(scene_item) ==
+				   move->scene_source_b;
+		if (item->move_scene)
+			move->matched_scene_b = true;
 		obs_sceneitem_addref(item->item_a);
 		da_push_back(move->items, &item);
 	} else if (scene == obs_scene_from_source(move->scene_source_b)) {
@@ -1207,10 +1344,16 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 			item = match_item2(move, scene_item, true, &old_pos);
 		}
 		if (item) {
+			move->matched_items++;
 			if (old_pos >= move->item_pos)
 				move->item_pos = old_pos + 1;
 		} else {
 			item = create_move_item();
+			item->move_scene =
+				obs_sceneitem_get_source(scene_item) ==
+				move->scene_source_a;
+			if (item->move_scene)
+				move->matched_scene_a = true;
 			da_insert(move->items, move->item_pos, &item);
 			move->item_pos++;
 		}
@@ -1290,6 +1433,9 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			move->source, OBS_TRANSITION_SOURCE_B);
 
 		clear_items(move);
+		move->matched_items = 0;
+		move->matched_scene_a = false;
+		move->matched_scene_b = false;
 		move->item_pos = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_a), match_item,
@@ -1297,9 +1443,25 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
+		if (!move->matched_items &&
+		    (move->matched_scene_a || move->matched_scene_b)) {
+			size_t i = 0;
+			while (i < move->items.num) {
+				struct move_item *item = move->items.array[i];
+				if (move->matched_scene_a && item->item_a) {
+					da_erase(move->items, i);
+				} else if (move->matched_scene_b &&
+					   item->item_b) {
+					da_erase(move->items, i);
+				} else {
+					i++;
+				}
+			}
+		}
 		for (size_t i = 0; i < move->items.num; i++) {
 			struct move_item *item = move->items.array[i];
-			if (item->item_a && item->item_b) {
+			if ((item->item_a && item->item_b) ||
+			    item->move_scene) {
 				item->easing = move->easing_move;
 				item->easing_function =
 					move->easing_function_move;
@@ -1379,7 +1541,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				}
 			} else if (settings_a) {
 				long long val;
-				if (item->item_a && item->item_b)
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
 					val = obs_data_get_int(settings_a,
 							       S_EASING_MATCH);
 				else
@@ -1388,7 +1551,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				if (val != NO_OVERRIDE) {
 					item->easing = val;
 				}
-				if (item->item_a && item->item_b)
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
 					val = obs_data_get_int(
 						settings_a,
 						S_EASING_FUNCTION_MATCH);
@@ -1415,22 +1579,25 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				}
 				const char *ti = obs_data_get_string(
 					settings_a, S_TRANSITION_OUT);
-				if (ti && strlen(ti) && item->item_a &&
-				    !item->item_b) {
+				if (!item->move_scene && ti && strlen(ti) &&
+				    item->item_a && !item->item_b) {
 					item->transition_name = bstrdup(ti);
 				}
 				const char *tm = obs_data_get_string(
 					settings_a, S_TRANSITION_MATCH);
-				if (tm && strlen(tm) && item->item_a &&
-				    item->item_b) {
+				if (tm && strlen(tm) &&
+				    ((item->item_a && item->item_b) ||
+				     item->move_scene)) {
 					item->transition_name = bstrdup(tm);
 				}
-				if (item->item_a && item->item_b &&
+				if (((item->item_a && item->item_b) ||
+				     item->move_scene) &&
 				    obs_data_get_bool(settings_a,
 						      S_CURVE_OVERRIDE_MATCH)) {
 					item->curve = (float)obs_data_get_double(
 						settings_a, S_CURVE_MATCH);
-				} else if (item->item_a && !item->item_b &&
+				} else if (!item->move_scene && item->item_a &&
+					   !item->item_b &&
 					   obs_data_get_bool(
 						   settings_a,
 						   S_CURVE_OVERRIDE_OUT)) {
@@ -1439,7 +1606,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				}
 			} else if (settings_b) {
 				long long val;
-				if (item->item_a && item->item_b)
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
 					val = obs_data_get_int(settings_b,
 							       S_EASING_MATCH);
 				else
@@ -1448,7 +1616,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				if (val != NO_OVERRIDE) {
 					item->easing = val;
 				}
-				if (item->item_a && item->item_b)
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
 					val = obs_data_get_int(
 						settings_b,
 						S_EASING_FUNCTION_MATCH);
@@ -1475,22 +1644,25 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				}
 				const char *to = obs_data_get_string(
 					settings_b, S_TRANSITION_IN);
-				if (to && strlen(to) && !item->item_a &&
-				    item->item_b) {
+				if (!item->move_scene && to && strlen(to) &&
+				    !item->item_a && item->item_b) {
 					item->transition_name = bstrdup(to);
 				}
 				const char *tm = obs_data_get_string(
 					settings_b, S_TRANSITION_MATCH);
-				if (tm && strlen(tm) && item->item_a &&
-				    item->item_b) {
+				if (tm && strlen(tm) &&
+				    ((item->item_a && item->item_b) ||
+				     item->move_scene)) {
 					item->transition_name = bstrdup(tm);
 				}
-				if (item->item_a && item->item_b &&
+				if (((item->item_a && item->item_b) ||
+				     item->move_scene) &&
 				    obs_data_get_bool(settings_b,
 						      S_CURVE_OVERRIDE_MATCH)) {
 					item->curve = (float)obs_data_get_double(
 						settings_b, S_CURVE_MATCH);
-				} else if (!item->item_a && item->item_b &&
+				} else if (!item->move_scene && !item->item_a &&
+					   item->item_b &&
 					   obs_data_get_bool(
 						   settings_b,
 						   S_CURVE_OVERRIDE_IN)) {
@@ -1501,18 +1673,21 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			}
 			obs_data_release(settings_a);
 			obs_data_release(settings_b);
-			if (!item->transition_name && !item->item_a &&
-			    item->item_b && move->transition_in &&
-			    strlen(move->transition_in))
+			if (!item->transition_name && !item->move_scene &&
+			    !item->item_a && item->item_b &&
+			    move->transition_in && strlen(move->transition_in))
 				item->transition_name =
 					bstrdup(move->transition_in);
-			if (!item->transition_name && item->item_a &&
-			    !item->item_b && move->transition_out &&
+			if (!item->transition_name && !item->move_scene &&
+			    item->item_a && !item->item_b &&
+			    move->transition_out &&
 			    strlen(move->transition_out))
 				item->transition_name =
 					bstrdup(move->transition_out);
-			if (!item->transition_name && item->item_a &&
-			    item->item_b && move->transition_move &&
+			if (!item->transition_name &&
+			    ((item->item_a && item->item_b) ||
+			     item->move_scene) &&
+			    move->transition_move &&
 			    strlen(move->transition_move))
 				item->transition_name =
 					bstrdup(move->transition_move);
