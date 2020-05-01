@@ -1878,7 +1878,7 @@ static obs_properties_t *move_properties(void *data)
 	prop_list_add_transitions(p);
 
 	p = obs_properties_add_list(group, S_TRANSITION_SCALE,
-				    obs_module_text("ScaleType"),
+				    obs_module_text("TransitionScaleType"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_scales(p);
 
