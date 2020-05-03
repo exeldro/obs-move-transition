@@ -5,17 +5,37 @@ struct move_filter_info {
 	obs_source_t *source;
 };
 
+void move_filter_source_rename(void *data, calldata_t *call_data)
+{
+	struct move_filter_info *move_filter = data;
+	const char *new_name = calldata_string(call_data, "new_name");
+	const char *prev_name = calldata_string(call_data, "prev_name");
+	obs_data_t *settings = obs_source_get_settings(move_filter->source);
+	if (!settings || !new_name || !prev_name)
+		return;
+	const char *source_name = obs_data_get_string(settings, S_SOURCE);
+	if (source_name && strlen(source_name) &&
+	    strcmp(source_name, prev_name) == 0) {
+		obs_data_set_string(settings, S_SOURCE, new_name);
+	}
+	obs_data_release(settings);
+}
+
 static void *move_filter_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_filter_info *move_filter =
 		bzalloc(sizeof(struct move_filter_info));
 	move_filter->source = source;
+	signal_handler_connect(obs_get_signal_handler(), "source_rename",
+			       move_filter_source_rename, move_filter);
 	return move_filter;
 }
 
 static void move_filter_destroy(void *data)
 {
 	struct move_filter_info *move_filter = data;
+	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
+				  move_filter_source_rename, move_filter);
 	bfree(move_filter);
 }
 

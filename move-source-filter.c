@@ -168,6 +168,22 @@ void update_transform_text(obs_data_t *settings)
 	dstr_free(&transform_text);
 }
 
+void move_source_source_rename(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	const char *new_name = calldata_string(call_data, "new_name");
+	const char *prev_name = calldata_string(call_data, "prev_name");
+	obs_data_t *settings = obs_source_get_settings(move_source->source);
+	if (!settings || !new_name || !prev_name)
+		return;
+	const char *source_name = obs_data_get_string(settings, S_SOURCE);
+	if (source_name && strlen(source_name) &&
+	    strcmp(source_name, prev_name) == 0) {
+		obs_data_set_string(settings, S_SOURCE, new_name);
+	}
+	obs_data_release(settings);
+}
+
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_source_info *move_source =
@@ -176,12 +192,16 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 	move_source->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
 	move_source_update(move_source, settings);
 	update_transform_text(settings);
+	signal_handler_connect(obs_get_signal_handler(), "source_rename",
+			       move_source_source_rename, move_source);
 	return move_source;
 }
 
 static void move_source_destroy(void *data)
 {
 	struct move_source_info *move_source = data;
+	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
+				  move_source_source_rename, move_source);
 	bfree(move_source);
 }
 
