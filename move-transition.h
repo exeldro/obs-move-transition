@@ -40,6 +40,7 @@
 #define S_CROP_RIGHT "crop_right"
 #define S_CROP_BOTTOM "crop_bottom"
 #define S_TRANSFORM_TEXT "transform_text"
+#define S_SWITCH_PERCENTAGE "switch_percentage"
 
 #define NO_OVERRIDE (-1)
 

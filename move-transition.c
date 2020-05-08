@@ -9,7 +9,8 @@
 struct move_info {
 	obs_source_t *source;
 	bool start_init;
-	DARRAY(struct move_item *) items;
+	DARRAY(struct move_item *) items_a;
+	DARRAY(struct move_item *) items_b;
 	float t;
 	float curve_move;
 	float curve_in;
@@ -38,6 +39,7 @@ struct move_info {
 	uint32_t matched_items;
 	bool matched_scene_a;
 	bool matched_scene_b;
+	uint32_t item_order_switch_percentage;
 };
 
 struct move_item {
@@ -65,7 +67,8 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_info *move = bzalloc(sizeof(struct move_info));
 	move->source = source;
-	da_init(move->items);
+	da_init(move->items_a);
+	da_init(move->items_b);
 	obs_source_update(source, settings);
 	return move;
 }
@@ -74,8 +77,8 @@ static void clear_items(struct move_info *move)
 {
 	bool graphics = false;
 
-	for (size_t i = 0; i < move->items.num; i++) {
-		struct move_item *item = move->items.array[i];
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
 		obs_sceneitem_release(item->item_a);
 		item->item_a = NULL;
 		obs_sceneitem_release(item->item_b);
@@ -98,14 +101,16 @@ static void clear_items(struct move_info *move)
 	}
 	if (graphics)
 		obs_leave_graphics();
-	move->items.num = 0;
+	move->items_a.num = 0;
+	move->items_b.num = 0;
 }
 
 static void move_destroy(void *data)
 {
 	struct move_info *move = data;
 	clear_items(move);
-	da_free(move->items);
+	da_free(move->items_a);
+	da_free(move->items_b);
 	obs_source_release(move->scene_source_a);
 	obs_source_release(move->scene_source_b);
 	bfree(move->transition_in);
@@ -153,6 +158,8 @@ static void move_update(void *data, obs_data_t *settings)
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_MATCH));
 	move->transition_move_scale =
 		obs_data_get_int(settings, S_TRANSITION_SCALE);
+	move->item_order_switch_percentage =
+		obs_data_get_int(settings, S_SWITCH_PERCENTAGE);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -1171,11 +1178,9 @@ struct move_item *match_item2(struct move_info *move,
 {
 	struct move_item *item = NULL;
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
-	for (size_t i = 0; i < move->items.num; i++) {
-		struct move_item *check_item = move->items.array[i];
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
 		if (check_item->item_b)
-			continue;
-		if (!obs_sceneitem_visible(check_item->item_a))
 			continue;
 		if (obs_sceneitem_get_bounds_type(check_item->item_a) !=
 		    obs_sceneitem_get_bounds_type(scene_item))
@@ -1320,46 +1325,51 @@ struct move_item *create_move_item()
 	return item;
 }
 
-bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
+bool add_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
-	struct move_info *move = data;
-	struct move_item *item = NULL;
 	if (!obs_sceneitem_visible(scene_item)) {
 		return true;
 	}
-	if (scene == obs_scene_from_source(move->scene_source_a)) {
-		item = create_move_item();
-		item->item_a = scene_item;
-		item->move_scene = obs_sceneitem_get_source(scene_item) ==
-				   move->scene_source_b;
-		if (item->move_scene)
-			move->matched_scene_b = true;
-		obs_sceneitem_addref(item->item_a);
-		da_push_back(move->items, &item);
-	} else if (scene == obs_scene_from_source(move->scene_source_b)) {
-		size_t old_pos;
-		item = match_item2(move, scene_item, false, &old_pos);
-		if (!item && (move->part_match || move->number_match ||
-			      move->last_word_match)) {
-			item = match_item2(move, scene_item, true, &old_pos);
-		}
-		if (item) {
-			move->matched_items++;
-			if (old_pos >= move->item_pos)
-				move->item_pos = old_pos + 1;
-		} else {
-			item = create_move_item();
-			item->move_scene =
-				obs_sceneitem_get_source(scene_item) ==
-				move->scene_source_a;
-			if (item->move_scene)
-				move->matched_scene_a = true;
-			da_insert(move->items, move->item_pos, &item);
-			move->item_pos++;
-		}
-		item->item_b = scene_item;
-		obs_sceneitem_addref(item->item_b);
+	struct move_info *move = data;
+	struct move_item *item = create_move_item();
+	da_push_back(move->items_a, &item);
+	obs_sceneitem_addref(scene_item);
+	item->item_a = scene_item;
+	item->move_scene = obs_sceneitem_get_source(scene_item) ==
+			   move->scene_source_b;
+	if (item->move_scene)
+		move->matched_scene_b = true;
+	return true;
+}
+
+bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
+{
+	struct move_info *move = data;
+	if (!obs_sceneitem_visible(scene_item)) {
+		return true;
 	}
+	size_t old_pos;
+	struct move_item *item = match_item2(move, scene_item, false, &old_pos);
+	if (!item &&
+	    (move->part_match || move->number_match || move->last_word_match)) {
+		item = match_item2(move, scene_item, true, &old_pos);
+	}
+	if (item) {
+		move->matched_items++;
+		if (old_pos >= move->item_pos)
+			move->item_pos = old_pos + 1;
+	} else {
+		item = create_move_item();
+		da_insert(move->items_a, move->item_pos, &item);
+		move->item_pos++;
+	}
+	obs_sceneitem_addref(scene_item);
+	item->item_b = scene_item;
+	item->move_scene = obs_sceneitem_get_source(scene_item) ==
+			   move->scene_source_a;
+	if (item->move_scene)
+		move->matched_scene_a = true;
+	da_push_back(move->items_b, &item);
 	return true;
 }
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
@@ -1438,28 +1448,48 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		move->matched_scene_b = false;
 		move->item_pos = 0;
 		obs_scene_enum_items(
-			obs_scene_from_source(move->scene_source_a), match_item,
+			obs_scene_from_source(move->scene_source_a), add_item,
 			data);
+		move->item_pos = 0;
 		obs_scene_enum_items(
 			obs_scene_from_source(move->scene_source_b), match_item,
 			data);
 		if (!move->matched_items &&
 		    (move->matched_scene_a || move->matched_scene_b)) {
 			size_t i = 0;
-			while (i < move->items.num) {
-				struct move_item *item = move->items.array[i];
+			while (i < move->items_a.num) {
+				struct move_item *item = move->items_a.array[i];
 				if (move->matched_scene_a && item->item_a) {
-					da_erase(move->items, i);
+					da_erase(move->items_a, i);
 				} else if (move->matched_scene_b &&
 					   item->item_b) {
-					da_erase(move->items, i);
+					da_erase(move->items_a, i);
 				} else {
 					i++;
 				}
 			}
+			if (move->matched_scene_b) {
+				move->items_b.num = 0;
+			}
 		}
-		for (size_t i = 0; i < move->items.num; i++) {
-			struct move_item *item = move->items.array[i];
+		move->item_pos = 0;
+		for (size_t i = 0; i < move->items_a.num; i++) {
+			struct move_item *item = move->items_a.array[i];
+			if (item->item_a && !item->item_b) {
+				da_insert(move->items_b, move->item_pos, &item);
+				move->item_pos++;
+			} else {
+				for (size_t j = move->item_pos;
+				     j < move->items_b.num; j++) {
+					if (item == move->items_b.array[j]) {
+						move->item_pos = j + 1;
+						break;
+					}
+				}
+			}
+		}
+		for (size_t i = 0; i < move->items_a.num; i++) {
+			struct move_item *item = move->items_a.array[i];
 			if ((item->item_a && item->item_b) ||
 			    item->move_scene) {
 				item->easing = move->easing_move;
@@ -1705,11 +1735,17 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_matrix_push();
 		gs_blend_state_push();
 		gs_reset_blend_state();
-		for (size_t i = 0; i < move->items.num; i++) {
-			struct move_item *item = move->items.array[i];
-			render2_item(move, item);
+		if (move->t * 100.0 < move->item_order_switch_percentage) {
+			for (size_t i = 0; i < move->items_a.num; i++) {
+				struct move_item *item = move->items_a.array[i];
+				render2_item(move, item);
+			}
+		} else {
+			for (size_t i = 0; i < move->items_b.num; i++) {
+				struct move_item *item = move->items_b.array[i];
+				render2_item(move, item);
+			}
 		}
-
 		gs_blend_state_pop();
 		gs_matrix_pop();
 
@@ -1886,6 +1922,10 @@ static obs_properties_t *move_properties(void *data)
 					obs_module_text("Curve"), -2.0, 2.0,
 					0.01);
 
+	obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
+				      obs_module_text("SwitchPoint"), 0, 100,
+				      1);
+
 	obs_properties_add_group(ppts, S_MOVE_MATCH,
 				 obs_module_text("MoveMatch"), OBS_GROUP_NORMAL,
 				 group);
@@ -1973,6 +2013,7 @@ void move_defaults(obs_data_t *settings)
 	obs_data_set_default_double(settings, S_CURVE_MATCH, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_IN, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_OUT, 0.0);
+	obs_data_set_default_int(settings, S_SWITCH_PERCENTAGE, 50);
 }
 
 static void move_start(void *data)
