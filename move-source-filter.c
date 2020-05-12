@@ -32,6 +32,7 @@ struct move_source_info {
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
+	UNUSED_PARAMETER(scene);
 	struct move_source_info *move_source = data;
 	const char *name =
 		obs_source_get_name(obs_sceneitem_get_source(scene_item));
@@ -208,6 +209,8 @@ static void move_source_destroy(void *data)
 bool move_source_get_transform(obs_properties_t *props,
 			       obs_property_t *property, void *data)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
 	struct move_source_info *move_source = data;
 	bool settings_changed = false;
 	if (!move_source->scene_item && move_source->source_name) {

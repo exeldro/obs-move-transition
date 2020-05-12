@@ -28,6 +28,7 @@ static void *move_filter_create(obs_data_t *settings, obs_source_t *source)
 	move_filter->source = source;
 	signal_handler_connect(obs_get_signal_handler(), "source_rename",
 			       move_filter_source_rename, move_filter);
+	UNUSED_PARAMETER(settings);
 	return move_filter;
 }
 
@@ -47,6 +48,7 @@ void prop_list_add_scales(obs_property_t *p);
 
 bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
 {
+	UNUSED_PARAMETER(scene);
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(obs_sceneitem_get_source(item));
 	obs_property_list_add_string(p, name, name);

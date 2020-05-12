@@ -182,10 +182,9 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 {
 	float width = (float)(*cx) * fabsf(scale->x);
 	float height = (float)(*cy) * fabsf(scale->y);
-	float item_aspect = width / height;
-	float bounds_aspect = bounds->x / bounds->y;
+	const float item_aspect = width / height;
+	const float bounds_aspect = bounds->x / bounds->y;
 	uint32_t bounds_type = obs_sceneitem_get_bounds_type(item);
-	float width_diff, height_diff;
 
 	if (bounds_type == OBS_BOUNDS_MAX_ONLY)
 		if (width > bounds->x || height > bounds->y)
@@ -194,13 +193,13 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 	if (bounds_type == OBS_BOUNDS_SCALE_INNER ||
 	    bounds_type == OBS_BOUNDS_SCALE_OUTER) {
 		bool use_width = (bounds_aspect < item_aspect);
-		float mul;
 
 		if (obs_sceneitem_get_bounds_type(item) ==
 		    OBS_BOUNDS_SCALE_OUTER)
 			use_width = !use_width;
 
-		mul = use_width ? bounds->x / width : bounds->y / height;
+		const float mul = use_width ? bounds->x / width
+					    : bounds->y / height;
 
 		vec2_mulf(scale, scale, mul);
 
@@ -217,8 +216,8 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 
 	width = (float)(*cx) * scale->x;
 	height = (float)(*cy) * scale->y;
-	width_diff = bounds->x - width;
-	height_diff = bounds->y - height;
+	const float width_diff = bounds->x - width;
+	const float height_diff = bounds->y - height;
 	*cx = (uint32_t)bounds->x;
 	*cy = (uint32_t)bounds->y;
 
@@ -316,15 +315,16 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		if (factor_x > factor_y) {
 			if (diff_x < 0.0f) {
 				//left edge
-				float move_x = -(pos->x + cx2);
-				float move_y =
+				const float move_x = -(pos->x + cx2);
+				const float move_y =
 					diff_y * (diff_x + move_x) / diff_x;
 				vec2_set(pos, -(float)cx2,
 					 (float)(canvas_height >> 1) + move_y);
 			} else {
 				//right edge
-				float move_x = (canvas_width - pos->x) + cx2;
-				float move_y =
+				const float move_x =
+					(canvas_width - pos->x) + cx2;
+				const float move_y =
 					diff_y * (diff_x + move_x) / diff_x;
 				vec2_set(pos, (float)canvas_width + cx2,
 					 (float)(canvas_height >> 1) + move_y);
@@ -332,16 +332,17 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		} else {
 			if (diff_y < 0.0f) {
 				//top edge
-				float move_y = -(pos->y + cy2);
-				float move_x =
+				const float move_y = -(pos->y + cy2);
+				const float move_x =
 					diff_x * (diff_y + move_y) / diff_y;
 				vec2_set(pos,
 					 (float)(canvas_width >> 1) + move_x,
 					 -(float)cy2);
 			} else {
 				//bottom edge
-				float move_y = (canvas_height - pos->y) + cy2;
-				float move_x =
+				const float move_y =
+					(canvas_height - pos->y) + cy2;
+				const float move_x =
 					diff_x * (diff_y + move_y) / diff_y;
 				vec2_set(pos,
 					 (float)(canvas_width >> 1) + move_x,
@@ -568,6 +569,7 @@ float get_eased(float f, long long easing, long long easing_function)
 		default:;
 		}
 	}
+	return t;
 }
 
 bool render2_item(struct move_info *move, struct move_item *item)
@@ -1327,6 +1329,7 @@ struct move_item *create_move_item()
 
 bool add_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
+	UNUSED_PARAMETER(scene);
 	if (!obs_sceneitem_visible(scene_item)) {
 		return true;
 	}
@@ -1344,10 +1347,11 @@ bool add_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 
 bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
-	struct move_info *move = data;
+	UNUSED_PARAMETER(scene);
 	if (!obs_sceneitem_visible(scene_item)) {
 		return true;
 	}
+	struct move_info *move = data;
 	size_t old_pos;
 	struct move_item *item = match_item2(move, scene_item, false, &old_pos);
 	if (!item &&
@@ -1375,6 +1379,7 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 void get_override_filter(obs_source_t *source, obs_source_t *filter,
 			 void *param)
 {
+	UNUSED_PARAMETER(source);
 	if (!obs_source_enabled(filter))
 		return;
 	if (strcmp(obs_source_get_unversioned_id(filter),
