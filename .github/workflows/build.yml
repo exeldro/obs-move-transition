@@ -22,7 +22,7 @@ jobs:
         with:
           repository: obsproject/obs-studio
           submodules: 'recursive'
-      - name: "Checkout obs-move-transition"
+      - name: "Checkout plugin"
         uses: actions/checkout@v2
         with:
           path: plugins/${{ env.PLUGIN_NAME }}
@@ -80,6 +80,94 @@ jobs:
         with:
           name: '${{ env.FILE_NAME }}'
           path: ./nightly/*.pkg
+  ubuntu64:
+    name: 'Linux/Ubuntu 64-bit'
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          repository: obsproject/obs-studio
+          submodules: 'recursive'
+      - name: "Checkout plugin"
+        uses: actions/checkout@v2
+        with:
+          path: plugins/${{ env.PLUGIN_NAME }}
+      - name: Add plugin to obs cmake
+        shell: bash
+        run: echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
+      - name: Fetch Git Tags
+        run: git fetch --prune --tags --unshallow
+      - name: Install prerequisites (Apt)
+        shell: bash
+        run: |
+          sudo dpkg --add-architecture amd64
+          sudo apt-get -qq update
+          sudo apt-get install -y \
+           build-essential \
+           checkinstall \
+           cmake \
+           libasound2-dev \
+           libavcodec-dev \
+           libavdevice-dev \
+           libavfilter-dev \
+           libavformat-dev \
+           libavutil-dev \
+           libcurl4-openssl-dev \
+           libfdk-aac-dev \
+           libfontconfig-dev \
+           libfreetype6-dev \
+           libgl1-mesa-dev \
+           libjack-jackd2-dev \
+           libjansson-dev \
+           libluajit-5.1-dev \
+           libpulse-dev \
+           libqt5x11extras5-dev \
+           libspeexdsp-dev \
+           libswresample-dev \
+           libswscale-dev \
+           libudev-dev \
+           libv4l-dev \
+           libva-dev \
+           libvlc-dev \
+           libx11-dev \
+           libx264-dev \
+           libxcb-randr0-dev \
+           libxcb-shm0-dev \
+           libxcb-xinerama0-dev \
+           libxcomposite-dev \
+           libxinerama-dev \
+           libmbedtls-dev \
+           pkg-config \
+           python3-dev \
+           qtbase5-dev \
+           libqt5svg5-dev \
+           swig
+      - name: 'Configure'
+        shell: bash
+        run: |
+          mkdir ./build
+          cd ./build
+          cmake -DUNIX_STRUCTURE=0 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/obs-studio-portable" -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF ..
+      - name: 'Build'
+        shell: bash
+        working-directory: ${{ github.workspace }}/build
+        run: make -j4
+      - name: 'Package'
+        shell: bash
+        run: |
+          FILE_DATE=$(date +%Y-%m-%d)
+          FILE_NAME=${{ env.PLUGIN_NAME }}-$FILE_DATE-${{ env.OBS_GIT_HASH }}-${{ env.OBS_GIT_TAG }}-linux64.tar.gz
+          echo "::set-env name=FILE_NAME::${FILE_NAME}"
+          mkdir -p ./${{ env.PLUGIN_NAME }}/bin/64bit/
+          mv ./build/plugins/${{ env.PLUGIN_NAME }}/${{ env.PLUGIN_NAME }}.so ./${{ env.PLUGIN_NAME }}/bin/64bit/${{ env.PLUGIN_NAME }}.so
+          mv ./plugins/${{ env.PLUGIN_NAME }}/data ./${{ env.PLUGIN_NAME }}/data
+          tar -cvzf "${FILE_NAME}" ./${{ env.PLUGIN_NAME }}
+      - name: 'Publish'
+        uses: actions/upload-artifact@v2-preview
+        with:
+          name: '${{ env.FILE_NAME }}'
+          path: '*.tar.gz'
   win64:
     name: Windows 64-bit
     runs-on: [windows-latest]
