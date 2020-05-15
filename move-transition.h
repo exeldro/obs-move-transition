@@ -1,6 +1,7 @@
 #pragma once
 
 #define S_MATCH "match"
+#define S_MOVE_ALL "move_all"
 #define S_MOVE_MATCH "move_match"
 #define S_MOVE_IN "move_in"
 #define S_MOVE_OUT "move_out"
@@ -41,6 +42,7 @@
 #define S_CROP_BOTTOM "crop_bottom"
 #define S_TRANSFORM_TEXT "transform_text"
 #define S_SWITCH_PERCENTAGE "switch_percentage"
+#define S_CACHE_TRANSITIONS "cache_transitions"
 
 #define NO_OVERRIDE (-1)
 

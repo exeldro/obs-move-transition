@@ -40,6 +40,13 @@ struct move_info {
 	bool matched_scene_a;
 	bool matched_scene_b;
 	uint32_t item_order_switch_percentage;
+	bool cache_transitions;
+	DARRAY(obs_source_t *) transition_pool_move;
+	size_t transition_pool_move_index;
+	DARRAY(obs_source_t *) transition_pool_in;
+	size_t transition_pool_in_index;
+	DARRAY(obs_source_t *) transition_pool_out;
+	size_t transition_pool_out_index;
 };
 
 struct move_item {
@@ -69,6 +76,9 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	move->source = source;
 	da_init(move->items_a);
 	da_init(move->items_b);
+	da_init(move->transition_pool_out);
+	da_init(move->transition_pool_in);
+	da_init(move->transition_pool_out);
 	obs_source_update(source, settings);
 	return move;
 }
@@ -93,6 +103,7 @@ static void clear_items(struct move_info *move)
 		}
 		if (item->transition) {
 			obs_transition_force_stop(item->transition);
+			obs_transition_clear(item->transition);
 			obs_source_release(item->transition);
 			item->transition = NULL;
 		}
@@ -105,12 +116,27 @@ static void clear_items(struct move_info *move)
 	move->items_b.num = 0;
 }
 
+void clear_transition_pool(void *data)
+{
+	DARRAY(obs_source_t *) *transition_pool = data;
+	for (size_t i = 0; i < transition_pool->num; i++) {
+		obs_source_release(transition_pool->array[i]);
+	}
+	transition_pool->num = 0;
+}
+
 static void move_destroy(void *data)
 {
 	struct move_info *move = data;
 	clear_items(move);
 	da_free(move->items_a);
 	da_free(move->items_b);
+	clear_transition_pool(&move->transition_pool_move);
+	da_free(move->transition_pool_move);
+	clear_transition_pool(&move->transition_pool_in);
+	da_free(move->transition_pool_in);
+	clear_transition_pool(&move->transition_pool_out);
+	da_free(move->transition_pool_out);
 	obs_source_release(move->scene_source_a);
 	obs_source_release(move->scene_source_b);
 	bfree(move->transition_in);
@@ -146,9 +172,21 @@ static void move_update(void *data, obs_data_t *settings)
 	bfree(move->transition_in);
 	move->transition_in =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_IN));
+	if (move->transition_in && strlen(move->transition_in) &&
+	    move->transition_pool_in.num &&
+	    strcmp(obs_source_get_name(move->transition_pool_in.array[0]),
+		   move->transition_in) != 0) {
+		clear_transition_pool(&move->transition_pool_in);
+	}
 	bfree(move->transition_out);
 	move->transition_out =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_OUT));
+	if (move->transition_out && strlen(move->transition_out) &&
+	    move->transition_pool_out.num &&
+	    strcmp(obs_source_get_name(move->transition_pool_out.array[0]),
+		   move->transition_out) != 0) {
+		clear_transition_pool(&move->transition_pool_out);
+	}
 	move->part_match = obs_data_get_bool(settings, S_NAME_PART_MATCH);
 	move->number_match = obs_data_get_bool(settings, S_NAME_NUMBER_MATCH);
 	move->last_word_match =
@@ -156,10 +194,18 @@ static void move_update(void *data, obs_data_t *settings)
 	bfree(move->transition_move);
 	move->transition_move =
 		bstrdup(obs_data_get_string(settings, S_TRANSITION_MATCH));
+	if (move->transition_move && strlen(move->transition_move) &&
+	    move->transition_pool_move.num &&
+	    strcmp(obs_source_get_name(move->transition_pool_move.array[0]),
+		   move->transition_move) != 0) {
+		clear_transition_pool(&move->transition_pool_move);
+	}
 	move->transition_move_scale =
 		obs_data_get_int(settings, S_TRANSITION_SCALE);
 	move->item_order_switch_percentage =
 		obs_data_get_int(settings, S_SWITCH_PERCENTAGE);
+	move->cache_transitions =
+		obs_data_get_bool(settings, S_CACHE_TRANSITIONS);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
@@ -572,6 +618,34 @@ float get_eased(float f, long long easing, long long easing_function)
 	return t;
 }
 
+obs_source_t *get_transition(const char *transition_name, void *pool_data,
+			     size_t *index, bool cache)
+{
+
+	DARRAY(obs_source_t *) *transition_pool = pool_data;
+	const size_t i = *index;
+	if (cache && transition_pool->num && *index < transition_pool->num) {
+		obs_source_t *transition = transition_pool->array[i];
+		obs_source_addref(transition);
+		*index = i + 1;
+		return transition;
+	}
+	obs_source_t *frontend_transition =
+		obs_frontend_get_transition(transition_name);
+	if (!frontend_transition)
+		return NULL;
+	obs_source_t *transition = obs_source_duplicate(frontend_transition,
+							transition_name, true);
+	obs_source_release(frontend_transition);
+	if (cache) {
+		darray_push_back(sizeof(obs_source_t *), &transition_pool->da,
+				 &transition);
+		obs_source_addref(transition);
+		*index = i + 1;
+	}
+	return transition;
+}
+
 bool render2_item(struct move_info *move, struct move_item *item)
 {
 	obs_sceneitem_t *scene_item = NULL;
@@ -592,129 +666,98 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	bool move_out = item->item_a == scene_item;
 	if (item->move_scene) {
 		if (item->transition_name && !item->transition) {
-			obs_source_t *transition = obs_frontend_get_transition(
-				item->transition_name);
-			if (transition) {
-				if (obs_source_get_type(transition) ==
-				    OBS_SOURCE_TYPE_TRANSITION) {
-					item->transition = obs_source_duplicate(
-						transition,
-						item->transition_name, true);
-					obs_transition_set_size(
-						item->transition, width,
-						height);
-					obs_transition_set_alignment(
-						item->transition,
-						OBS_ALIGN_CENTER);
-					obs_transition_set_scale_type(
-						item->transition,
-						item->transition_scale);
-					obs_transition_set(
-						item->transition,
-						obs_sceneitem_get_source(
-							scene_item));
-					obs_transition_start(
-						item->transition,
-						obs_transition_fixed(
-							item->transition)
-							? OBS_TRANSITION_MODE_AUTO
-							: OBS_TRANSITION_MODE_MANUAL,
-						obs_frontend_get_transition_duration(),
-						obs_sceneitem_get_source(
-							scene_item));
-				}
-				obs_source_release(transition);
+			item->transition = get_transition(
+				item->transition_name,
+				&move->transition_pool_move,
+				&move->transition_pool_move_index,
+				move->cache_transitions);
+			if (item->transition) {
+				obs_transition_set_size(item->transition, width,
+							height);
+				obs_transition_set_alignment(item->transition,
+							     OBS_ALIGN_CENTER);
+				obs_transition_set_scale_type(
+					item->transition,
+					item->transition_scale);
+				obs_transition_set(
+					item->transition,
+					obs_sceneitem_get_source(scene_item));
+				obs_transition_start(
+					item->transition,
+					obs_transition_fixed(item->transition)
+						? OBS_TRANSITION_MODE_AUTO
+						: OBS_TRANSITION_MODE_MANUAL,
+					obs_frontend_get_transition_duration(),
+					obs_sceneitem_get_source(scene_item));
 			}
 		}
 	} else if (item->item_a && item->item_b) {
 		if (item->transition_name && !item->transition) {
-			obs_source_t *transition = obs_frontend_get_transition(
-				item->transition_name);
-			if (transition) {
-				if (obs_source_get_type(transition) ==
-				    OBS_SOURCE_TYPE_TRANSITION) {
-					item->transition = obs_source_duplicate(
-						transition,
-						item->transition_name, true);
-					obs_transition_set_size(
-						item->transition, width,
-						height);
-					obs_transition_set_alignment(
-						item->transition,
-						OBS_ALIGN_CENTER);
-					obs_transition_set_scale_type(
-						item->transition,
-						item->transition_scale);
-					obs_transition_set(
-						item->transition,
-						obs_sceneitem_get_source(
-							item->item_a));
-					obs_transition_start(
-						item->transition,
-						obs_transition_fixed(
-							item->transition)
-							? OBS_TRANSITION_MODE_AUTO
-							: OBS_TRANSITION_MODE_MANUAL,
-						obs_frontend_get_transition_duration(),
-						obs_sceneitem_get_source(
-							item->item_b));
-				}
-				obs_source_release(transition);
+			item->transition = get_transition(
+				item->transition_name,
+				&move->transition_pool_move,
+				&move->transition_pool_move_index,
+				move->cache_transitions);
+			if (item->transition) {
+				obs_transition_set_size(item->transition, width,
+							height);
+				obs_transition_set_alignment(item->transition,
+							     OBS_ALIGN_CENTER);
+				obs_transition_set_scale_type(
+					item->transition,
+					item->transition_scale);
+				obs_transition_set(
+					item->transition,
+					obs_sceneitem_get_source(item->item_a));
+				obs_transition_start(
+					item->transition,
+					obs_transition_fixed(item->transition)
+						? OBS_TRANSITION_MODE_AUTO
+						: OBS_TRANSITION_MODE_MANUAL,
+					obs_frontend_get_transition_duration(),
+					obs_sceneitem_get_source(item->item_b));
 			}
 		}
 	} else if (move_out && item->transition_name && !item->transition) {
-		obs_source_t *transition =
-			obs_frontend_get_transition(item->transition_name);
-		if (transition) {
-			if (obs_source_get_type(transition) ==
-			    OBS_SOURCE_TYPE_TRANSITION) {
-				item->transition = obs_source_duplicate(
-					transition, item->transition_name,
-					true);
-				obs_transition_set_size(item->transition, width,
-							height);
-				obs_transition_set_alignment(item->transition,
-							     OBS_ALIGN_CENTER);
-				obs_transition_set_scale_type(
-					item->transition,
-					OBS_TRANSITION_SCALE_ASPECT);
-				obs_transition_set(item->transition, source);
-				obs_transition_start(
-					item->transition,
-					obs_transition_fixed(item->transition)
-						? OBS_TRANSITION_MODE_AUTO
-						: OBS_TRANSITION_MODE_MANUAL,
-					obs_frontend_get_transition_duration(),
-					NULL);
-			}
-			obs_source_release(transition);
+		item->transition = get_transition(
+			item->transition_name, &move->transition_pool_out,
+			&move->transition_pool_out_index,
+			move->cache_transitions);
+		if (item->transition) {
+			obs_transition_set_size(item->transition, width,
+						height);
+			obs_transition_set_alignment(item->transition,
+						     OBS_ALIGN_CENTER);
+			obs_transition_set_scale_type(
+				item->transition, OBS_TRANSITION_SCALE_ASPECT);
+			obs_transition_set(item->transition, source);
+			obs_transition_start(
+				item->transition,
+				obs_transition_fixed(item->transition)
+					? OBS_TRANSITION_MODE_AUTO
+					: OBS_TRANSITION_MODE_MANUAL,
+				obs_frontend_get_transition_duration(), NULL);
 		}
 	} else if (!move_out && item->transition_name && !item->transition) {
-		obs_source_t *transition =
-			obs_frontend_get_transition(item->transition_name);
-		if (transition) {
-			if (obs_source_get_type(transition) ==
-			    OBS_SOURCE_TYPE_TRANSITION) {
-				item->transition = obs_source_duplicate(
-					transition, item->transition_name,
-					true);
-				obs_transition_set_size(item->transition, width,
-							height);
-				obs_transition_set_alignment(item->transition,
-							     OBS_ALIGN_CENTER);
-				obs_transition_set_scale_type(
-					item->transition,
-					OBS_TRANSITION_SCALE_ASPECT);
-				obs_transition_set(item->transition, NULL);
-				obs_transition_start(
-					item->transition,
-					obs_transition_fixed(item->transition)
-						? OBS_TRANSITION_MODE_AUTO
-						: OBS_TRANSITION_MODE_MANUAL,
-					obs_frontend_get_transition_duration(),
-					source);
-			}
-			obs_source_release(transition);
+		item->transition = get_transition(
+			item->transition_name, &move->transition_pool_in,
+			&move->transition_pool_in_index,
+			move->cache_transitions);
+
+		if (item->transition) {
+			obs_transition_set_size(item->transition, width,
+						height);
+			obs_transition_set_alignment(item->transition,
+						     OBS_ALIGN_CENTER);
+			obs_transition_set_scale_type(
+				item->transition, OBS_TRANSITION_SCALE_ASPECT);
+			obs_transition_set(item->transition, NULL);
+			obs_transition_start(
+				item->transition,
+				obs_transition_fixed(item->transition)
+					? OBS_TRANSITION_MODE_AUTO
+					: OBS_TRANSITION_MODE_MANUAL,
+				obs_frontend_get_transition_duration(), source);
 		}
 	}
 
@@ -1449,6 +1492,9 @@ static void move_video_render(void *data, gs_effect_t *effect)
 
 		clear_items(move);
 		move->matched_items = 0;
+		move->transition_pool_move_index = 0;
+		move->transition_pool_in_index = 0;
+		move->transition_pool_out_index = 0;
 		move->matched_scene_a = false;
 		move->matched_scene_b = false;
 		move->item_pos = 0;
@@ -1900,6 +1946,18 @@ static obs_properties_t *move_properties(void *data)
 	obs_properties_add_group(ppts, S_MATCH, obs_module_text("MatchName"),
 				 OBS_GROUP_NORMAL, group);
 
+	group = obs_properties_create();
+
+	obs_properties_add_bool(group, S_CACHE_TRANSITIONS,
+				obs_module_text("CacheTransitions"));
+
+	obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
+				      obs_module_text("SwitchPoint"), 0, 100,
+				      1);
+
+	obs_properties_add_group(ppts, S_MOVE_ALL, obs_module_text("MoveAll"),
+				 OBS_GROUP_NORMAL, group);
+
 	//Matched items
 	group = obs_properties_create();
 	p = obs_properties_add_list(group, S_EASING_MATCH,
@@ -1926,10 +1984,6 @@ static obs_properties_t *move_properties(void *data)
 	obs_properties_add_float_slider(group, S_CURVE_MATCH,
 					obs_module_text("Curve"), -2.0, 2.0,
 					0.01);
-
-	obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
-				      obs_module_text("SwitchPoint"), 0, 100,
-				      1);
 
 	obs_properties_add_group(ppts, S_MOVE_MATCH,
 				 obs_module_text("MoveMatch"), OBS_GROUP_NORMAL,
