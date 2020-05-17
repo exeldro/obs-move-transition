@@ -21,4 +21,5 @@ target_link_libraries(move-transition
 	obs-frontend-api
 	libobs)
 
+set_target_properties(move-transition PROPERTIES FOLDER "plugins/exeldro")
 install_obs_plugin_with_data(move-transition data)
