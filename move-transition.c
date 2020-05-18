@@ -83,9 +83,22 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	return move;
 }
 
-static void clear_items(struct move_info *move)
+static void clear_items(struct move_info *move, bool in_graphics)
 {
 	bool graphics = false;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if (item->item_render) {
+			if (!graphics && !in_graphics) {
+				obs_enter_graphics();
+				graphics = true;
+			}
+			gs_texrender_destroy(item->item_render);
+			item->item_render = NULL;
+		}
+	}
+	if (graphics)
+		obs_leave_graphics();
 
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
@@ -93,14 +106,7 @@ static void clear_items(struct move_info *move)
 		item->item_a = NULL;
 		obs_sceneitem_release(item->item_b);
 		item->item_b = NULL;
-		if (item->item_render) {
-			if (!graphics) {
-				obs_enter_graphics();
-				graphics = true;
-			}
-			gs_texrender_destroy(item->item_render);
-			item->item_render = NULL;
-		}
+
 		if (item->transition) {
 			obs_transition_force_stop(item->transition);
 			obs_transition_clear(item->transition);
@@ -110,8 +116,6 @@ static void clear_items(struct move_info *move)
 		bfree(item->transition_name);
 		bfree(item);
 	}
-	if (graphics)
-		obs_leave_graphics();
 	move->items_a.num = 0;
 	move->items_b.num = 0;
 }
@@ -128,7 +132,7 @@ void clear_transition_pool(void *data)
 static void move_destroy(void *data)
 {
 	struct move_info *move = data;
-	clear_items(move);
+	clear_items(move, false);
 	da_free(move->items_a);
 	da_free(move->items_b);
 	clear_transition_pool(&move->transition_pool_move);
@@ -1481,16 +1485,17 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	move->t = obs_transition_get_time(move->source);
 
 	if (move->start_init) {
-		if (move->scene_source_a)
-			obs_source_release(move->scene_source_a);
+		obs_source_t *old_scene_a = move->scene_source_a;
 		move->scene_source_a = obs_transition_get_source(
 			move->source, OBS_TRANSITION_SOURCE_A);
-		if (move->scene_source_b)
-			obs_source_release(move->scene_source_b);
+		obs_source_t *old_scene_b = move->scene_source_b;
 		move->scene_source_b = obs_transition_get_source(
 			move->source, OBS_TRANSITION_SOURCE_B);
 
-		clear_items(move);
+		obs_source_release(old_scene_a);
+		obs_source_release(old_scene_b);
+
+		clear_items(move, true);
 		move->matched_items = 0;
 		move->transition_pool_move_index = 0;
 		move->transition_pool_in_index = 0;
@@ -2084,14 +2089,7 @@ static void move_start(void *data)
 static void move_stop(void *data)
 {
 	struct move_info *move = data;
-	clear_items(move);
-	if (move->scene_source_a)
-		obs_source_release(move->scene_source_a);
-	move->scene_source_a = NULL;
-
-	if (move->scene_source_b)
-		obs_source_release(move->scene_source_b);
-	move->scene_source_b = NULL;
+	clear_items(move, false);
 }
 
 struct obs_source_info move_transition = {.id = "move_transition",
