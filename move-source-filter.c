@@ -28,6 +28,7 @@ struct move_source_info {
 	float running_duration;
 	uint32_t canvas_width;
 	uint32_t canvas_height;
+	uint32_t start_trigger;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -43,6 +44,7 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	}
 	return true;
 }
+
 void move_source_start(struct move_source_info *move_source)
 {
 	if (!move_source->scene_item && move_source->source_name) {
@@ -66,7 +68,19 @@ void move_source_start(struct move_source_info *move_source)
 	move_source->canvas_width = obs_source_get_width(scene_source);
 	move_source->canvas_height = obs_source_get_height(scene_source);
 	move_source->running_duration = 0.0f;
-	move_source->moving = true;
+	if (move_source->rot_from != move_source->rot_to ||
+	    move_source->pos_from.x != move_source->pos_to.x ||
+	    move_source->pos_from.y != move_source->pos_to.y ||
+	    move_source->scale_from.x != move_source->scale_to.x ||
+	    move_source->scale_from.y != move_source->scale_to.y ||
+	    move_source->bounds_from.x != move_source->bounds_to.x ||
+	    move_source->bounds_from.y != move_source->bounds_to.y ||
+	    move_source->crop_from.left != move_source->crop_to.left ||
+	    move_source->crop_from.top != move_source->crop_to.top ||
+	    move_source->crop_from.right != move_source->crop_to.right ||
+	    move_source->crop_from.bottom != move_source->crop_to.bottom) {
+		move_source->moving = true;
+	}
 }
 
 bool move_source_start_button(obs_properties_t *props, obs_property_t *property,
@@ -133,6 +147,8 @@ void move_source_update(void *data, obs_data_t *settings)
 		(int)obs_data_get_int(settings, S_CROP_RIGHT);
 	move_source->crop_to.bottom =
 		(int)obs_data_get_int(settings, S_CROP_BOTTOM);
+	move_source->start_trigger =
+		obs_data_get_int(settings, S_START_TRIGGER);
 }
 
 void update_transform_text(obs_data_t *settings)
@@ -317,6 +333,21 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_properties_add_float_slider(
 		ppts, S_CURVE_MATCH, obs_module_text("Curve"), -2.0, 2.0, 0.01);
 
+	p = obs_properties_add_list(ppts, S_START_TRIGGER,
+				    obs_module_text("StartTrigger"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.None"),
+				  START_TRIGGER_NONE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Activate"),
+				  START_TRIGGER_ACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Deactivate"),
+				  START_TRIGGER_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Show"),
+				  START_TRIGGER_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"),
+				  START_TRIGGER_HIDE);
+
 	obs_properties_add_button(ppts, "move_source_start",
 				  obs_module_text("Start"),
 				  move_source_start_button);
@@ -453,6 +484,34 @@ void move_source_tick(void *data, float seconds)
 	obs_sceneitem_defer_update_end(move_source->scene_item);
 }
 
+void move_source_activate(void *data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_ACTIVATE)
+		move_source_start(move_source);
+}
+
+void move_source_deactivate(void *data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_DEACTIVATE)
+		move_source_start(move_source);
+}
+
+void move_source_show(void *data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_SHOW)
+		move_source_start(move_source);
+}
+
+void move_source_hide(void *data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_HIDE)
+		move_source_start(move_source);
+}
+
 struct obs_source_info move_source_filter = {
 	.id = "move_source_filter",
 	.type = OBS_SOURCE_TYPE_FILTER,
@@ -465,4 +524,8 @@ struct obs_source_info move_source_filter = {
 	.video_render = move_source_video_render,
 	.video_tick = move_source_tick,
 	.update = move_source_update,
+	.activate = move_source_activate,
+	.deactivate = move_source_deactivate,
+	.show = move_source_show,
+	.hide = move_source_hide,
 };

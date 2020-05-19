@@ -43,6 +43,7 @@
 #define S_TRANSFORM_TEXT "transform_text"
 #define S_SWITCH_PERCENTAGE "switch_percentage"
 #define S_CACHE_TRANSITIONS "cache_transitions"
+#define S_START_TRIGGER "start_trigger"
 
 #define NO_OVERRIDE (-1)
 
@@ -73,3 +74,9 @@
 #define POS_TOP (1 << 4)
 #define POS_BOTTOM (1 << 5)
 #define POS_SWIPE (1 << 6)
+
+#define START_TRIGGER_NONE 0
+#define START_TRIGGER_ACTIVATE 1
+#define START_TRIGGER_DEACTIVATE 2
+#define START_TRIGGER_SHOW 3
+#define START_TRIGGER_HIDE 4
