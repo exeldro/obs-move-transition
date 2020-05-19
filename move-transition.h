@@ -44,6 +44,8 @@
 #define S_SWITCH_PERCENTAGE "switch_percentage"
 #define S_CACHE_TRANSITIONS "cache_transitions"
 #define S_START_TRIGGER "start_trigger"
+#define S_START_DELAY "start_delay"
+#define S_NEXT_MOVE "next_move"
 
 #define NO_OVERRIDE (-1)
 

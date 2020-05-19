@@ -24,12 +24,14 @@ struct move_source_info {
 	struct obs_sceneitem_crop crop_from;
 	struct obs_sceneitem_crop crop_to;
 	uint64_t duration;
+	uint64_t start_delay;
 	bool moving;
 	float running_duration;
 	uint32_t canvas_width;
 	uint32_t canvas_height;
 	uint32_t start_trigger;
 	bool enabled;
+	char *next_move_name;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -132,6 +134,7 @@ void move_source_update(void *data, obs_data_t *settings)
 			data);
 	}
 	move_source->duration = obs_data_get_int(settings, S_DURATION);
+	move_source->start_delay = obs_data_get_int(settings, S_START_DELAY);
 	move_source->curve =
 		(float)obs_data_get_double(settings, S_CURVE_MATCH);
 	move_source->easing = obs_data_get_int(settings, S_EASING_MATCH);
@@ -150,6 +153,13 @@ void move_source_update(void *data, obs_data_t *settings)
 		(int)obs_data_get_int(settings, S_CROP_BOTTOM);
 	move_source->start_trigger =
 		obs_data_get_int(settings, S_START_TRIGGER);
+
+	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
+	if (!move_source->next_move_name ||
+	    strcmp(move_source->next_move_name, next_move_name) != 0) {
+		bfree(move_source->next_move_name);
+		move_source->next_move_name = bstrdup(next_move_name);
+	}
 }
 
 void update_transform_text(obs_data_t *settings)
@@ -220,6 +230,9 @@ static void move_source_destroy(void *data)
 	struct move_source_info *move_source = data;
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
+	bfree(move_source->source_name);
+	bfree(move_source->filter_name);
+	bfree(move_source->next_move_name);
 	bfree(move_source);
 }
 
@@ -290,6 +303,16 @@ bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item,
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
 
+void prop_list_add_filter(obs_source_t *parent, obs_source_t *child, void *data)
+{
+	UNUSED_PARAMETER(parent);
+	if (strcmp(obs_source_get_id(child), "move_source_filter") != 0)
+		return;
+	obs_property_t *p = data;
+	const char *name = obs_source_get_name(child);
+	obs_property_list_add_string(p, name, name);
+}
+
 static obs_properties_t *move_source_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
@@ -316,6 +339,11 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_properties_add_button(ppts, "transform_get",
 				  obs_module_text("GetTransform"),
 				  move_source_get_transform);
+
+	p = obs_properties_add_int(ppts, S_START_DELAY,
+				   obs_module_text("StartDelay"), 0, 10000000,
+				   100);
+	obs_property_int_set_suffix(p, "ms");
 
 	p = obs_properties_add_int(
 		ppts, S_DURATION, obs_module_text("Duration"), 10, 100000, 100);
@@ -350,6 +378,13 @@ static obs_properties_t *move_source_properties(void *data)
 				  START_TRIGGER_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
 				  START_TRIGGER_ENABLE);
+
+	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
+				    obs_module_text("NextMove"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("None"), "");
+	obs_source_enum_filters(parent, prop_list_add_filter, p);
 
 	obs_properties_add_button(ppts, "move_source_start",
 				  obs_module_text("Start"),
@@ -412,7 +447,11 @@ void move_source_tick(void *data, float seconds)
 		return;
 	}
 	move_source->running_duration += seconds;
-	float t = move_source->running_duration * 1000.0f /
+	if (move_source->running_duration * 1000.0f < move_source->start_delay)
+		return;
+
+	float t = (move_source->running_duration * 1000.0f -
+		   (float)move_source->start_delay) /
 		  (float)move_source->duration;
 	if (t >= 1.0f) {
 		t = 1.0f;
@@ -491,6 +530,22 @@ void move_source_tick(void *data, float seconds)
 			    ot * (float)move_source->crop_to.bottom);
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
 	obs_sceneitem_defer_update_end(move_source->scene_item);
+	if (!move_source->moving && move_source->next_move_name &&
+	    strlen(move_source->next_move_name) &&
+	    (!move_source->filter_name ||
+	     strcmp(move_source->filter_name, move_source->next_move_name) !=
+		     0)) {
+		obs_source_t *parent =
+			obs_filter_get_parent(move_source->source);
+		if (parent) {
+			obs_source_t *filter = obs_source_get_filter_by_name(
+				parent, move_source->next_move_name);
+			if (filter && strcmp(obs_source_get_id(filter),
+					     "move_source_filter") == 0) {
+				move_source_start(obs_obj_get_data(filter));
+			}
+		}
+	}
 }
 
 void move_source_activate(void *data)
