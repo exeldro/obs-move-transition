@@ -29,6 +29,7 @@ struct move_source_info {
 	uint32_t canvas_width;
 	uint32_t canvas_height;
 	uint32_t start_trigger;
+	bool enabled;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -347,6 +348,8 @@ static obs_properties_t *move_source_properties(void *data)
 				  START_TRIGGER_SHOW);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"),
 				  START_TRIGGER_HIDE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
+				  START_TRIGGER_ENABLE);
 
 	obs_properties_add_button(ppts, "move_source_start",
 				  obs_module_text("Start"),
@@ -394,8 +397,14 @@ void move_source_tick(void *data, float seconds)
 					move_source->filter_name,
 					move_source_start_hotkey, data);
 	}
-
-	if (!move_source->moving)
+	const bool enabled = obs_source_enabled(move_source->source);
+	if (move_source->enabled != enabled) {
+		if (enabled &&
+		    move_source->start_trigger == START_TRIGGER_ENABLE)
+			move_source_start(move_source);
+		move_source->enabled = enabled;
+	}
+	if (!move_source->moving || !enabled)
 		return;
 
 	if (!move_source->scene_item || !move_source->duration) {
