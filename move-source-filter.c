@@ -383,7 +383,7 @@ static obs_properties_t *move_source_properties(void *data)
 				    obs_module_text("NextMove"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
-	obs_property_list_add_string(p, obs_module_text("None"), "");
+	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
 	obs_source_enum_filters(parent, prop_list_add_filter, p);
 
 	obs_properties_add_button(ppts, "move_source_start",
@@ -447,8 +447,20 @@ void move_source_tick(void *data, float seconds)
 		return;
 	}
 	move_source->running_duration += seconds;
-	if (move_source->running_duration * 1000.0f < move_source->start_delay)
+	if (move_source->running_duration * 1000.0f <
+	    move_source->start_delay) {
+		move_source->rot_from =
+			obs_sceneitem_get_rot(move_source->scene_item);
+		obs_sceneitem_get_pos(move_source->scene_item,
+				      &move_source->pos_from);
+		obs_sceneitem_get_scale(move_source->scene_item,
+					&move_source->scale_from);
+		obs_sceneitem_get_bounds(move_source->scene_item,
+					 &move_source->bounds_from);
+		obs_sceneitem_get_crop(move_source->scene_item,
+				       &move_source->crop_from);
 		return;
+	}
 
 	float t = (move_source->running_duration * 1000.0f -
 		   (float)move_source->start_delay) /
