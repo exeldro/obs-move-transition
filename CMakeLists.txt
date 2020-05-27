@@ -7,6 +7,7 @@ set(move-transition_SOURCES
 	move-transition.c
 	move-transition-override-filter.c
 	move-source-filter.c
+	move-value-filter.c
 	easing.c)
 
 if(WIN32)

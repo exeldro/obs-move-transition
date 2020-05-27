@@ -1,6 +1,6 @@
 1 VERSIONINFO
- FILEVERSION 1,4,0,0
- PRODUCTVERSION 1,4,0,0
+ FILEVERSION 1,5,0,0
+ PRODUCTVERSION 1,5,0,0
  FILEFLAGSMASK 0x0L
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -17,12 +17,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Exeldro"
             VALUE "FileDescription", "Move transition"
-            VALUE "FileVersion", "1.4.0"
+            VALUE "FileVersion", "1.5.0"
             VALUE "InternalName", "move-transition"
             VALUE "LegalCopyright", "(C) Exeldro"
             VALUE "OriginalFilename", "move-transition"
             VALUE "ProductName", "Move transition"
-            VALUE "ProductVersion", "1.4.0"
+            VALUE "ProductVersion", "1.5.0"
         END
     END
     BLOCK "VarFileInfo"

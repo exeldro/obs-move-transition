@@ -303,7 +303,8 @@ bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item,
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
 
-void prop_list_add_filter(obs_source_t *parent, obs_source_t *child, void *data)
+void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
+				      void *data)
 {
 	UNUSED_PARAMETER(parent);
 	if (strcmp(obs_source_get_id(child), "move_source_filter") != 0)
@@ -384,7 +385,7 @@ static obs_properties_t *move_source_properties(void *data)
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
-	obs_source_enum_filters(parent, prop_list_add_filter, p);
+	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
 
 	obs_properties_add_button(ppts, "move_source_start",
 				  obs_module_text("Start"),

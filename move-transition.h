@@ -46,6 +46,10 @@
 #define S_START_TRIGGER "start_trigger"
 #define S_START_DELAY "start_delay"
 #define S_NEXT_MOVE "next_move"
+#define S_FILTER "filter"
+#define S_SETTING_NAME "setting_name"
+#define S_SETTING_INT "setting_int"
+#define S_SETTING_FLOAT "setting_float"
 
 #define NO_OVERRIDE (-1)
 
