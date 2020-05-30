@@ -1,5 +1,6 @@
 #include "move-transition.h"
 #include <obs-module.h>
+#include <stdio.h>
 #include <util/dstr.h>
 
 struct move_source_info {
@@ -164,36 +165,24 @@ void move_source_update(void *data, obs_data_t *settings)
 
 void update_transform_text(obs_data_t *settings)
 {
-	struct dstr transform_text;
-	dstr_init(&transform_text);
-	struct dstr buffer;
-	dstr_init(&buffer);
-
 	struct vec2 pos;
 	obs_data_get_vec2(settings, S_POS, &pos);
-	dstr_printf(&buffer, "pos: {%.1f,%.1f}", pos.x, pos.y);
-	dstr_cat_dstr(&transform_text, &buffer);
 	const double rot = obs_data_get_double(settings, S_ROT);
-	dstr_printf(&buffer, ", rot: %.1f", rot);
-	dstr_cat_dstr(&transform_text, &buffer);
 	struct vec2 scale;
 	obs_data_get_vec2(settings, S_SCALE, &scale);
-	dstr_printf(&buffer, ", scale: {%.1f,%.1f}", scale.x, scale.y);
-	dstr_cat_dstr(&transform_text, &buffer);
 	struct vec2 bounds;
 	obs_data_get_vec2(settings, S_BOUNDS, &bounds);
-	dstr_printf(&buffer, ", bounds: {%.1f,%.1f}", bounds.x, bounds.y);
-	dstr_cat_dstr(&transform_text, &buffer);
-
-	dstr_printf(&buffer, ", crop: {%d,%d,%d,%d}",
-		    (int)obs_data_get_int(settings, S_CROP_LEFT),
-		    (int)obs_data_get_int(settings, S_CROP_TOP),
-		    (int)obs_data_get_int(settings, S_CROP_RIGHT),
-		    (int)obs_data_get_int(settings, S_CROP_BOTTOM));
-	dstr_cat_dstr(&transform_text, &buffer);
-	obs_data_set_string(settings, S_TRANSFORM_TEXT, transform_text.array);
-	dstr_free(&buffer);
-	dstr_free(&transform_text);
+	char transform_text[500];
+	snprintf(
+		transform_text, 500,
+		"pos: {%.0f,%.0f}, rot: %.1f, scale: {%.3f,%.3f}, bounds: {%.0f,%.0f}, crop: {%d,%d,%d,%d}",
+		pos.x, pos.y, rot, scale.x, scale.y, bounds.x, bounds.y,
+		(int)obs_data_get_int(settings, S_CROP_LEFT),
+		(int)obs_data_get_int(settings, S_CROP_TOP),
+		(int)obs_data_get_int(settings, S_CROP_RIGHT),
+		(int)obs_data_get_int(settings, S_CROP_BOTTOM));
+	obs_data_set_string(settings, S_TRANSFORM_TEXT, transform_text);
+	return;
 }
 
 void move_source_source_rename(void *data, calldata_t *call_data)
@@ -314,6 +303,39 @@ void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
 	obs_property_list_add_string(p, name, name);
 }
 
+bool move_source_transform_text_changed(void *data, obs_properties_t *props,
+					obs_property_t *property,
+					obs_data_t *settings)
+{
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
+	UNUSED_PARAMETER(data);
+	const char *transform_text =
+		obs_data_get_string(settings, S_TRANSFORM_TEXT);
+	struct vec2 pos;
+	float rot;
+	struct vec2 scale;
+	struct vec2 bounds;
+	struct obs_sceneitem_crop crop;
+	if (sscanf(transform_text,
+		   "pos: {%f,%f}, rot: %f, scale: {%f,%f}, bounds: {%f,%f}, crop: {%d,%d,%d,%d}",
+		   &pos.x, &pos.y, &rot, &scale.x, &scale.y, &bounds.x,
+		   &bounds.y, &crop.left, &crop.top, &crop.right,
+		   &crop.bottom) == 11) {
+		obs_data_set_vec2(settings, S_POS, &pos);
+		obs_data_set_double(settings, S_ROT, rot);
+		obs_data_set_vec2(settings, S_SCALE, &scale);
+		obs_data_set_vec2(settings, S_BOUNDS, &bounds);
+		obs_data_set_int(settings, S_CROP_LEFT, crop.left);
+		obs_data_set_int(settings, S_CROP_TOP, crop.top);
+		obs_data_set_int(settings, S_CROP_RIGHT, crop.right);
+		obs_data_set_int(settings, S_CROP_BOTTOM, crop.bottom);
+	} else {
+		update_transform_text(settings);
+	}
+	return true;
+}
+
 static obs_properties_t *move_source_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
@@ -336,7 +358,8 @@ static obs_properties_t *move_source_properties(void *data)
 	p = obs_properties_add_text(ppts, S_TRANSFORM_TEXT,
 				    obs_module_text("Transform"),
 				    OBS_TEXT_DEFAULT);
-	obs_property_set_enabled(p, false);
+	obs_property_set_modified_callback2(
+		p, move_source_transform_text_changed, data);
 	obs_properties_add_button(ppts, "transform_get",
 				  obs_module_text("GetTransform"),
 				  move_source_get_transform);
