@@ -50,6 +50,7 @@
 #define S_SETTING_NAME "setting_name"
 #define S_SETTING_INT "setting_int"
 #define S_SETTING_FLOAT "setting_float"
+#define S_TRANSFORM_RELATIVE "transform_relative"
 
 #define NO_OVERRIDE (-1)
 
