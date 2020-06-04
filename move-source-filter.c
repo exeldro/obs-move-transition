@@ -359,7 +359,7 @@ void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
 				      void *data)
 {
 	UNUSED_PARAMETER(parent);
-	if (strcmp(obs_source_get_id(child), "move_source_filter") != 0)
+	if (strcmp(obs_source_get_id(child), MOVE_SOURCE_FILTER_ID) != 0)
 		return;
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(child);
@@ -742,7 +742,7 @@ void move_source_tick(void *data, float seconds)
 			obs_source_t *filter = obs_source_get_filter_by_name(
 				parent, move_source->next_move_name);
 			if (filter && strcmp(obs_source_get_id(filter),
-					     "move_source_filter") == 0) {
+					     MOVE_SOURCE_FILTER_ID) == 0) {
 				move_source_start(obs_obj_get_data(filter));
 			}
 		}
@@ -778,7 +778,7 @@ void move_source_hide(void *data)
 }
 
 struct obs_source_info move_source_filter = {
-	.id = "move_source_filter",
+	.id = MOVE_SOURCE_FILTER_ID,
 	.type = OBS_SOURCE_TYPE_FILTER,
 	.output_flags = OBS_SOURCE_VIDEO,
 	.get_name = move_source_get_name,

@@ -26,6 +26,11 @@ struct move_value_info {
 
 	double double_to;
 	double double_from;
+
+	struct vec4 color_to;
+	struct vec4 color_from;
+
+	long long value_type;
 };
 
 void move_value_start(struct move_value_info *move_value)
@@ -34,15 +39,42 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
-	move_value->int_from = obs_data_get_int(ss, move_value->setting_name);
-	move_value->double_from =
-		obs_data_get_double(ss, move_value->setting_name);
-	obs_data_release(ss);
-	if (move_value->int_from != move_value->int_to ||
-	    move_value->double_from != move_value->double_to) {
-		move_value->running_duration = 0.0f;
-		move_value->moving = true;
+	if (move_value->value_type == MOVE_VALUE_INT) {
+		move_value->int_from =
+			obs_data_get_int(ss, move_value->setting_name);
+		if (move_value->int_from != move_value->int_to) {
+			move_value->running_duration = 0.0f;
+			move_value->moving = true;
+		}
+	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
+		move_value->double_from =
+			obs_data_get_double(ss, move_value->setting_name);
+		if (move_value->double_from != move_value->double_to) {
+			move_value->running_duration = 0.0f;
+			move_value->moving = true;
+		}
+	} else if (move_value->value_type == MOVE_VALUE_COLOR) {
+		vec4_from_rgba(&move_value->color_from,
+			       obs_data_get_int(ss, move_value->setting_name));
+		if (move_value->color_from.x != move_value->color_to.x ||
+		    move_value->color_from.y != move_value->color_to.y ||
+		    move_value->color_from.z != move_value->color_to.z ||
+		    move_value->color_from.w != move_value->color_to.w) {
+			move_value->running_duration = 0.0f;
+			move_value->moving = true;
+		}
+	} else {
+		move_value->int_from =
+			obs_data_get_int(ss, move_value->setting_name);
+		move_value->double_from =
+			obs_data_get_double(ss, move_value->setting_name);
+		if (move_value->int_from != move_value->int_to ||
+		    move_value->double_from != move_value->double_to) {
+			move_value->running_duration = 0.0f;
+			move_value->moving = true;
+		}
 	}
+	obs_data_release(ss);
 }
 
 bool move_value_start_button(obs_properties_t *props, obs_property_t *property,
@@ -93,8 +125,11 @@ void move_value_update(void *data, obs_data_t *settings)
 		move_value->setting_name = bstrdup(setting_name);
 	}
 
+	move_value->value_type = obs_data_get_int(settings, S_VALUE_TYPE);
 	move_value->int_to = obs_data_get_int(settings, S_SETTING_INT);
 	move_value->double_to = obs_data_get_double(settings, S_SETTING_FLOAT);
+	vec4_from_rgba(&move_value->color_to,
+		       obs_data_get_int(settings, S_SETTING_COLOR));
 
 	move_value->duration = obs_data_get_int(settings, S_DURATION);
 	move_value->start_delay = obs_data_get_int(settings, S_START_DELAY);
@@ -178,6 +213,11 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 			settings, S_SETTING_FLOAT,
 			obs_data_get_double(ss, move_value->setting_name));
 		settings_changed = true;
+	} else if (prop_type == OBS_PROPERTY_COLOR) {
+		obs_data_set_int(settings, S_SETTING_COLOR,
+				 obs_data_get_int(ss,
+						  move_value->setting_name));
+		settings_changed = true;
 	}
 	obs_data_release(settings);
 	return settings_changed;
@@ -192,15 +232,6 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	obs_property_t *p = obs_properties_get(props, S_SETTING_NAME);
 
 	const char *filter_name = obs_data_get_string(settings, S_FILTER);
-	/*if (filter_name && strlen(filter_name) && move_value->filter &&
-	    strcmp(filter_name, obs_source_get_name(move_value->filter)) == 0 &&
-	    obs_property_list_item_count(p))
-		return refresh;
-
-	if ((!filter_name || !strlen(filter_name)) && !move_value->filter &&
-	    obs_property_list_item_count(p))
-		return refresh;*/
-
 	refresh = true;
 
 	obs_source_release(move_value->filter);
@@ -263,10 +294,13 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 
 	obs_property_t *prop_int = obs_properties_get(props, S_SETTING_INT);
 	obs_property_t *prop_float = obs_properties_get(props, S_SETTING_FLOAT);
+	obs_property_t *prop_color = obs_properties_get(props, S_SETTING_COLOR);
+	obs_property_set_visible(prop_int, false);
+	obs_property_set_visible(prop_float, false);
+	obs_property_set_visible(prop_color, false);
 	enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INT) {
 		obs_property_set_visible(prop_int, true);
-		obs_property_set_visible(prop_float, false);
 		obs_property_int_set_limits(prop_float,
 					    obs_property_int_min(sp),
 					    obs_property_int_max(sp),
@@ -276,8 +310,8 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 		if (refresh)
 			obs_data_set_int(settings, S_SETTING_INT,
 					 obs_data_get_int(ss, setting_name));
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_INT);
 	} else if (prop_type == OBS_PROPERTY_FLOAT) {
-		obs_property_set_visible(prop_int, false);
 		obs_property_set_visible(prop_float, true);
 		obs_property_float_set_limits(prop_float,
 					      obs_property_float_min(sp),
@@ -289,9 +323,15 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 			obs_data_set_double(settings, S_SETTING_FLOAT,
 					    obs_data_get_double(ss,
 								setting_name));
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+	} else if (prop_type == OBS_PROPERTY_COLOR) {
+		obs_property_set_visible(prop_color, true);
+		if (refresh)
+			obs_data_set_int(settings, S_SETTING_COLOR,
+					 obs_data_get_int(ss, setting_name));
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_COLOR);
 	} else {
-		obs_property_set_visible(prop_int, false);
-		obs_property_set_visible(prop_float, false);
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_UNKNOWN);
 	}
 	obs_data_release(ss);
 	return refresh;
@@ -319,10 +359,15 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_set_modified_callback2(p, move_value_setting_changed,
 					    data);
 
-	obs_properties_add_int(ppts, S_SETTING_INT, obs_module_text("Value"), 0,
-			       0, 0);
-	obs_properties_add_float(ppts, S_SETTING_FLOAT,
-				 obs_module_text("Value"), 0, 0, 0);
+	p = obs_properties_add_int(ppts, S_SETTING_INT,
+				   obs_module_text("Value"), 0, 0, 0);
+	obs_property_set_visible(p, false);
+	p = obs_properties_add_float(ppts, S_SETTING_FLOAT,
+				     obs_module_text("Value"), 0, 0, 0);
+	obs_property_set_visible(p, false);
+	p = obs_properties_add_color(ppts, S_SETTING_COLOR,
+				     obs_module_text("Value"));
+	obs_property_set_visible(p, false);
 
 	obs_properties_add_button(ppts, "value_get",
 				  obs_module_text("GetValue"),
@@ -466,18 +511,46 @@ void move_value_tick(void *data, float seconds)
 	obs_data_t *ss = obs_source_get_settings(source);
 	obs_data_item_t *item =
 		obs_data_item_byname(ss, move_value->setting_name);
-	enum obs_data_number_type item_type = obs_data_item_numtype(item);
+
 	obs_data_item_release(&item);
-	if (item_type == OBS_DATA_NUM_INT) {
+	if (move_value->value_type == MOVE_VALUE_INT) {
 		const long long value_int =
-			(1.0f - t) * (double)move_value->int_from +
+			(1.0 - t) * (double)move_value->int_from +
 			t * (double)move_value->int_to;
 		obs_data_set_int(ss, move_value->setting_name, value_int);
-	} else if (item_type == OBS_DATA_NUM_DOUBLE) {
+	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		const double value_double =
-			(1.0f - t) * move_value->double_from +
+			(1.0 - t) * move_value->double_from +
 			t * move_value->double_to;
 		obs_data_set_double(ss, move_value->setting_name, value_double);
+	} else if (move_value->value_type == MOVE_VALUE_COLOR) {
+		struct vec4 color;
+		color.w = (1.0f - t) * move_value->color_from.w +
+			  t * move_value->color_to.w;
+		color.x = (1.0f - t) * move_value->color_from.x +
+			  t * move_value->color_to.x;
+		color.y = (1.0f - t) * move_value->color_from.y +
+			  t * move_value->color_to.y;
+		color.z = (1.0f - t) * move_value->color_from.z +
+			  t * move_value->color_to.z;
+		const long long value_int = vec4_to_rgba(&color);
+		obs_data_set_int(ss, move_value->setting_name, value_int);
+	} else {
+		enum obs_data_number_type item_type =
+			obs_data_item_numtype(item);
+		if (item_type == OBS_DATA_NUM_INT) {
+			const long long value_int =
+				(1.0 - t) * (double)move_value->int_from +
+				t * (double)move_value->int_to;
+			obs_data_set_int(ss, move_value->setting_name,
+					 value_int);
+		} else if (item_type == OBS_DATA_NUM_DOUBLE) {
+			const double value_double =
+				(1.0 - t) * move_value->double_from +
+				t * move_value->double_to;
+			obs_data_set_double(ss, move_value->setting_name,
+					    value_double);
+		}
 	}
 	obs_data_release(ss);
 	obs_source_update(source, NULL);

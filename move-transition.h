@@ -1,5 +1,7 @@
 #pragma once
 
+#define MOVE_SOURCE_FILTER_ID "move_source_filter"
+
 #define S_MATCH "match"
 #define S_MOVE_ALL "move_all"
 #define S_MOVE_MATCH "move_match"
@@ -50,6 +52,8 @@
 #define S_SETTING_NAME "setting_name"
 #define S_SETTING_INT "setting_int"
 #define S_SETTING_FLOAT "setting_float"
+#define S_SETTING_COLOR "setting_color"
+#define S_VALUE_TYPE "value_type"
 #define S_TRANSFORM_RELATIVE "transform_relative"
 
 #define NO_OVERRIDE (-1)
@@ -88,3 +92,8 @@
 #define START_TRIGGER_SHOW 3
 #define START_TRIGGER_HIDE 4
 #define START_TRIGGER_ENABLE 5
+
+#define MOVE_VALUE_UNKNOWN 0
+#define MOVE_VALUE_INT 1
+#define MOVE_VALUE_FLOAT 2
+#define MOVE_VALUE_COLOR 3
