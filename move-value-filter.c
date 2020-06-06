@@ -204,19 +204,19 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
 	obs_data_t *settings = obs_source_get_settings(move_value->source);
 	if (prop_type == OBS_PROPERTY_INT) {
-		obs_data_set_int(settings, S_SETTING_INT,
-				 obs_data_get_int(ss,
-						  move_value->setting_name));
+		const long long value =
+			obs_data_get_int(ss, move_value->setting_name);
+		obs_data_set_int(settings, S_SETTING_INT, value);
 		settings_changed = true;
 	} else if (prop_type == OBS_PROPERTY_FLOAT) {
-		obs_data_set_double(
-			settings, S_SETTING_FLOAT,
-			obs_data_get_double(ss, move_value->setting_name));
+		const double value =
+			obs_data_get_double(ss, move_value->setting_name);
+		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		settings_changed = true;
 	} else if (prop_type == OBS_PROPERTY_COLOR) {
-		obs_data_set_int(settings, S_SETTING_COLOR,
-				 obs_data_get_int(ss,
-						  move_value->setting_name));
+		const long long color =
+			obs_data_get_int(ss, move_value->setting_name);
+		obs_data_set_int(settings, S_SETTING_COLOR, color);
 		settings_changed = true;
 	}
 	obs_data_release(settings);
@@ -244,6 +244,7 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	}
 
 	obs_property_list_clear(p);
+	obs_property_list_add_string(p, obs_module_text("Setting.None"), "");
 
 	obs_source_t *source = move_value->filter ? move_value->filter : parent;
 	obs_data_t *s = obs_source_get_settings(source);
@@ -301,11 +302,10 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INT) {
 		obs_property_set_visible(prop_int, true);
-		obs_property_int_set_limits(prop_float,
-					    obs_property_int_min(sp),
+		obs_property_int_set_limits(prop_int, obs_property_int_min(sp),
 					    obs_property_int_max(sp),
 					    obs_property_int_step(sp));
-		obs_property_int_set_suffix(prop_float,
+		obs_property_int_set_suffix(prop_int,
 					    obs_property_int_suffix(sp));
 		if (refresh)
 			obs_data_set_int(settings, S_SETTING_INT,
@@ -355,6 +355,8 @@ static obs_properties_t *move_value_properties(void *data)
 				    obs_module_text("Setting"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_list_add_string(p, obs_module_text("Setting.None"), "");
 
 	obs_property_set_modified_callback2(p, move_value_setting_changed,
 					    data);
