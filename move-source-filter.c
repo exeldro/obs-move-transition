@@ -38,6 +38,8 @@ struct move_source_info {
 	DARRAY(obs_source_t *) filters_done;
 
 	long long next_move_on;
+	long long change_visibility;
+	bool visibility_toggled;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -93,6 +95,14 @@ void move_source_start(struct move_source_info *move_source)
 	}
 	if (!move_source->scene_item)
 		return;
+	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW ||
+	     move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE) &&
+	    !obs_sceneitem_visible(move_source->scene_item)) {
+		obs_sceneitem_set_visible(move_source->scene_item, true);
+		move_source->visibility_toggled = true;
+	} else {
+		move_source->visibility_toggled = false;
+	}
 	move_source->rot_from = obs_sceneitem_get_rot(move_source->scene_item);
 	obs_sceneitem_get_pos(move_source->scene_item, &move_source->pos_from);
 	obs_sceneitem_get_scale(move_source->scene_item,
@@ -230,6 +240,8 @@ void move_source_update(void *data, obs_data_t *settings)
 			move_source->filter_name, move_source_start_hotkey,
 			data);
 	}
+	move_source->change_visibility =
+		obs_data_get_int(settings, S_CHANGE_VISIBILITY);
 	move_source->duration = obs_data_get_int(settings, S_DURATION);
 	move_source->start_delay = obs_data_get_int(settings, S_START_DELAY);
 	move_source->curve =
@@ -592,6 +604,18 @@ static obs_properties_t *move_source_properties(void *data)
 				  obs_module_text("GetTransform"),
 				  move_source_get_transform);
 
+	p = obs_properties_add_list(ppts, S_CHANGE_VISIBILITY,
+				    obs_module_text("ChangeVisibility"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.No"),
+				  CHANGE_VISIBILITY_NONE);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Show"),
+				  CHANGE_VISIBILITY_SHOW);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Hide"),
+				  CHANGE_VISIBILITY_HIDE);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Toggle"),
+				  CHANGE_VISIBILITY_TOGGLE);
+
 	p = obs_properties_add_int(ppts, S_START_DELAY,
 				   obs_module_text("StartDelay"), 0, 10000000,
 				   100);
@@ -805,21 +829,35 @@ void move_source_tick(void *data, float seconds)
 			    ot * (float)move_source->crop_to.bottom);
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
 	obs_sceneitem_defer_update_end(move_source->scene_item);
-	if (move_source->next_move_on == NEXT_MOVE_ON_END &&
-	    !move_source->moving && move_source->next_move_name &&
-	    strlen(move_source->next_move_name) &&
-	    (!move_source->filter_name ||
-	     strcmp(move_source->filter_name, move_source->next_move_name) !=
-		     0)) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_source->source);
-		if (parent) {
-			obs_source_t *filter = obs_source_get_filter_by_name(
-				parent, move_source->next_move_name);
-			if (filter &&
-			    strcmp(obs_source_get_unversioned_id(filter),
-				   MOVE_SOURCE_FILTER_ID) == 0) {
-				move_source_start(obs_obj_get_data(filter));
+	if (!move_source->moving) {
+		if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE) {
+			obs_sceneitem_set_visible(move_source->scene_item,
+						  false);
+		} else if (move_source->change_visibility ==
+				   CHANGE_VISIBILITY_TOGGLE &&
+			   !move_source->visibility_toggled) {
+			obs_sceneitem_set_visible(move_source->scene_item,
+						  false);
+		}
+		if (move_source->next_move_on == NEXT_MOVE_ON_END &&
+		    move_source->next_move_name &&
+		    strlen(move_source->next_move_name) &&
+		    (!move_source->filter_name ||
+		     strcmp(move_source->filter_name,
+			    move_source->next_move_name) != 0)) {
+			obs_source_t *parent =
+				obs_filter_get_parent(move_source->source);
+			if (parent) {
+				obs_source_t *filter =
+					obs_source_get_filter_by_name(
+						parent,
+						move_source->next_move_name);
+				if (filter &&
+				    strcmp(obs_source_get_unversioned_id(filter),
+					   MOVE_SOURCE_FILTER_ID) == 0) {
+					move_source_start(
+						obs_obj_get_data(filter));
+				}
 			}
 		}
 	}

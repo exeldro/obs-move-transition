@@ -56,6 +56,7 @@
 #define S_SETTING_COLOR "setting_color"
 #define S_VALUE_TYPE "value_type"
 #define S_TRANSFORM_RELATIVE "transform_relative"
+#define S_CHANGE_VISIBILITY "change_visibility"
 
 #define NO_OVERRIDE (-1)
 
@@ -101,3 +102,8 @@
 
 #define NEXT_MOVE_ON_END 0
 #define NEXT_MOVE_ON_HOTKEY 1
+
+#define CHANGE_VISIBILITY_NONE 0
+#define CHANGE_VISIBILITY_SHOW 1
+#define CHANGE_VISIBILITY_HIDE 2
+#define CHANGE_VISIBILITY_TOGGLE 3
