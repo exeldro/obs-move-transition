@@ -48,6 +48,7 @@
 #define S_START_TRIGGER "start_trigger"
 #define S_START_DELAY "start_delay"
 #define S_NEXT_MOVE "next_move"
+#define S_NEXT_MOVE_ON "next_move_on"
 #define S_FILTER "filter"
 #define S_SETTING_NAME "setting_name"
 #define S_SETTING_INT "setting_int"
@@ -97,3 +98,6 @@
 #define MOVE_VALUE_INT 1
 #define MOVE_VALUE_FLOAT 2
 #define MOVE_VALUE_COLOR 3
+
+#define NEXT_MOVE_ON_END 0
+#define NEXT_MOVE_ON_HOTKEY 1

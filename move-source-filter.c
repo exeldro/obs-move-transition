@@ -2,6 +2,7 @@
 #include <obs-module.h>
 #include <stdio.h>
 #include <util/dstr.h>
+#include <util/darray.h>
 
 struct move_source_info {
 	obs_source_t *source;
@@ -34,6 +35,9 @@ struct move_source_info {
 	bool enabled;
 	char *next_move_name;
 	bool relative;
+	DARRAY(obs_source_t *) filters_done;
+
+	long long next_move_on;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -136,7 +140,66 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 	if (!pressed)
 		return;
 	struct move_source_info *move_source = data;
-	move_source_start(move_source);
+	if (move_source->next_move_on != NEXT_MOVE_ON_HOTKEY ||
+	    !move_source->next_move_name ||
+	    !strlen(move_source->next_move_name)) {
+		move_source_start(move_source);
+		return;
+	}
+	if (!move_source->filters_done.num) {
+		move_source_start(move_source);
+		da_push_back(move_source->filters_done, &move_source->source);
+		return;
+	}
+	obs_source_t *parent = obs_filter_get_parent(move_source->source);
+	if (!parent)
+		return;
+
+	struct move_source_info *filter_data = move_source;
+	size_t i = 0;
+	while (i < move_source->filters_done.num) {
+		if (!filter_data->next_move_name ||
+		    !strlen(filter_data->next_move_name)) {
+			move_source_start(move_source);
+			move_source->filters_done.num = 0;
+			da_push_back(move_source->filters_done,
+				     &move_source->source);
+			return;
+		}
+		obs_source_t *filter = obs_source_get_filter_by_name(
+			parent, filter_data->next_move_name);
+		if (!filter || strcmp(obs_source_get_unversioned_id(filter),
+				      MOVE_SOURCE_FILTER_ID) != 0) {
+			obs_source_release(filter);
+			move_source_start(move_source);
+			move_source->filters_done.num = 0;
+			da_push_back(move_source->filters_done,
+				     &move_source->source);
+			return;
+		}
+		if (filter_data->next_move_on != NEXT_MOVE_ON_HOTKEY) {
+			filter_data = obs_obj_get_data(filter);
+			da_push_back(move_source->filters_done,
+				     &filter_data->source);
+
+		} else {
+			filter_data = obs_obj_get_data(filter);
+		}
+		obs_source_release(filter);
+		i++;
+	}
+	for (i = 0; i < move_source->filters_done.num; i++) {
+		if (move_source->filters_done.array[i] == filter_data->source) {
+			move_source_start(move_source);
+			move_source->filters_done.num = 0;
+			da_push_back(move_source->filters_done,
+				     &move_source->source);
+			return;
+		}
+	}
+	move_source_start(filter_data);
+	da_push_back(move_source->filters_done, &filter_data->source);
+
 	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(hotkey);
 }
@@ -200,6 +263,7 @@ void move_source_update(void *data, obs_data_t *settings)
 		bfree(move_source->next_move_name);
 		move_source->next_move_name = bstrdup(next_move_name);
 	}
+	move_source->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
 }
 
 void update_transform_text(obs_data_t *settings)
@@ -261,6 +325,7 @@ static void move_source_destroy(void *data)
 	bfree(move_source->source_name);
 	bfree(move_source->filter_name);
 	bfree(move_source->next_move_name);
+	da_free(move_source->filters_done);
 	bfree(move_source);
 }
 
@@ -359,7 +424,8 @@ void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
 				      void *data)
 {
 	UNUSED_PARAMETER(parent);
-	if (strcmp(obs_source_get_id(child), MOVE_SOURCE_FILTER_ID) != 0)
+	if (strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_SOURCE_FILTER_ID) != 0)
 		return;
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(child);
@@ -572,6 +638,14 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
 	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
 
+	p = obs_properties_add_list(ppts, S_NEXT_MOVE_ON,
+				    obs_module_text("NextMoveOn"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("NextMoveOn.End"),
+				  NEXT_MOVE_ON_END);
+	obs_property_list_add_int(p, obs_module_text("NextMoveOn.Hotkey"),
+				  NEXT_MOVE_ON_HOTKEY);
+
 	obs_properties_add_button(ppts, "move_source_start",
 				  obs_module_text("Start"),
 				  move_source_start_button);
@@ -731,7 +805,8 @@ void move_source_tick(void *data, float seconds)
 			    ot * (float)move_source->crop_to.bottom);
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
 	obs_sceneitem_defer_update_end(move_source->scene_item);
-	if (!move_source->moving && move_source->next_move_name &&
+	if (move_source->next_move_on == NEXT_MOVE_ON_END &&
+	    !move_source->moving && move_source->next_move_name &&
 	    strlen(move_source->next_move_name) &&
 	    (!move_source->filter_name ||
 	     strcmp(move_source->filter_name, move_source->next_move_name) !=
@@ -741,8 +816,9 @@ void move_source_tick(void *data, float seconds)
 		if (parent) {
 			obs_source_t *filter = obs_source_get_filter_by_name(
 				parent, move_source->next_move_name);
-			if (filter && strcmp(obs_source_get_id(filter),
-					     MOVE_SOURCE_FILTER_ID) == 0) {
+			if (filter &&
+			    strcmp(obs_source_get_unversioned_id(filter),
+				   MOVE_SOURCE_FILTER_ID) == 0) {
 				move_source_start(obs_obj_get_data(filter));
 			}
 		}
