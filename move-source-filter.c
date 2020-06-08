@@ -129,7 +129,12 @@ void move_source_start(struct move_source_info *move_source)
 	    move_source->crop_from.left != move_source->crop_to.left ||
 	    move_source->crop_from.top != move_source->crop_to.top ||
 	    move_source->crop_from.right != move_source->crop_to.right ||
-	    move_source->crop_from.bottom != move_source->crop_to.bottom) {
+	    move_source->crop_from.bottom != move_source->crop_to.bottom ||
+	    (move_source->change_visibility == CHANGE_VISIBILITY_HIDE &&
+	     obs_sceneitem_visible(move_source->scene_item)) ||
+	    (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE &&
+	     !move_source->visibility_toggled) ||
+	    move_source->visibility_toggled) {
 		move_source->moving = true;
 	}
 }
