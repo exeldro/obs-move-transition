@@ -219,6 +219,34 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 	UNUSED_PARAMETER(hotkey);
 }
 
+void move_source_source_activate(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_SOURCE_ACTIVATE)
+		move_source_start(move_source);
+}
+
+void move_source_source_deactivate(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_SOURCE_DEACTIVATE)
+		move_source_start(move_source);
+}
+
+void move_source_source_show(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_SOURCE_SHOW)
+		move_source_start(move_source);
+}
+
+void move_source_source_hide(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	if (move_source->start_trigger == START_TRIGGER_SOURCE_HIDE)
+		move_source_start(move_source);
+}
+
 void move_source_update(void *data, obs_data_t *settings)
 {
 	struct move_source_info *move_source = data;
@@ -227,8 +255,56 @@ void move_source_update(void *data, obs_data_t *settings)
 	const char *source_name = obs_data_get_string(settings, S_SOURCE);
 	if (!move_source->source_name ||
 	    strcmp(move_source->source_name, source_name) != 0) {
+		obs_source_t *source =
+			move_source->source_name &&
+					strlen(move_source->source_name)
+				? obs_get_source_by_name(
+					  move_source->source_name)
+				: NULL;
+		if (source) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(source);
+			if (sh) {
+				signal_handler_disconnect(
+					sh, "activate",
+					move_source_source_activate, data);
+				signal_handler_disconnect(
+					sh, "deactivate",
+					move_source_source_deactivate, data);
+				signal_handler_disconnect(
+					sh, "show", move_source_source_show,
+					data);
+				signal_handler_disconnect(
+					sh, "hide", move_source_source_hide,
+					data);
+			}
+			obs_source_release(source);
+		}
+
 		bfree(move_source->source_name);
 		move_source->source_name = bstrdup(source_name);
+
+		source = obs_get_source_by_name(source_name);
+		if (source) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(source);
+			if (sh) {
+				signal_handler_connect(
+					sh, "activate",
+					move_source_source_activate, data);
+				signal_handler_connect(
+					sh, "deactivate",
+					move_source_source_deactivate, data);
+				signal_handler_connect(sh, "show",
+						       move_source_source_show,
+						       data);
+				signal_handler_connect(sh, "hide",
+						       move_source_source_hide,
+						       data);
+			}
+			obs_source_release(source);
+		}
+
 		obs_sceneitem_release(move_source->scene_item);
 		move_source->scene_item = NULL;
 		obs_scene_enum_items(scene, find_sceneitem, data);
@@ -239,7 +315,8 @@ void move_source_update(void *data, obs_data_t *settings)
 		bfree(move_source->filter_name);
 
 		move_source->filter_name = bstrdup(filter_name);
-		obs_hotkey_unregister(move_source->move_start_hotkey);
+		if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
+			obs_hotkey_unregister(move_source->move_start_hotkey);
 		move_source->move_start_hotkey = obs_hotkey_register_source(
 			parent, move_source->filter_name,
 			move_source->filter_name, move_source_start_hotkey,
@@ -305,6 +382,13 @@ void update_transform_text(obs_data_t *settings)
 	return;
 }
 
+void move_source_load(void *data, obs_data_t *settings)
+{
+	struct move_source_info *move_source = data;
+	move_source_update(move_source, settings);
+	update_transform_text(settings);
+}
+
 void move_source_source_rename(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
@@ -327,8 +411,6 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 		bzalloc(sizeof(struct move_source_info));
 	move_source->source = source;
 	move_source->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
-	move_source_update(move_source, settings);
-	update_transform_text(settings);
 	signal_handler_connect(obs_get_signal_handler(), "source_rename",
 			       move_source_source_rename, move_source);
 	return move_source;
@@ -339,6 +421,26 @@ static void move_source_destroy(void *data)
 	struct move_source_info *move_source = data;
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
+	obs_source_t *source =
+		move_source->source_name && strlen(move_source->source_name)
+			? obs_get_source_by_name(move_source->source_name)
+			: NULL;
+	if (source) {
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
+		if (sh) {
+			signal_handler_disconnect(sh, "activate",
+						  move_source_source_activate,
+						  data);
+			signal_handler_disconnect(sh, "deactivate",
+						  move_source_source_deactivate,
+						  data);
+			signal_handler_disconnect(
+				sh, "show", move_source_source_show, data);
+			signal_handler_disconnect(
+				sh, "hide", move_source_source_hide, data);
+		}
+		obs_source_release(source);
+	}
 	bfree(move_source->source_name);
 	bfree(move_source->filter_name);
 	bfree(move_source->next_move_name);
@@ -659,6 +761,16 @@ static obs_properties_t *move_source_properties(void *data)
 				  START_TRIGGER_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
 				  START_TRIGGER_ENABLE);
+	obs_property_list_add_int(
+		p, obs_module_text("StartTrigger.SourceActivate"),
+		START_TRIGGER_SOURCE_ACTIVATE);
+	obs_property_list_add_int(
+		p, obs_module_text("StartTrigger.SourceDeactivate"),
+		START_TRIGGER_SOURCE_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceShow"),
+				  START_TRIGGER_SOURCE_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceHide"),
+				  START_TRIGGER_SOURCE_HIDE);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
 				    obs_module_text("NextMove"),
@@ -680,6 +792,7 @@ static obs_properties_t *move_source_properties(void *data)
 				  move_source_start_button);
 	return ppts;
 }
+
 void move_source_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_int(settings, S_DURATION, 300);
@@ -709,18 +822,6 @@ void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 void move_source_tick(void *data, float seconds)
 {
 	struct move_source_info *move_source = data;
-
-	if (move_source->move_start_hotkey == OBS_INVALID_HOTKEY_ID &&
-	    move_source->filter_name) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_source->source);
-		if (parent)
-			move_source->move_start_hotkey =
-				obs_hotkey_register_source(
-					parent, move_source->filter_name,
-					move_source->filter_name,
-					move_source_start_hotkey, data);
-	}
 	const bool enabled = obs_source_enabled(move_source->source);
 	if (move_source->enabled != enabled) {
 		if (enabled &&
@@ -908,6 +1009,7 @@ struct obs_source_info move_source_filter = {
 	.video_render = move_source_video_render,
 	.video_tick = move_source_tick,
 	.update = move_source_update,
+	.load = move_source_load,
 	.activate = move_source_activate,
 	.deactivate = move_source_deactivate,
 	.show = move_source_show,
