@@ -6,6 +6,7 @@ struct move_value_info {
 	obs_source_t *source;
 	char *filter_name;
 	obs_source_t *filter;
+	char *setting_filter_name;
 	char *setting_name;
 
 	obs_hotkey_id move_start_hotkey;
@@ -35,6 +36,14 @@ struct move_value_info {
 
 void move_value_start(struct move_value_info *move_value)
 {
+	if (!move_value->filter && move_value->setting_filter_name &&
+	    strlen(move_value->setting_filter_name)) {
+		obs_source_t *parent =
+			obs_filter_get_parent(move_value->source);
+		if (parent)
+			move_value->filter = obs_source_get_filter_by_name(
+				parent, move_value->setting_filter_name);
+	}
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
@@ -115,6 +124,17 @@ void move_value_update(void *data, obs_data_t *settings)
 			move_value->filter_name, move_value_start_hotkey, data);
 	}
 
+	const char *setting_filter_name =
+		obs_data_get_string(settings, S_FILTER);
+	if (!move_value->setting_filter_name ||
+	    strcmp(move_value->setting_filter_name, setting_filter_name) != 0) {
+		bfree(move_value->setting_filter_name);
+		move_value->setting_filter_name = bstrdup(setting_filter_name);
+		obs_source_release(move_value->filter);
+		move_value->filter = obs_source_get_filter_by_name(
+			parent, setting_filter_name);
+	}
+
 	const char *setting_name =
 		obs_data_get_string(settings, S_SETTING_NAME);
 	;
@@ -152,14 +172,15 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 		bzalloc(sizeof(struct move_value_info));
 	move_value->source = source;
 	move_value->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
-	move_value_update(move_value, settings);
 	return move_value;
 }
 
 static void move_value_destroy(void *data)
 {
 	struct move_value_info *move_value = data;
+	obs_source_release(move_value->filter);
 	bfree(move_value->filter_name);
+	bfree(move_value->setting_filter_name);
 	bfree(move_value->next_move_name);
 	bfree(move_value);
 }
@@ -232,17 +253,16 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	obs_property_t *p = obs_properties_get(props, S_SETTING_NAME);
 
 	const char *filter_name = obs_data_get_string(settings, S_FILTER);
-	refresh = true;
-
-	obs_source_release(move_value->filter);
-
-	if (filter_name && strlen(filter_name)) {
+	if (!move_value->setting_filter_name ||
+	    strcmp(move_value->setting_filter_name, filter_name) != 0) {
+		bfree(move_value->setting_filter_name);
+		move_value->setting_filter_name = bstrdup(filter_name);
+		obs_source_release(move_value->filter);
 		move_value->filter =
 			obs_source_get_filter_by_name(parent, filter_name);
-	} else {
-		move_value->filter = NULL;
 	}
 
+	refresh = true;
 	obs_property_list_clear(p);
 	obs_property_list_add_string(p, obs_module_text("Setting.None"), "");
 
@@ -453,7 +473,7 @@ void move_value_tick(void *data, float seconds)
 	struct move_value_info *move_value = data;
 
 	if (move_value->move_start_hotkey == OBS_INVALID_HOTKEY_ID &&
-	    move_value->filter_name) {
+	    move_value->filter_name && strlen(move_value->filter_name)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_value->source);
 		if (parent)
@@ -511,10 +531,6 @@ void move_value_tick(void *data, float seconds)
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
-	obs_data_item_t *item =
-		obs_data_item_byname(ss, move_value->setting_name);
-
-	obs_data_item_release(&item);
 	if (move_value->value_type == MOVE_VALUE_INT) {
 		const long long value_int =
 			(1.0 - t) * (double)move_value->int_from +
@@ -538,7 +554,9 @@ void move_value_tick(void *data, float seconds)
 		const long long value_int = vec4_to_rgba(&color);
 		obs_data_set_int(ss, move_value->setting_name, value_int);
 	} else {
-		enum obs_data_number_type item_type =
+		obs_data_item_t *item =
+			obs_data_item_byname(ss, move_value->setting_name);
+		const enum obs_data_number_type item_type =
 			obs_data_item_numtype(item);
 		if (item_type == OBS_DATA_NUM_INT) {
 			const long long value_int =
@@ -553,6 +571,7 @@ void move_value_tick(void *data, float seconds)
 			obs_data_set_double(ss, move_value->setting_name,
 					    value_double);
 		}
+		obs_data_item_release(&item);
 	}
 	obs_data_release(ss);
 	obs_source_update(source, NULL);
@@ -615,6 +634,7 @@ struct obs_source_info move_value_filter = {
 	.video_render = move_value_video_render,
 	.video_tick = move_value_tick,
 	.update = move_value_update,
+	.load = move_value_update,
 	.activate = move_value_activate,
 	.deactivate = move_value_deactivate,
 	.show = move_value_show,
