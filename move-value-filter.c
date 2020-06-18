@@ -179,6 +179,8 @@ static void move_value_destroy(void *data)
 {
 	struct move_value_info *move_value = data;
 	obs_source_release(move_value->filter);
+	if (move_value->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(move_value->move_start_hotkey);
 	bfree(move_value->filter_name);
 	bfree(move_value->setting_filter_name);
 	bfree(move_value->next_move_name);

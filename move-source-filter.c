@@ -48,7 +48,7 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	struct move_source_info *move_source = data;
 	const char *name =
 		obs_source_get_name(obs_sceneitem_get_source(scene_item));
-	if (strcmp(name, move_source->source_name) == 0) {
+	if (name && strcmp(name, move_source->source_name) == 0) {
 		obs_sceneitem_addref(scene_item);
 		move_source->scene_item = scene_item;
 		return false;
@@ -87,11 +87,16 @@ void calc_relative_to(struct move_source_info *move_source)
 
 void move_source_start(struct move_source_info *move_source)
 {
-	if (!move_source->scene_item && move_source->source_name) {
+	if (!move_source->scene_item && move_source->source_name &&
+	    strlen(move_source->source_name)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_source->source);
-		obs_scene_t *scene = obs_scene_from_source(parent);
-		obs_scene_enum_items(scene, find_sceneitem, move_source);
+		if (parent) {
+			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (scene)
+				obs_scene_enum_items(scene, find_sceneitem,
+						     move_source);
+		}
 	}
 	if (!move_source->scene_item)
 		return;
@@ -421,10 +426,15 @@ static void move_source_destroy(void *data)
 	struct move_source_info *move_source = data;
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
-	obs_source_t *source =
-		move_source->source_name && strlen(move_source->source_name)
-			? obs_get_source_by_name(move_source->source_name)
-			: NULL;
+
+	obs_source_t *source = NULL;
+	if (move_source->scene_item) {
+		source = obs_sceneitem_get_source(move_source->scene_item);
+		obs_sceneitem_release(move_source->scene_item);
+	}
+	if (!source && move_source->source_name &&
+	    strlen(move_source->source_name))
+		source = obs_get_source_by_name(move_source->source_name);
 	if (source) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
@@ -441,6 +451,9 @@ static void move_source_destroy(void *data)
 		}
 		obs_source_release(source);
 	}
+	if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(move_source->move_start_hotkey);
+
 	bfree(move_source->source_name);
 	bfree(move_source->filter_name);
 	bfree(move_source->next_move_name);
@@ -455,11 +468,16 @@ bool move_source_get_transform(obs_properties_t *props,
 	UNUSED_PARAMETER(property);
 	struct move_source_info *move_source = data;
 	bool settings_changed = false;
-	if (!move_source->scene_item && move_source->source_name) {
+	if (!move_source->scene_item && move_source->source_name &&
+	    strlen(move_source->source_name)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_source->source);
-		obs_scene_t *scene = obs_scene_from_source(parent);
-		obs_scene_enum_items(scene, find_sceneitem, data);
+		if (parent) {
+			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (scene)
+				obs_scene_enum_items(scene, find_sceneitem,
+						     data);
+		}
 	}
 	if (!move_source->scene_item)
 		return settings_changed;
@@ -528,8 +546,11 @@ bool move_source_changed(void *data, obs_properties_t *props,
 	obs_sceneitem_release(move_source->scene_item);
 	move_source->scene_item = NULL;
 	obs_source_t *parent = obs_filter_get_parent(move_source->source);
-	obs_scene_t *scene = obs_scene_from_source(parent);
-	obs_scene_enum_items(scene, find_sceneitem, data);
+	if (parent) {
+		obs_scene_t *scene = obs_scene_from_source(parent);
+		if (scene)
+			obs_scene_enum_items(scene, find_sceneitem, data);
+	}
 	refresh = move_source_get_transform(props, property, data);
 	return refresh;
 }
@@ -595,11 +616,16 @@ bool move_source_transform_relative_changed(void *data, obs_properties_t *props,
 
 	move_source->relative = relative;
 
-	if (!move_source->scene_item && move_source->source_name) {
+	if (!move_source->scene_item && move_source->source_name &&
+	    strlen(move_source->source_name)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_source->source);
-		obs_scene_t *scene = obs_scene_from_source(parent);
-		obs_scene_enum_items(scene, find_sceneitem, data);
+		if (parent) {
+			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (scene)
+				obs_scene_enum_items(scene, find_sceneitem,
+						     data);
+		}
 	}
 	struct vec2 pos;
 
