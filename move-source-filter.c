@@ -430,11 +430,12 @@ static void move_source_destroy(void *data)
 	obs_source_t *source = NULL;
 	if (move_source->scene_item) {
 		source = obs_sceneitem_get_source(move_source->scene_item);
-		obs_sceneitem_release(move_source->scene_item);
 	}
 	if (!source && move_source->source_name &&
-	    strlen(move_source->source_name))
+	    strlen(move_source->source_name)) {
 		source = obs_get_source_by_name(move_source->source_name);
+		obs_source_release(source);
+	}
 	if (source) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
@@ -449,8 +450,8 @@ static void move_source_destroy(void *data)
 			signal_handler_disconnect(
 				sh, "hide", move_source_source_hide, data);
 		}
-		obs_source_release(source);
 	}
+	obs_sceneitem_release(move_source->scene_item);
 	if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_unregister(move_source->move_start_hotkey);
 
