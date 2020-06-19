@@ -225,6 +225,30 @@ void add_alignment(struct vec2 *v, uint32_t align, int cx, int cy)
 		v->y += (float)(cy >> 1);
 }
 
+void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b,
+			float t, int cx, int cy)
+{
+	if (align_a & OBS_ALIGN_RIGHT)
+		v->x += (float)cx * (1.0 - t);
+	else if ((align_a & OBS_ALIGN_LEFT) == 0)
+		v->x += (float)(cx >> 1) * (1.0 - t);
+
+	if (align_a & OBS_ALIGN_BOTTOM)
+		v->y += (float)cy * (1.0 - t);
+	else if ((align_a & OBS_ALIGN_TOP) == 0)
+		v->y += (float)(cy >> 1) * (1.0 - t);
+
+	if (align_b & OBS_ALIGN_RIGHT)
+		v->x += (float)cx * t;
+	else if ((align_b & OBS_ALIGN_LEFT) == 0)
+		v->x += (float)(cx >> 1) * t;
+
+	if (align_b & OBS_ALIGN_BOTTOM)
+		v->y += (float)cy * t;
+	else if ((align_b & OBS_ALIGN_TOP) == 0)
+		v->y += (float)(cy >> 1) * t;
+}
+
 static void calculate_bounds_data(struct obs_scene_item *item,
 				  struct vec2 *origin, struct vec2 *scale,
 				  uint32_t *cx, uint32_t *cy,
@@ -922,9 +946,17 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		cx = (uint32_t)((float)cx * scale.x);
 		cy = (uint32_t)((float)cy * scale.y);
 	}
-
-	add_alignment(&origin, obs_sceneitem_get_alignment(scene_item), (int)cx,
-		      (int)cy);
+	if (item->item_a && item->item_b &&
+	    obs_sceneitem_get_alignment(item->item_a) !=
+		    obs_sceneitem_get_alignment(item->item_b)) {
+		add_move_alignment(&origin,
+				   obs_sceneitem_get_alignment(item->item_a),
+				   obs_sceneitem_get_alignment(item->item_b), t,
+				   (int)cx, (int)cy);
+	} else {
+		add_alignment(&origin, obs_sceneitem_get_alignment(scene_item),
+			      (int)cx, (int)cy);
+	}
 
 	struct matrix4 draw_transform;
 	matrix4_identity(&draw_transform);
@@ -1233,9 +1265,6 @@ struct move_item *match_item2(struct move_info *move,
 			continue;
 		if (obs_sceneitem_get_bounds_type(check_item->item_a) !=
 		    obs_sceneitem_get_bounds_type(scene_item))
-			continue;
-		if (obs_sceneitem_get_alignment(check_item->item_a) !=
-		    obs_sceneitem_get_alignment(scene_item))
 			continue;
 		if (obs_sceneitem_get_bounds_type(scene_item) !=
 			    OBS_BOUNDS_NONE &&
