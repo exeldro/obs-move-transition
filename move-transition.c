@@ -299,6 +299,35 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 		      (int)-width_diff, (int)-height_diff);
 }
 
+static void calculate_move_bounds_data(struct obs_scene_item *item_a,
+				       struct obs_scene_item *item_b, float t,
+				       struct vec2 *origin, struct vec2 *scale,
+				       uint32_t *cx, uint32_t *cy,
+				       struct vec2 *bounds)
+{
+	struct vec2 origin_a;
+	vec2_set(&origin_a, origin->x, origin->y);
+	struct vec2 origin_b;
+	vec2_set(&origin_b, origin->x, origin->y);
+
+	struct vec2 scale_a;
+	vec2_set(&scale_a, scale->x, scale->y);
+	struct vec2 scale_b;
+	vec2_set(&scale_b, scale->x, scale->y);
+	uint32_t cxa = *cx;
+	uint32_t cxb = *cx;
+	uint32_t cya = *cy;
+	uint32_t cyb = *cy;
+	calculate_bounds_data(item_a, &origin_a, &scale_a, &cxa, &cya, bounds);
+	calculate_bounds_data(item_b, &origin_b, &scale_b, &cxb, &cyb, bounds);
+	vec2_set(origin, origin_a.x * (1.0f - t) + origin_b.x * t,
+		 origin_a.y * (1.0f - t) + origin_b.y * t);
+	vec2_set(scale, scale_a.x * (1.0f - t) + scale_b.x * t,
+		 scale_a.y * (1.0f - t) + scale_b.y * t);
+	*cx = (float)cxa * (1.0f - t) + (float)cxb * t;
+	*cy = (float)cya * (1.0f - t) + (float)cyb * t;
+}
+
 static inline bool item_is_scene(struct obs_scene_item *item)
 {
 	obs_source_t *source = obs_sceneitem_get_source(item);
@@ -933,8 +962,19 @@ bool render2_item(struct move_info *move, struct move_item *item)
 					 (1.0f - t) * bounds.y);
 			}
 		}
-		calculate_bounds_data(scene_item, &origin, &scale, &cx, &cy,
-				      &bounds);
+		if (item->item_a && item->item_b &&
+		    (obs_sceneitem_get_bounds_alignment(item->item_a) !=
+			     obs_sceneitem_get_bounds_alignment(item->item_b) ||
+		     obs_sceneitem_get_bounds_type(item->item_a) !=
+			     obs_sceneitem_get_bounds_type(item->item_b))) {
+			calculate_move_bounds_data(item->item_a, item->item_b,
+						   t, &origin, &scale, &cx, &cy,
+						   &bounds);
+
+		} else {
+			calculate_bounds_data(scene_item, &origin, &scale, &cx,
+					      &cy, &bounds);
+		}
 		struct vec2 original_bounds;
 		obs_sceneitem_get_bounds(scene_item, &original_bounds);
 		calculate_bounds_data(scene_item, &origin2, &original_scale,
@@ -1263,13 +1303,15 @@ struct move_item *match_item2(struct move_info *move,
 		struct move_item *check_item = move->items_a.array[i];
 		if (check_item->item_b)
 			continue;
-		if (obs_sceneitem_get_bounds_type(check_item->item_a) !=
-		    obs_sceneitem_get_bounds_type(scene_item))
-			continue;
-		if (obs_sceneitem_get_bounds_type(scene_item) !=
+		if (obs_sceneitem_get_bounds_type(check_item->item_a) ==
 			    OBS_BOUNDS_NONE &&
-		    obs_sceneitem_get_bounds_alignment(check_item->item_a) !=
-			    obs_sceneitem_get_bounds_alignment(scene_item))
+		    obs_sceneitem_get_bounds_type(scene_item) !=
+			    OBS_BOUNDS_NONE)
+			continue;
+		if (obs_sceneitem_get_bounds_type(check_item->item_a) !=
+			    OBS_BOUNDS_NONE &&
+		    obs_sceneitem_get_bounds_type(scene_item) ==
+			    OBS_BOUNDS_NONE)
 			continue;
 
 		obs_source_t *check_source =
