@@ -207,7 +207,7 @@ static void move_update(void *data, obs_data_t *settings)
 	move->transition_move_scale =
 		obs_data_get_int(settings, S_TRANSITION_SCALE);
 	move->item_order_switch_percentage =
-		obs_data_get_int(settings, S_SWITCH_PERCENTAGE);
+		(uint32_t)obs_data_get_int(settings, S_SWITCH_PERCENTAGE);
 	move->cache_transitions =
 		obs_data_get_bool(settings, S_CACHE_TRANSITIONS);
 }
@@ -229,14 +229,14 @@ void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b,
 			float t, int cx, int cy)
 {
 	if (align_a & OBS_ALIGN_RIGHT)
-		v->x += (float)cx * (1.0 - t);
+		v->x += (float)cx * (1.0f - t);
 	else if ((align_a & OBS_ALIGN_LEFT) == 0)
-		v->x += (float)(cx >> 1) * (1.0 - t);
+		v->x += (float)(cx >> 1) * (1.0f - t);
 
 	if (align_a & OBS_ALIGN_BOTTOM)
-		v->y += (float)cy * (1.0 - t);
+		v->y += (float)cy * (1.0f - t);
 	else if ((align_a & OBS_ALIGN_TOP) == 0)
-		v->y += (float)(cy >> 1) * (1.0 - t);
+		v->y += (float)(cy >> 1) * (1.0f - t);
 
 	if (align_b & OBS_ALIGN_RIGHT)
 		v->x += (float)cx * t;
@@ -324,8 +324,8 @@ static void calculate_move_bounds_data(struct obs_scene_item *item_a,
 		 origin_a.y * (1.0f - t) + origin_b.y * t);
 	vec2_set(scale, scale_a.x * (1.0f - t) + scale_b.x * t,
 		 scale_a.y * (1.0f - t) + scale_b.y * t);
-	*cx = (float)cxa * (1.0f - t) + (float)cxb * t;
-	*cy = (float)cya * (1.0f - t) + (float)cyb * t;
+	*cx = (uint32_t)((float)cxa * (1.0f - t) + (float)cxb * t);
+	*cy = (uint32_t)((float)cya * (1.0f - t) + (float)cyb * t);
 }
 
 static inline bool item_is_scene(struct obs_scene_item *item)
@@ -473,7 +473,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 	if (position & POS_EDGE)
 		vec2_set(pos, 0, 0);
 	if (position & POS_RIGHT) {
-		pos->x = canvas_width;
+		pos->x = (float)canvas_width;
 		if (alignment & OBS_ALIGN_RIGHT) {
 			pos->x += cx;
 		} else if (alignment & OBS_ALIGN_LEFT) {
@@ -491,7 +491,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 			pos->x -= cx2;
 		}
 	} else if (position & POS_EDGE) {
-		pos->x = canvas_width >> 1;
+		pos->x = (float)(canvas_width >> 1);
 		if (alignment & OBS_ALIGN_RIGHT) {
 			pos->x += cx2;
 		} else if (alignment & OBS_ALIGN_LEFT) {
@@ -500,7 +500,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 	}
 
 	if (position & POS_BOTTOM) {
-		pos->y = canvas_height;
+		pos->y = (float)canvas_height;
 		if (alignment & OBS_ALIGN_TOP) {
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
 			pos->y += cy;
@@ -516,7 +516,7 @@ void calc_edge_position(struct vec2 *pos, long long position,
 			pos->y -= cy2;
 		}
 	} else if (position & POS_EDGE) {
-		pos->y = canvas_height >> 1;
+		pos->y = (float)(canvas_height >> 1);
 		if (alignment & OBS_ALIGN_TOP) {
 			pos->y -= cy2;
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
@@ -835,8 +835,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			obs_sceneitem_get_source(item->item_a));
 		uint32_t height_b = obs_source_get_height(
 			obs_sceneitem_get_source(item->item_b));
-		width = (1.0f - t) * width_a + t * width_b;
-		height = (1.0f - t) * height_a + t * height_b;
+		width = (uint32_t)((1.0f - t) * width_a + t * width_b);
+		height = (uint32_t)((1.0f - t) * height_a + t * height_b);
 		obs_transition_set_size(item->transition, width, height);
 	}
 
@@ -1045,7 +1045,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
-			vec2_set(&pos_a, canvas_width >> 1, canvas_height >> 1);
+			vec2_set(&pos_a, (float)(canvas_width >> 1),
+				 (float)(canvas_height >> 1));
 			if (!item->zoom)
 				pos_add_center(&pos_a, alignment, cx, cy);
 		} else if (item->position & POS_EDGE ||
@@ -1086,7 +1087,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
-			vec2_set(&pos_b, canvas_width >> 1, canvas_height >> 1);
+			vec2_set(&pos_b, (float)(canvas_width >> 1),
+				 (float)(canvas_height >> 1));
 			if (!item->zoom)
 				pos_add_center(&pos_b, alignment, cx, cy);
 		} else if (item->position & POS_EDGE ||

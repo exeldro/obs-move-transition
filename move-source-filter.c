@@ -229,6 +229,7 @@ void move_source_source_activate(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_ACTIVATE)
 		move_source_start(move_source);
+	UNUSED_PARAMETER(call_data);
 }
 
 void move_source_source_deactivate(void *data, calldata_t *call_data)
@@ -236,6 +237,7 @@ void move_source_source_deactivate(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_DEACTIVATE)
 		move_source_start(move_source);
+	UNUSED_PARAMETER(call_data);
 }
 
 void move_source_source_show(void *data, calldata_t *call_data)
@@ -243,6 +245,7 @@ void move_source_source_show(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_SHOW)
 		move_source_start(move_source);
+	UNUSED_PARAMETER(call_data);
 }
 
 void move_source_source_hide(void *data, calldata_t *call_data)
@@ -250,6 +253,7 @@ void move_source_source_hide(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_HIDE)
 		move_source_start(move_source);
+	UNUSED_PARAMETER(call_data);
 }
 
 void move_source_update(void *data, obs_data_t *settings)
@@ -354,7 +358,7 @@ void move_source_update(void *data, obs_data_t *settings)
 			(int)obs_data_get_int(settings, S_CROP_BOTTOM);
 	}
 	move_source->start_trigger =
-		obs_data_get_int(settings, S_START_TRIGGER);
+		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 
 	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
 	if (!move_source->next_move_name ||
@@ -412,6 +416,7 @@ void move_source_source_rename(void *data, calldata_t *call_data)
 
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
+	UNUSED_PARAMETER(settings);
 	struct move_source_info *move_source =
 		bzalloc(sizeof(struct move_source_info));
 	move_source->source = source;
@@ -610,6 +615,8 @@ bool move_source_transform_relative_changed(void *data, obs_properties_t *props,
 					    obs_property_t *property,
 					    obs_data_t *settings)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
 	struct move_source_info *move_source = data;
 	const bool relative = obs_data_get_bool(settings, S_TRANSFORM_RELATIVE);
 	if (relative == move_source->relative)

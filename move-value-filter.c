@@ -64,7 +64,8 @@ void move_value_start(struct move_value_info *move_value)
 		}
 	} else if (move_value->value_type == MOVE_VALUE_COLOR) {
 		vec4_from_rgba(&move_value->color_from,
-			       obs_data_get_int(ss, move_value->setting_name));
+			       (uint32_t)obs_data_get_int(
+				       ss, move_value->setting_name));
 		if (move_value->color_from.x != move_value->color_to.x ||
 		    move_value->color_from.y != move_value->color_to.y ||
 		    move_value->color_from.z != move_value->color_to.z ||
@@ -149,14 +150,15 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->int_to = obs_data_get_int(settings, S_SETTING_INT);
 	move_value->double_to = obs_data_get_double(settings, S_SETTING_FLOAT);
 	vec4_from_rgba(&move_value->color_to,
-		       obs_data_get_int(settings, S_SETTING_COLOR));
+		       (uint32_t)obs_data_get_int(settings, S_SETTING_COLOR));
 
 	move_value->duration = obs_data_get_int(settings, S_DURATION);
 	move_value->start_delay = obs_data_get_int(settings, S_START_DELAY);
 	move_value->easing = obs_data_get_int(settings, S_EASING_MATCH);
 	move_value->easing_function =
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
-	move_value->start_trigger = obs_data_get_int(settings, S_START_TRIGGER);
+	move_value->start_trigger =
+		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 
 	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
 	if (!move_value->next_move_name ||
@@ -168,6 +170,7 @@ void move_value_update(void *data, obs_data_t *settings)
 
 static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
+	UNUSED_PARAMETER(settings);
 	struct move_value_info *move_value =
 		bzalloc(sizeof(struct move_value_info));
 	move_value->source = source;
@@ -248,6 +251,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 bool move_value_filter_changed(void *data, obs_properties_t *props,
 			       obs_property_t *property, obs_data_t *settings)
 {
+	UNUSED_PARAMETER(property);
 	struct move_value_info *move_value = data;
 	bool refresh = false;
 
@@ -293,7 +297,7 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_property_t *property, obs_data_t *settings)
 {
-
+	UNUSED_PARAMETER(property);
 	struct move_value_info *move_value = data;
 	bool refresh = false;
 
@@ -523,20 +527,14 @@ void move_value_tick(void *data, float seconds)
 	}
 	t = get_eased(t, move_value->easing, move_value->easing_function);
 
-	float ot = t;
-	if (t > 1.0f)
-		ot = 1.0f;
-	else if (t < 0.0f)
-		ot = 0.0f;
-
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
 	if (move_value->value_type == MOVE_VALUE_INT) {
 		const long long value_int =
-			(1.0 - t) * (double)move_value->int_from +
-			t * (double)move_value->int_to;
+			(long long)((1.0 - t) * (double)move_value->int_from +
+				    t * (double)move_value->int_to);
 		obs_data_set_int(ss, move_value->setting_name, value_int);
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		const double value_double =
@@ -562,8 +560,9 @@ void move_value_tick(void *data, float seconds)
 			obs_data_item_numtype(item);
 		if (item_type == OBS_DATA_NUM_INT) {
 			const long long value_int =
-				(1.0 - t) * (double)move_value->int_from +
-				t * (double)move_value->int_to;
+				(long long)((1.0 -
+					     t) * (double)move_value->int_from +
+					    t * (double)move_value->int_to);
 			obs_data_set_int(ss, move_value->setting_name,
 					 value_int);
 		} else if (item_type == OBS_DATA_NUM_DOUBLE) {
