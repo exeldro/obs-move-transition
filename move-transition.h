@@ -1,6 +1,7 @@
 #pragma once
 
 #define MOVE_SOURCE_FILTER_ID "move_source_filter"
+#define MOVE_VALUE_FILTER_ID "move_value_filter"
 
 #define S_MATCH "match"
 #define S_MOVE_ALL "move_all"
