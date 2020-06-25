@@ -73,6 +73,25 @@ static obs_properties_t *move_filter_properties(void *data)
 
 	//Matched items
 	obs_properties_t *group = obs_properties_create();
+
+	p = obs_properties_add_int_slider(group, S_START_DELAY_MATCH_TO,
+					  obs_module_text("StartDelayTo"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+	p = obs_properties_add_int_slider(group, S_END_DELAY_MATCH_TO,
+					  obs_module_text("EndDelayTo"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+
+	p = obs_properties_add_int_slider(group, S_START_DELAY_MATCH_FROM,
+					  obs_module_text("StartDelayFrom"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+	p = obs_properties_add_int_slider(group, S_END_DELAY_MATCH_FROM,
+					  obs_module_text("EndDelayFrom"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+
 	p = obs_properties_add_list(group, S_EASING_MATCH,
 				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -113,6 +132,13 @@ static obs_properties_t *move_filter_properties(void *data)
 
 	//Move in
 	group = obs_properties_create();
+	p = obs_properties_add_int_slider(group, S_START_DELAY_IN,
+					  obs_module_text("StartDelay"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+	p = obs_properties_add_int_slider(
+		group, S_END_DELAY_IN, obs_module_text("EndDelay"), -1, 100, 1);
+	obs_property_int_set_suffix(p, "%");
 	p = obs_properties_add_list(group, S_EASING_IN,
 				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -160,6 +186,14 @@ static obs_properties_t *move_filter_properties(void *data)
 
 	//Move out
 	group = obs_properties_create();
+	p = obs_properties_add_int_slider(group, S_START_DELAY_OUT,
+					  obs_module_text("StartDelay"), -1,
+					  100, 1);
+	obs_property_int_set_suffix(p, "%");
+	p = obs_properties_add_int_slider(group, S_END_DELAY_OUT,
+					  obs_module_text("EndDelay"), -1, 100,
+					  1);
+	obs_property_int_set_suffix(p, "%");
 	p = obs_properties_add_list(group, S_EASING_OUT,
 				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -210,6 +244,15 @@ static obs_properties_t *move_filter_properties(void *data)
 
 void move_filter_defaults(obs_data_t *settings)
 {
+	obs_data_set_default_int(settings, S_START_DELAY_MATCH_TO, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_START_DELAY_MATCH_FROM,
+				 NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_START_DELAY_IN, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_START_DELAY_OUT, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_END_DELAY_MATCH_TO, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_END_DELAY_MATCH_FROM, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_END_DELAY_IN, NO_OVERRIDE);
+	obs_data_set_default_int(settings, S_END_DELAY_OUT, NO_OVERRIDE);
 	obs_data_set_default_int(settings, S_EASING_MATCH, NO_OVERRIDE);
 	obs_data_set_default_int(settings, S_EASING_IN, NO_OVERRIDE);
 	obs_data_set_default_int(settings, S_EASING_OUT, NO_OVERRIDE);

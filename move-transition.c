@@ -62,6 +62,8 @@ struct move_item {
 	enum obs_transition_scale_type transition_scale;
 	float curve;
 	bool move_scene;
+	int start_percentage;
+	int end_percentage;
 };
 
 static const char *move_get_name(void *type_data)
@@ -818,7 +820,30 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 	}
 
-	float t = get_eased(move->t, item->easing, item->easing_function);
+	float t = 0.0f;
+	if (item->start_percentage > 0 || item->end_percentage < 100) {
+		if (item->start_percentage > item->end_percentage) {
+			float avg_switch_point =
+				(float)(item->start_percentage +
+					item->end_percentage) /
+				200.0f;
+			if (move->t > avg_switch_point) {
+				t = 1.0f;
+			}
+		} else if (move->t * 100.0 < item->start_percentage) {
+			t = 0.0f;
+		} else if (move->t * 100.0 > item->end_percentage) {
+			t = 1.0f;
+		} else {
+			int duration_percentage =
+				item->end_percentage - item->start_percentage;
+			t = move->t - (float)item->start_percentage / 100.0f;
+			t = t / (float)duration_percentage * 100.0f;
+			t = get_eased(t, item->easing, item->easing_function);
+		}
+	} else {
+		t = get_eased(move->t, item->easing, item->easing_function);
+	}
 	float ot = t;
 	if (t > 1.0f)
 		ot = 1.0f;
@@ -1444,6 +1469,7 @@ struct move_item *match_item2(struct move_info *move,
 struct move_item *create_move_item()
 {
 	struct move_item *item = bzalloc(sizeof(struct move_item));
+	item->end_percentage = 100;
 	return item;
 }
 
@@ -1698,6 +1724,34 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					item->curve = (float)obs_data_get_double(
 						settings_b, S_CURVE_MATCH);
 				}
+
+				val_a = obs_data_get_int(
+					settings_a, S_START_DELAY_MATCH_FROM);
+				val_b = obs_data_get_int(
+					settings_b, S_START_DELAY_MATCH_TO);
+				if (val_a != NO_OVERRIDE &&
+				    val_b != NO_OVERRIDE) {
+					item->start_percentage =
+						(int)(val_a + val_b) >> 1;
+				} else if (val_a != NO_OVERRIDE) {
+					item->start_percentage = (int)val_a;
+				} else if (val_b != NO_OVERRIDE) {
+					item->start_percentage = (int)val_b;
+				}
+				val_a = obs_data_get_int(
+					settings_a, S_END_DELAY_MATCH_FROM);
+				val_b = obs_data_get_int(settings_b,
+							 S_END_DELAY_MATCH_TO);
+				if (val_a != NO_OVERRIDE &&
+				    val_b != NO_OVERRIDE) {
+					item->end_percentage =
+						100 -
+						((int)(val_a + val_b) >> 1);
+				} else if (val_a != NO_OVERRIDE) {
+					item->end_percentage = 100 - (int)val_a;
+				} else if (val_b != NO_OVERRIDE) {
+					item->end_percentage = 100 - (int)val_b;
+				}
 			} else if (settings_a) {
 				long long val;
 				if ((item->item_a && item->item_b) ||
@@ -1762,6 +1816,28 @@ static void move_video_render(void *data, gs_effect_t *effect)
 						   S_CURVE_OVERRIDE_OUT)) {
 					item->curve = (float)obs_data_get_double(
 						settings_a, S_CURVE_OUT);
+				}
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
+					val = obs_data_get_int(
+						settings_a,
+						S_START_DELAY_MATCH_FROM);
+				else
+					val = obs_data_get_int(
+						settings_a, S_START_DELAY_OUT);
+				if (val != NO_OVERRIDE) {
+					item->start_percentage = (int)val;
+				}
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
+					val = obs_data_get_int(
+						settings_a,
+						S_END_DELAY_MATCH_FROM);
+				else
+					val = obs_data_get_int(settings_a,
+							       S_END_DELAY_OUT);
+				if (val != NO_OVERRIDE) {
+					item->end_percentage = 100 - (int)val;
 				}
 			} else if (settings_b) {
 				long long val;
@@ -1828,6 +1904,28 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					item->curve =
 						(float)obs_data_get_double(
 							settings_b, S_CURVE_IN);
+				}
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
+					val = obs_data_get_int(
+						settings_b,
+						S_START_DELAY_MATCH_TO);
+				else
+					val = obs_data_get_int(
+						settings_b, S_START_DELAY_IN);
+				if (val != NO_OVERRIDE) {
+					item->start_percentage = (int)val;
+				}
+				if ((item->item_a && item->item_b) ||
+				    item->move_scene)
+					val = obs_data_get_int(
+						settings_b,
+						S_END_DELAY_MATCH_TO);
+				else
+					val = obs_data_get_int(settings_b,
+							       S_END_DELAY_IN);
+				if (val != NO_OVERRIDE) {
+					item->end_percentage = 100 - (int)val;
 				}
 			}
 			obs_data_release(settings_a);
