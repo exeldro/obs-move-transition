@@ -66,6 +66,8 @@
 #define S_VALUE_TYPE "value_type"
 #define S_TRANSFORM_RELATIVE "transform_relative"
 #define S_CHANGE_VISIBILITY "change_visibility"
+#define S_CHANGE_ORDER "change_order"
+#define S_ORDER_POSITION "order_position"
 
 #define NO_OVERRIDE (-1)
 
@@ -121,3 +123,9 @@
 #define CHANGE_VISIBILITY_SHOW 1
 #define CHANGE_VISIBILITY_HIDE 2
 #define CHANGE_VISIBILITY_TOGGLE 3
+
+#define CHANGE_ORDER_NONE 0
+#define CHANGE_ORDER_RELATIVE (1 << 0)
+#define CHANGE_ORDER_ABSOLUTE (1 << 1)
+#define CHANGE_ORDER_START (1 << 2)
+#define CHANGE_ORDER_END (1 << 3)

@@ -41,6 +41,9 @@ struct move_source_info {
 	long long change_visibility;
 	bool visibility_toggled;
 	bool reverse;
+
+	long long change_order;
+	int order_position;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -102,6 +105,31 @@ void move_source_start(struct move_source_info *move_source)
 	}
 	if (!move_source->scene_item)
 		return;
+	if ((move_source->change_order & CHANGE_ORDER_START) != 0) {
+		if ((move_source->change_order & CHANGE_ORDER_RELATIVE) != 0 &&
+		    move_source->order_position) {
+			if (move_source->order_position > 0) {
+				for (int i = 0; i < move_source->order_position;
+				     i++) {
+					obs_sceneitem_set_order(
+						move_source->scene_item,
+						OBS_ORDER_MOVE_UP);
+				}
+			} else if (move_source->order_position < 0) {
+				for (int i = 0; i > move_source->order_position;
+				     i--) {
+					obs_sceneitem_set_order(
+						move_source->scene_item,
+						OBS_ORDER_MOVE_DOWN);
+				}
+			}
+		} else if ((move_source->change_order &
+			    CHANGE_ORDER_ABSOLUTE) != 0) {
+			obs_sceneitem_set_order_position(
+				move_source->scene_item,
+				move_source->order_position);
+		}
+	}
 	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW ||
 	     move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE) &&
 	    !obs_sceneitem_visible(move_source->scene_item)) {
@@ -377,6 +405,10 @@ void move_source_update(void *data, obs_data_t *settings)
 		move_source->next_move_name = bstrdup(next_move_name);
 	}
 	move_source->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
+
+	move_source->change_order = obs_data_get_int(settings, S_CHANGE_ORDER);
+	move_source->order_position =
+		obs_data_get_int(settings, S_ORDER_POSITION);
 }
 
 void update_transform_text(obs_data_t *settings)
@@ -767,6 +799,25 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Toggle"),
 				  CHANGE_VISIBILITY_TOGGLE);
 
+	p = obs_properties_add_list(ppts, S_CHANGE_ORDER,
+				    obs_module_text("ChangeOrder"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("ChangeOrder.No"),
+				  CHANGE_ORDER_NONE);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeOrder.StartAbsolute"),
+				  CHANGE_ORDER_START | CHANGE_ORDER_ABSOLUTE);
+	obs_property_list_add_int(p, obs_module_text("ChangeOrder.EndAbsolute"),
+				  CHANGE_ORDER_END | CHANGE_ORDER_ABSOLUTE);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeOrder.StartRelative"),
+				  CHANGE_ORDER_START | CHANGE_ORDER_RELATIVE);
+	obs_property_list_add_int(p, obs_module_text("ChangeOrder.EndRelative"),
+				  CHANGE_ORDER_END | CHANGE_ORDER_RELATIVE);
+	p = obs_properties_add_int(ppts, S_ORDER_POSITION,
+				   obs_module_text("OrderPosition"), -1000,
+				   1000, 1);
+
 	p = obs_properties_add_int(ppts, S_START_DELAY,
 				   obs_module_text("StartDelay"), 0, 10000000,
 				   100);
@@ -997,6 +1048,34 @@ void move_source_tick(void *data, float seconds)
 			   !move_source->visibility_toggled) {
 			obs_sceneitem_set_visible(move_source->scene_item,
 						  false);
+		}
+		if ((move_source->change_order & CHANGE_ORDER_END) != 0) {
+			if ((move_source->change_order &
+			     CHANGE_ORDER_RELATIVE) != 0 &&
+			    move_source->order_position) {
+				if (move_source->order_position > 0) {
+					for (int i = 0;
+					     i < move_source->order_position;
+					     i++) {
+						obs_sceneitem_set_order(
+							move_source->scene_item,
+							OBS_ORDER_MOVE_UP);
+					}
+				} else if (move_source->order_position < 0) {
+					for (int i = 0;
+					     i > move_source->order_position;
+					     i--) {
+						obs_sceneitem_set_order(
+							move_source->scene_item,
+							OBS_ORDER_MOVE_DOWN);
+					}
+				}
+			} else if ((move_source->change_order &
+				    CHANGE_ORDER_ABSOLUTE) != 0) {
+				obs_sceneitem_set_order_position(
+					move_source->scene_item,
+					move_source->order_position);
+			}
 		}
 		if (move_source->next_move_on == NEXT_MOVE_ON_END &&
 		    move_source->next_move_name &&
