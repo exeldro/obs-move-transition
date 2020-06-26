@@ -40,6 +40,7 @@ struct move_source_info {
 	long long next_move_on;
 	long long change_visibility;
 	bool visibility_toggled;
+	bool reverse;
 };
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -56,32 +57,33 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	return true;
 }
 
-void calc_relative_to(struct move_source_info *move_source)
+void calc_relative_to(struct move_source_info *move_source, float f)
 {
 	obs_data_t *settings = obs_source_get_settings(move_source->source);
 	move_source->rot_to = move_source->rot_from +
-			      (float)obs_data_get_double(settings, S_ROT);
+			      (float)obs_data_get_double(settings, S_ROT) * f;
 	struct vec2 vec2;
 	obs_data_get_vec2(settings, S_POS, &vec2);
-	move_source->pos_to.x = move_source->pos_from.x + vec2.x;
-	move_source->pos_to.y = move_source->pos_from.y + vec2.y;
+	move_source->pos_to.x = move_source->pos_from.x + vec2.x * f;
+	move_source->pos_to.y = move_source->pos_from.y + vec2.y * f;
 	obs_data_get_vec2(settings, S_SCALE, &vec2);
-	move_source->scale_to.x = move_source->scale_from.x + vec2.x;
-	move_source->scale_to.y = move_source->scale_from.y + vec2.y;
+	move_source->scale_to.x = move_source->scale_from.x + vec2.x * f;
+	move_source->scale_to.y = move_source->scale_from.y + vec2.y * f;
 	obs_data_get_vec2(settings, S_BOUNDS, &vec2);
-	move_source->bounds_to.x = move_source->bounds_from.x + vec2.x;
-	move_source->bounds_to.y = move_source->bounds_from.y + vec2.y;
+	move_source->bounds_to.x = move_source->bounds_from.x + vec2.x * f;
+	move_source->bounds_to.y = move_source->bounds_from.y + vec2.y * f;
 	move_source->crop_to.left =
 		move_source->crop_from.left +
-		(int)obs_data_get_int(settings, S_CROP_LEFT);
-	move_source->crop_to.top = move_source->crop_from.top +
-				   (int)obs_data_get_int(settings, S_CROP_TOP);
+		(int)obs_data_get_int(settings, S_CROP_LEFT) * (int)f;
+	move_source->crop_to.top =
+		move_source->crop_from.top +
+		(int)obs_data_get_int(settings, S_CROP_TOP) * (int)f;
 	move_source->crop_to.right =
 		move_source->crop_from.right +
-		(int)obs_data_get_int(settings, S_CROP_RIGHT);
+		(int)obs_data_get_int(settings, S_CROP_RIGHT) * (int)f;
 	move_source->crop_to.bottom =
 		move_source->crop_from.bottom +
-		(int)obs_data_get_int(settings, S_CROP_BOTTOM);
+		(int)obs_data_get_int(settings, S_CROP_BOTTOM) * (int)f;
 	obs_data_release(settings);
 }
 
@@ -108,21 +110,29 @@ void move_source_start(struct move_source_info *move_source)
 	} else {
 		move_source->visibility_toggled = false;
 	}
-	move_source->rot_from = obs_sceneitem_get_rot(move_source->scene_item);
-	obs_sceneitem_get_pos(move_source->scene_item, &move_source->pos_from);
-	obs_sceneitem_get_scale(move_source->scene_item,
-				&move_source->scale_from);
-	obs_sceneitem_get_bounds(move_source->scene_item,
-				 &move_source->bounds_from);
-	obs_sceneitem_get_crop(move_source->scene_item,
-			       &move_source->crop_from);
-	obs_source_t *scene_source = obs_scene_get_source(
-		obs_sceneitem_get_scene(move_source->scene_item));
-	move_source->canvas_width = obs_source_get_width(scene_source);
-	move_source->canvas_height = obs_source_get_height(scene_source);
 	move_source->running_duration = 0.0f;
-	if (move_source->relative) {
-		calc_relative_to(move_source);
+	if (!move_source->reverse) {
+		move_source->rot_from =
+			obs_sceneitem_get_rot(move_source->scene_item);
+		obs_sceneitem_get_pos(move_source->scene_item,
+				      &move_source->pos_from);
+		obs_sceneitem_get_scale(move_source->scene_item,
+					&move_source->scale_from);
+		obs_sceneitem_get_bounds(move_source->scene_item,
+					 &move_source->bounds_from);
+		obs_sceneitem_get_crop(move_source->scene_item,
+				       &move_source->crop_from);
+		obs_source_t *scene_source = obs_scene_get_source(
+			obs_sceneitem_get_scene(move_source->scene_item));
+		move_source->canvas_width = obs_source_get_width(scene_source);
+		move_source->canvas_height =
+			obs_source_get_height(scene_source);
+
+		if (move_source->relative) {
+			calc_relative_to(move_source, 1.0f);
+		}
+	} else if (move_source->relative) {
+		calc_relative_to(move_source, -1.0f);
 	}
 	if (move_source->rot_from != move_source->rot_to ||
 	    move_source->pos_from.x != move_source->pos_to.x ||
@@ -811,6 +821,8 @@ static obs_properties_t *move_source_properties(void *data)
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
+	obs_property_list_add_string(p, obs_module_text("NextMove.Reverse"),
+				     NEXT_MOVE_REVERSE);
 	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE_ON,
@@ -873,18 +885,22 @@ void move_source_tick(void *data, float seconds)
 	move_source->running_duration += seconds;
 	if (move_source->running_duration * 1000.0f <
 	    move_source->start_delay) {
-		move_source->rot_from =
-			obs_sceneitem_get_rot(move_source->scene_item);
-		obs_sceneitem_get_pos(move_source->scene_item,
-				      &move_source->pos_from);
-		obs_sceneitem_get_scale(move_source->scene_item,
-					&move_source->scale_from);
-		obs_sceneitem_get_bounds(move_source->scene_item,
-					 &move_source->bounds_from);
-		obs_sceneitem_get_crop(move_source->scene_item,
-				       &move_source->crop_from);
-		if (move_source->relative) {
-			calc_relative_to(move_source);
+		if (!move_source->reverse) {
+			move_source->rot_from =
+				obs_sceneitem_get_rot(move_source->scene_item);
+			obs_sceneitem_get_pos(move_source->scene_item,
+					      &move_source->pos_from);
+			obs_sceneitem_get_scale(move_source->scene_item,
+						&move_source->scale_from);
+			obs_sceneitem_get_bounds(move_source->scene_item,
+						 &move_source->bounds_from);
+			obs_sceneitem_get_crop(move_source->scene_item,
+					       &move_source->crop_from);
+			if (move_source->relative) {
+				calc_relative_to(move_source, 1.0f);
+			}
+		} else if (move_source->relative) {
+			calc_relative_to(move_source, -1.0f);
 		}
 		return;
 	}
@@ -895,6 +911,9 @@ void move_source_tick(void *data, float seconds)
 	if (t >= 1.0f) {
 		t = 1.0f;
 		move_source->moving = false;
+	}
+	if (move_source->reverse) {
+		t = 1.0f - t;
 	}
 	t = get_eased(t, move_source->easing, move_source->easing_function);
 
@@ -985,20 +1004,36 @@ void move_source_tick(void *data, float seconds)
 		    (!move_source->filter_name ||
 		     strcmp(move_source->filter_name,
 			    move_source->next_move_name) != 0)) {
-			obs_source_t *parent =
-				obs_filter_get_parent(move_source->source);
-			if (parent) {
-				obs_source_t *filter =
-					obs_source_get_filter_by_name(
-						parent,
-						move_source->next_move_name);
-				if (filter &&
-				    strcmp(obs_source_get_unversioned_id(filter),
-					   MOVE_SOURCE_FILTER_ID) == 0) {
-					move_source_start(
-						obs_obj_get_data(filter));
+			if (strcmp(move_source->next_move_name,
+				   NEXT_MOVE_REVERSE) == 0) {
+				move_source->reverse = !move_source->reverse;
+				if (move_source->reverse)
+					move_source_start(move_source);
+			} else {
+				obs_source_t *parent = obs_filter_get_parent(
+					move_source->source);
+				if (parent) {
+					obs_source_t *filter =
+						obs_source_get_filter_by_name(
+							parent,
+							move_source
+								->next_move_name);
+					if (filter &&
+					    strcmp(obs_source_get_unversioned_id(
+							   filter),
+						   MOVE_SOURCE_FILTER_ID) ==
+						    0) {
+						move_source_start(
+							obs_obj_get_data(
+								filter));
+					}
 				}
 			}
+		} else if (move_source->next_move_on == NEXT_MOVE_ON_HOTKEY &&
+			   move_source->next_move_name &&
+			   strcmp(move_source->next_move_name,
+				  NEXT_MOVE_REVERSE) == 0) {
+			move_source->reverse = !move_source->reverse;
 		}
 	}
 }

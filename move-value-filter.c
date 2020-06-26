@@ -36,7 +36,7 @@ struct move_value_info {
 	DARRAY(obs_source_t *) filters_done;
 
 	long long next_move_on;
-	
+	bool reverse;
 };
 
 void move_value_start(struct move_value_info *move_value)
@@ -48,6 +48,11 @@ void move_value_start(struct move_value_info *move_value)
 		if (parent)
 			move_value->filter = obs_source_get_filter_by_name(
 				parent, move_value->setting_filter_name);
+	}
+	if (move_value->reverse) {
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
+		return;
 	}
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
@@ -270,7 +275,8 @@ void prop_list_add_move_value_filter(obs_source_t *parent, obs_source_t *child,
 				     void *data)
 {
 	UNUSED_PARAMETER(parent);
-	if (strcmp(obs_source_get_unversioned_id(child), MOVE_VALUE_FILTER_ID) != 0)
+	if (strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_VALUE_FILTER_ID) != 0)
 		return;
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(child);
@@ -507,6 +513,8 @@ static obs_properties_t *move_value_properties(void *data)
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
+	obs_property_list_add_string(p, obs_module_text("NextMove.Reverse"),
+				     NEXT_MOVE_REVERSE);
 	obs_source_enum_filters(parent, prop_list_add_move_value_filter, p);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE_ON,
@@ -578,6 +586,8 @@ void move_value_tick(void *data, float seconds)
 	}
 	move_value->running_duration += seconds;
 	if (move_value->running_duration * 1000.0f < move_value->start_delay) {
+		if (move_value->reverse)
+			return;
 		obs_source_t *source =
 			move_value->filter
 				? move_value->filter
@@ -597,6 +607,9 @@ void move_value_tick(void *data, float seconds)
 	if (t >= 1.0f) {
 		t = 1.0f;
 		move_value->moving = false;
+	}
+	if (move_value->reverse) {
+		t = 1.0f - t;
 	}
 	t = get_eased(t, move_value->easing, move_value->easing_function);
 
@@ -656,16 +669,32 @@ void move_value_tick(void *data, float seconds)
 	    (!move_value->filter_name ||
 	     strcmp(move_value->filter_name, move_value->next_move_name) !=
 		     0)) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_value->source);
-		if (parent) {
-			obs_source_t *filter = obs_source_get_filter_by_name(
-				parent, move_value->next_move_name);
-			if (filter && strcmp(obs_source_get_unversioned_id(filter),
-					     MOVE_VALUE_FILTER_ID) == 0) {
-				move_value_start(obs_obj_get_data(filter));
+		if (strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) ==
+		    0) {
+			move_value->reverse = !move_value->reverse;
+			if (move_value->reverse)
+				move_value_start(move_value);
+		} else {
+			obs_source_t *parent =
+				obs_filter_get_parent(move_value->source);
+			if (parent) {
+				obs_source_t *filter =
+					obs_source_get_filter_by_name(
+						parent,
+						move_value->next_move_name);
+				if (filter &&
+				    strcmp(obs_source_get_unversioned_id(filter),
+					   MOVE_VALUE_FILTER_ID) == 0) {
+					move_value_start(
+						obs_obj_get_data(filter));
+				}
 			}
 		}
+	} else if (!move_value->moving &&
+		   move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
+		   move_value->next_move_name &&
+		   strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) == 0) {
+		move_value->reverse = !move_value->reverse;
 	}
 }
 
