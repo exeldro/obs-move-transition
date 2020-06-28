@@ -27,6 +27,7 @@ struct move_source_info {
 	struct obs_sceneitem_crop crop_to;
 	uint64_t duration;
 	uint64_t start_delay;
+	uint64_t end_delay;
 	bool moving;
 	float running_duration;
 	uint32_t canvas_width;
@@ -829,6 +830,11 @@ static obs_properties_t *move_source_properties(void *data)
 		ppts, S_DURATION, obs_module_text("Duration"), 10, 100000, 100);
 	obs_property_int_set_suffix(p, "ms");
 
+	p = obs_properties_add_int(ppts, S_END_DELAY,
+				   obs_module_text("EndDelay"), 0, 10000000,
+				   100);
+	obs_property_int_set_suffix(p, "ms");
+
 	p = obs_properties_add_list(ppts, S_EASING_MATCH,
 				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -941,7 +947,8 @@ void move_source_tick(void *data, float seconds)
 	}
 	move_source->running_duration += seconds;
 	if (move_source->running_duration * 1000.0f <
-	    move_source->start_delay) {
+	    (move_source->reverse ? move_source->end_delay
+				  : move_source->start_delay)) {
 		if (!move_source->reverse) {
 			move_source->rot_from =
 				obs_sceneitem_get_rot(move_source->scene_item);
@@ -961,13 +968,17 @@ void move_source_tick(void *data, float seconds)
 		}
 		return;
 	}
-
+	if (move_source->running_duration * 1000.0f >=
+	    (float)(move_source->start_delay + move_source->duration +
+		    move_source->end_delay)) {
+		move_source->moving = false;
+	}
 	float t = (move_source->running_duration * 1000.0f -
-		   (float)move_source->start_delay) /
+		   (float)(move_source->reverse ? move_source->end_delay
+						: move_source->start_delay)) /
 		  (float)move_source->duration;
 	if (t >= 1.0f) {
 		t = 1.0f;
-		move_source->moving = false;
 	}
 	if (move_source->reverse) {
 		t = 1.0f - t;
@@ -1048,7 +1059,9 @@ void move_source_tick(void *data, float seconds)
 	if (!move_source->moving) {
 		if (move_source->start_trigger ==
 			    START_TRIGGER_ENABLE_DISABLE &&
-		    (move_source->reverse || !move_source->next_move_name || strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) != 0)) {
+		    (move_source->reverse || !move_source->next_move_name ||
+		     strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) !=
+			     0)) {
 			obs_source_set_enabled(move_source->source, false);
 		}
 		if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE) {

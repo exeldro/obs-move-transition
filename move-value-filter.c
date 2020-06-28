@@ -14,6 +14,7 @@ struct move_value_info {
 
 	uint64_t duration;
 	uint64_t start_delay;
+	uint64_t end_delay;
 	uint32_t start_trigger;
 	bool moving;
 	float running_duration;
@@ -94,8 +95,8 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->moving = true;
 		}
 	}
-	if (!move_value->moving && move_value->start_trigger ==
-		    START_TRIGGER_ENABLE_DISABLE) {
+	if (!move_value->moving &&
+	    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE) {
 		obs_source_set_enabled(move_value->source, false);
 	}
 	obs_data_release(ss);
@@ -226,6 +227,7 @@ void move_value_update(void *data, obs_data_t *settings)
 
 	move_value->duration = obs_data_get_int(settings, S_DURATION);
 	move_value->start_delay = obs_data_get_int(settings, S_START_DELAY);
+	move_value->end_delay = obs_data_get_int(settings, S_END_DELAY);
 	move_value->easing = obs_data_get_int(settings, S_EASING_MATCH);
 	move_value->easing_function =
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
@@ -485,6 +487,11 @@ static obs_properties_t *move_value_properties(void *data)
 		ppts, S_DURATION, obs_module_text("Duration"), 10, 100000, 100);
 	obs_property_int_set_suffix(p, "ms");
 
+	p = obs_properties_add_int(ppts, S_END_DELAY,
+				   obs_module_text("EndDelay"), 0, 10000000,
+				   100);
+	obs_property_int_set_suffix(p, "ms");
+
 	p = obs_properties_add_list(ppts, S_EASING_MATCH,
 				    obs_module_text("Easing"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -580,7 +587,7 @@ void move_value_tick(void *data, float seconds)
 	const bool enabled = obs_source_enabled(move_value->source);
 	if (move_value->enabled != enabled) {
 		if (enabled &&
-		    move_value->start_trigger == START_TRIGGER_ENABLE ||
+			    move_value->start_trigger == START_TRIGGER_ENABLE ||
 		    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE)
 			move_value_start(move_value);
 		move_value->enabled = enabled;
@@ -593,7 +600,9 @@ void move_value_tick(void *data, float seconds)
 		return;
 	}
 	move_value->running_duration += seconds;
-	if (move_value->running_duration * 1000.0f < move_value->start_delay) {
+	if (move_value->running_duration * 1000.0f <
+	    (move_value->reverse ? move_value->end_delay
+				 : move_value->start_delay)) {
 		if (move_value->reverse)
 			return;
 		obs_source_t *source =
@@ -608,13 +617,17 @@ void move_value_tick(void *data, float seconds)
 		obs_data_release(ss);
 		return;
 	}
-
+	if (move_value->running_duration * 1000.0f >=
+	    (float)(move_value->start_delay + move_value->duration +
+		    move_value->end_delay)) {
+		move_value->moving = false;
+	}
 	float t = (move_value->running_duration * 1000.0f -
-		   (float)move_value->start_delay) /
+		   (float)(move_value->reverse ? move_value->end_delay
+					       : move_value->start_delay)) /
 		  (float)move_value->duration;
 	if (t >= 1.0f) {
 		t = 1.0f;
-		move_value->moving = false;
 	}
 	if (move_value->reverse) {
 		t = 1.0f - t;
@@ -677,7 +690,8 @@ void move_value_tick(void *data, float seconds)
 			     0)) {
 			obs_source_set_enabled(move_value->source, false);
 		}
-		if (move_value->next_move_on == NEXT_MOVE_ON_END && move_value->next_move_name &&
+		if (move_value->next_move_on == NEXT_MOVE_ON_END &&
+		    move_value->next_move_name &&
 		    strlen(move_value->next_move_name) &&
 		    (!move_value->filter_name ||
 		     strcmp(move_value->filter_name,

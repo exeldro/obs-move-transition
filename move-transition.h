@@ -56,6 +56,7 @@
 #define S_CACHE_TRANSITIONS "cache_transitions"
 #define S_START_TRIGGER "start_trigger"
 #define S_START_DELAY "start_delay"
+#define S_END_DELAY "end_delay"
 #define S_NEXT_MOVE "next_move"
 #define S_NEXT_MOVE_ON "next_move_on"
 #define S_FILTER "filter"
