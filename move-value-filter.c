@@ -94,6 +94,10 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->moving = true;
 		}
 	}
+	if (!move_value->moving && move_value->start_trigger ==
+		    START_TRIGGER_ENABLE_DISABLE) {
+		obs_source_set_enabled(move_value->source, false);
+	}
 	obs_data_release(ss);
 }
 
@@ -507,6 +511,9 @@ static obs_properties_t *move_value_properties(void *data)
 				  START_TRIGGER_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
 				  START_TRIGGER_ENABLE);
+	obs_property_list_add_int(p,
+				  obs_module_text("StartTrigger.EnableDisable"),
+				  START_TRIGGER_ENABLE_DISABLE);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
 				    obs_module_text("NextMove"),
@@ -573,7 +580,8 @@ void move_value_tick(void *data, float seconds)
 	const bool enabled = obs_source_enabled(move_value->source);
 	if (move_value->enabled != enabled) {
 		if (enabled &&
-		    move_value->start_trigger == START_TRIGGER_ENABLE)
+		    move_value->start_trigger == START_TRIGGER_ENABLE ||
+		    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE)
 			move_value_start(move_value);
 		move_value->enabled = enabled;
 	}
@@ -662,39 +670,48 @@ void move_value_tick(void *data, float seconds)
 	}
 	obs_data_release(ss);
 	obs_source_update(source, NULL);
-
-	if (move_value->next_move_on == NEXT_MOVE_ON_END &&
-	    !move_value->moving && move_value->next_move_name &&
-	    strlen(move_value->next_move_name) &&
-	    (!move_value->filter_name ||
-	     strcmp(move_value->filter_name, move_value->next_move_name) !=
-		     0)) {
-		if (strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) ==
-		    0) {
-			move_value->reverse = !move_value->reverse;
-			if (move_value->reverse)
-				move_value_start(move_value);
-		} else {
-			obs_source_t *parent =
-				obs_filter_get_parent(move_value->source);
-			if (parent) {
-				obs_source_t *filter =
-					obs_source_get_filter_by_name(
-						parent,
-						move_value->next_move_name);
-				if (filter &&
-				    strcmp(obs_source_get_unversioned_id(filter),
-					   MOVE_VALUE_FILTER_ID) == 0) {
-					move_value_start(
-						obs_obj_get_data(filter));
+	if (!move_value->moving) {
+		if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+		    (move_value->reverse || !move_value->next_move_name ||
+		     strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) !=
+			     0)) {
+			obs_source_set_enabled(move_value->source, false);
+		}
+		if (move_value->next_move_on == NEXT_MOVE_ON_END && move_value->next_move_name &&
+		    strlen(move_value->next_move_name) &&
+		    (!move_value->filter_name ||
+		     strcmp(move_value->filter_name,
+			    move_value->next_move_name) != 0)) {
+			if (strcmp(move_value->next_move_name,
+				   NEXT_MOVE_REVERSE) == 0) {
+				move_value->reverse = !move_value->reverse;
+				if (move_value->reverse)
+					move_value_start(move_value);
+			} else {
+				obs_source_t *parent = obs_filter_get_parent(
+					move_value->source);
+				if (parent) {
+					obs_source_t *filter =
+						obs_source_get_filter_by_name(
+							parent,
+							move_value
+								->next_move_name);
+					if (filter &&
+					    strcmp(obs_source_get_unversioned_id(
+							   filter),
+						   MOVE_VALUE_FILTER_ID) == 0) {
+						move_value_start(
+							obs_obj_get_data(
+								filter));
+					}
 				}
 			}
+		} else if (move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
+			   move_value->next_move_name &&
+			   strcmp(move_value->next_move_name,
+				  NEXT_MOVE_REVERSE) == 0) {
+			move_value->reverse = !move_value->reverse;
 		}
-	} else if (!move_value->moving &&
-		   move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
-		   move_value->next_move_name &&
-		   strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) == 0) {
-		move_value->reverse = !move_value->reverse;
 	}
 }
 

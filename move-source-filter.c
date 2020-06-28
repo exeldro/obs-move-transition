@@ -179,6 +179,8 @@ void move_source_start(struct move_source_info *move_source)
 	     !move_source->visibility_toggled) ||
 	    move_source->visibility_toggled) {
 		move_source->moving = true;
+	} else if (move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE) {
+		obs_source_set_enabled(move_source->source, false);
 	}
 }
 
@@ -856,6 +858,9 @@ static obs_properties_t *move_source_properties(void *data)
 				  START_TRIGGER_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
 				  START_TRIGGER_ENABLE);
+	obs_property_list_add_int(p,
+				  obs_module_text("StartTrigger.EnableDisable"),
+				  START_TRIGGER_ENABLE_DISABLE);
 	obs_property_list_add_int(
 		p, obs_module_text("StartTrigger.SourceActivate"),
 		START_TRIGGER_SOURCE_ACTIVATE);
@@ -921,8 +926,9 @@ void move_source_tick(void *data, float seconds)
 	struct move_source_info *move_source = data;
 	const bool enabled = obs_source_enabled(move_source->source);
 	if (move_source->enabled != enabled) {
-		if (enabled &&
-		    move_source->start_trigger == START_TRIGGER_ENABLE)
+		if (enabled && move_source->start_trigger ==
+				       START_TRIGGER_ENABLE ||
+		    move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE)
 			move_source_start(move_source);
 		move_source->enabled = enabled;
 	}
@@ -1040,6 +1046,11 @@ void move_source_tick(void *data, float seconds)
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
 	obs_sceneitem_defer_update_end(move_source->scene_item);
 	if (!move_source->moving) {
+		if (move_source->start_trigger ==
+			    START_TRIGGER_ENABLE_DISABLE &&
+		    (move_source->reverse || !move_source->next_move_name || strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) != 0)) {
+			obs_source_set_enabled(move_source->source, false);
+		}
 		if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE) {
 			obs_sceneitem_set_visible(move_source->scene_item,
 						  false);
