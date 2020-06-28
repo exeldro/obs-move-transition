@@ -376,6 +376,7 @@ void move_source_update(void *data, obs_data_t *settings)
 		obs_data_get_int(settings, S_CHANGE_VISIBILITY);
 	move_source->duration = obs_data_get_int(settings, S_DURATION);
 	move_source->start_delay = obs_data_get_int(settings, S_START_DELAY);
+	move_source->end_delay = obs_data_get_int(settings, S_END_DELAY);
 	move_source->curve =
 		(float)obs_data_get_double(settings, S_CURVE_MATCH);
 	move_source->easing = obs_data_get_int(settings, S_EASING_MATCH);
