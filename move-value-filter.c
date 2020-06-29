@@ -714,9 +714,19 @@ void move_value_tick(void *data, float seconds)
 					    strcmp(obs_source_get_unversioned_id(
 							   filter),
 						   MOVE_VALUE_FILTER_ID) == 0) {
-						move_value_start(
-							obs_obj_get_data(
-								filter));
+						struct move_value_info
+							*filter_data =
+								obs_obj_get_data(
+									filter);
+						if (move_value->start_trigger ==
+							    START_TRIGGER_ENABLE_DISABLE &&
+						    !obs_source_enabled(
+							    filter_data->source))
+							obs_source_set_enabled(
+								filter_data
+									->source,
+								true);
+						move_value_start(filter_data);
 					}
 				}
 			}

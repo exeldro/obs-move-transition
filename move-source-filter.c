@@ -1127,9 +1127,19 @@ void move_source_tick(void *data, float seconds)
 							   filter),
 						   MOVE_SOURCE_FILTER_ID) ==
 						    0) {
-						move_source_start(
-							obs_obj_get_data(
-								filter));
+						struct move_source_info
+							*filter_data =
+								obs_obj_get_data(
+									filter);
+						if (move_source->start_trigger ==
+							    START_TRIGGER_ENABLE_DISABLE &&
+						    !obs_source_enabled(
+							    filter_data->source))
+							obs_source_set_enabled(
+								filter_data
+									->source,
+								true);
+						move_source_start(filter_data);
 					}
 				}
 			}
