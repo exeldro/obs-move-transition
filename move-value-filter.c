@@ -146,8 +146,10 @@ void move_value_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 		}
 		obs_source_t *filter = obs_source_get_filter_by_name(
 			parent, filter_data->next_move_name);
-		if (!filter || strcmp(obs_source_get_unversioned_id(filter),
-				      MOVE_VALUE_FILTER_ID) != 0) {
+		if (!filter || (strcmp(obs_source_get_unversioned_id(filter),
+				       MOVE_VALUE_FILTER_ID) != 0 &&
+				strcmp(obs_source_get_unversioned_id(filter),
+				       MOVE_AUDIO_VALUE_FILTER_ID) != 0)) {
 			obs_source_release(filter);
 			move_value_start(move_value);
 			move_value->filters_done.num = 0;
@@ -282,7 +284,9 @@ void prop_list_add_move_value_filter(obs_source_t *parent, obs_source_t *child,
 {
 	UNUSED_PARAMETER(parent);
 	if (strcmp(obs_source_get_unversioned_id(child),
-		   MOVE_VALUE_FILTER_ID) != 0)
+		   MOVE_VALUE_FILTER_ID) != 0 &&
+	    strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_AUDIO_VALUE_FILTER_ID) != 0)
 		return;
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(child);
@@ -711,9 +715,14 @@ void move_value_tick(void *data, float seconds)
 							move_value
 								->next_move_name);
 					if (filter &&
-					    strcmp(obs_source_get_unversioned_id(
-							   filter),
-						   MOVE_VALUE_FILTER_ID) == 0) {
+					    (strcmp(obs_source_get_unversioned_id(
+							    filter),
+						    MOVE_VALUE_FILTER_ID) ==
+						     0 ||
+					     strcmp(obs_source_get_unversioned_id(
+							    filter),
+						    MOVE_AUDIO_VALUE_FILTER_ID) ==
+						     0)) {
 						struct move_value_info
 							*filter_data =
 								obs_obj_get_data(
@@ -771,6 +780,25 @@ struct obs_source_info move_value_filter = {
 	.id = MOVE_VALUE_FILTER_ID,
 	.type = OBS_SOURCE_TYPE_FILTER,
 	.output_flags = OBS_SOURCE_VIDEO,
+	.get_name = move_value_get_name,
+	.create = move_value_create,
+	.destroy = move_value_destroy,
+	.get_properties = move_value_properties,
+	.get_defaults = move_value_defaults,
+	.video_render = move_value_video_render,
+	.video_tick = move_value_tick,
+	.update = move_value_update,
+	.load = move_value_update,
+	.activate = move_value_activate,
+	.deactivate = move_value_deactivate,
+	.show = move_value_show,
+	.hide = move_value_hide,
+};
+
+struct obs_source_info move_audio_value_filter = {
+	.id = MOVE_AUDIO_VALUE_FILTER_ID,
+	.type = OBS_SOURCE_TYPE_FILTER,
+	.output_flags = OBS_SOURCE_AUDIO,
 	.get_name = move_value_get_name,
 	.create = move_value_create,
 	.destroy = move_value_destroy,

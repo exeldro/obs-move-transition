@@ -2127,9 +2127,10 @@ static obs_properties_t *move_properties(void *data)
 	obs_properties_add_bool(group, S_CACHE_TRANSITIONS,
 				obs_module_text("CacheTransitions"));
 
-	obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
+	p = obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
 				      obs_module_text("SwitchPoint"), 0, 100,
 				      1);
+	obs_property_int_set_suffix(p, "%");
 
 	obs_properties_add_group(ppts, S_MOVE_ALL, obs_module_text("MoveAll"),
 				 OBS_GROUP_NORMAL, group);
@@ -2292,6 +2293,7 @@ MODULE_EXPORT const char *obs_module_name(void)
 extern struct obs_source_info move_transition_override_filter;
 extern struct obs_source_info move_source_filter;
 extern struct obs_source_info move_value_filter;
+extern struct obs_source_info move_audio_value_filter;
 
 bool obs_module_load(void)
 {
@@ -2299,5 +2301,6 @@ bool obs_module_load(void)
 	obs_register_source(&move_transition_override_filter);
 	obs_register_source(&move_source_filter);
 	obs_register_source(&move_value_filter);
+	obs_register_source(&move_audio_value_filter);
 	return true;
 }
