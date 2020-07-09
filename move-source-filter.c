@@ -194,6 +194,8 @@ bool move_source_start_button(obs_properties_t *props, obs_property_t *property,
 	return false;
 }
 
+void move_value_start(struct move_value_info *move_value);
+
 void move_source_start_hotkey(void *data, obs_hotkey_id id,
 			      obs_hotkey_t *hotkey, bool pressed)
 {
@@ -211,25 +213,54 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 		da_push_back(move_source->filters_done, &move_source->source);
 		return;
 	}
-	obs_source_t *parent = obs_filter_get_parent(move_source->source);
-	if (!parent)
-		return;
 
-	struct move_source_info *filter_data = move_source;
+	char *next_move_name = move_source->next_move_name;
+	obs_source_t *filter = move_source->source;
+	obs_source_t *parent = obs_filter_get_parent(filter);
+	obs_source_t *source =
+		obs_sceneitem_get_source(move_source->scene_item);
+	long long next_move_on = move_source->next_move_on;
 	size_t i = 0;
 	while (i < move_source->filters_done.num) {
-		if (!filter_data->next_move_name ||
-		    !strlen(filter_data->next_move_name)) {
+		if (!next_move_name || !strlen(next_move_name)) {
 			move_source_start(move_source);
 			move_source->filters_done.num = 0;
 			da_push_back(move_source->filters_done,
 				     &move_source->source);
 			return;
 		}
-		obs_source_t *filter = obs_source_get_filter_by_name(
-			parent, filter_data->next_move_name);
-		if (!filter || strcmp(obs_source_get_unversioned_id(filter),
-				      MOVE_SOURCE_FILTER_ID) != 0) {
+		if (next_move_on != NEXT_MOVE_ON_HOTKEY) {
+			da_push_back(move_source->filters_done, &filter);
+		}
+		filter = obs_source_get_filter_by_name(parent, next_move_name);
+		if (!filter && source) {
+			filter = obs_source_get_filter_by_name(source,
+							       next_move_name);
+		}
+
+		if (filter && strcmp(obs_source_get_unversioned_id(filter),
+				     MOVE_SOURCE_FILTER_ID) == 0) {
+			struct move_source_info *filter_data =
+				obs_obj_get_data(filter);
+			parent = obs_filter_get_parent(filter);
+			source = obs_sceneitem_get_source(
+				filter_data->scene_item);
+			next_move_name = filter_data->next_move_name;
+			next_move_on = filter_data->next_move_on;
+
+		} else if (filter &&
+			   (strcmp(obs_source_get_unversioned_id(filter),
+				   MOVE_VALUE_FILTER_ID) == 0 ||
+			    strcmp(obs_source_get_unversioned_id(filter),
+				   MOVE_AUDIO_VALUE_FILTER_ID) == 0)) {
+			struct move_value_info *filter_data =
+				obs_obj_get_data(filter);
+			parent = obs_filter_get_parent(filter);
+			source = NULL;
+			next_move_name = filter_data->next_move_name;
+			next_move_on = filter_data->next_move_on;
+
+		} else {
 			obs_source_release(filter);
 			move_source_start(move_source);
 			move_source->filters_done.num = 0;
@@ -237,19 +268,11 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 				     &move_source->source);
 			return;
 		}
-		if (filter_data->next_move_on != NEXT_MOVE_ON_HOTKEY) {
-			filter_data = obs_obj_get_data(filter);
-			da_push_back(move_source->filters_done,
-				     &filter_data->source);
-
-		} else {
-			filter_data = obs_obj_get_data(filter);
-		}
 		obs_source_release(filter);
 		i++;
 	}
 	for (i = 0; i < move_source->filters_done.num; i++) {
-		if (move_source->filters_done.array[i] == filter_data->source) {
+		if (move_source->filters_done.array[i] == filter) {
 			move_source_start(move_source);
 			move_source->filters_done.num = 0;
 			da_push_back(move_source->filters_done,
@@ -257,8 +280,17 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 			return;
 		}
 	}
-	move_source_start(filter_data);
-	da_push_back(move_source->filters_done, &filter_data->source);
+	if (strcmp(obs_source_get_unversioned_id(filter),
+		   MOVE_SOURCE_FILTER_ID) == 0) {
+		move_source_start(obs_obj_get_data(filter));
+
+	} else if (strcmp(obs_source_get_unversioned_id(filter),
+			  MOVE_VALUE_FILTER_ID) == 0 ||
+		   strcmp(obs_source_get_unversioned_id(filter),
+			  MOVE_AUDIO_VALUE_FILTER_ID) == 0) {
+		move_value_start(obs_obj_get_data(filter));
+	}
+	da_push_back(move_source->filters_done, &filter);
 
 	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(hotkey);
@@ -791,9 +823,7 @@ static obs_properties_t *move_source_properties(void *data)
 	}
 	if (!move_source->scene_item && move_source->source_name &&
 	    strlen(move_source->source_name)) {
-		obs_scene_enum_items(scene, find_sceneitem,
-						     move_source);
-		
+		obs_scene_enum_items(scene, find_sceneitem, move_source);
 	}
 	obs_property_t *p = obs_properties_add_list(ppts, S_SOURCE,
 						    obs_module_text("Source"),
@@ -957,8 +987,6 @@ static const char *move_source_get_name(void *type_data)
 float get_eased(float f, long long easing, long long easing_function);
 void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 		 struct vec2 *end, const float t);
-
-void move_value_start(struct move_value_info *move_value);
 
 void move_source_tick(void *data, float seconds)
 {
