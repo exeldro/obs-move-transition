@@ -1,5 +1,8 @@
 #pragma once
 
+#include <obs-module.h>
+#include <util/darray.h>
+
 #define MOVE_SOURCE_FILTER_ID "move_source_filter"
 #define MOVE_VALUE_FILTER_ID "move_value_filter"
 #define MOVE_AUDIO_VALUE_FILTER_ID "move_audio_value_filter"
@@ -132,3 +135,40 @@
 #define CHANGE_ORDER_ABSOLUTE (1 << 1)
 #define CHANGE_ORDER_START (1 << 2)
 #define CHANGE_ORDER_END (1 << 3)
+
+struct move_value_info {
+	obs_source_t *source;
+	char *filter_name;
+	obs_source_t *filter;
+	char *setting_filter_name;
+	char *setting_name;
+
+	obs_hotkey_id move_start_hotkey;
+
+	uint64_t duration;
+	uint64_t start_delay;
+	uint64_t end_delay;
+	uint32_t start_trigger;
+	bool moving;
+	float running_duration;
+	char *next_move_name;
+	bool enabled;
+
+	long long easing;
+	long long easing_function;
+
+	long long int_to;
+	long long int_from;
+
+	double double_to;
+	double double_from;
+
+	struct vec4 color_to;
+	struct vec4 color_from;
+
+	long long value_type;
+	DARRAY(obs_source_t *) filters_done;
+
+	long long next_move_on;
+	bool reverse;
+};

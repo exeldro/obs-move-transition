@@ -1,44 +1,6 @@
 #include "move-transition.h"
 #include <obs-module.h>
 #include <util/dstr.h>
-#include <util/darray.h>
-
-struct move_value_info {
-	obs_source_t *source;
-	char *filter_name;
-	obs_source_t *filter;
-	char *setting_filter_name;
-	char *setting_name;
-
-	obs_hotkey_id move_start_hotkey;
-
-	uint64_t duration;
-	uint64_t start_delay;
-	uint64_t end_delay;
-	uint32_t start_trigger;
-	bool moving;
-	float running_duration;
-	char *next_move_name;
-	bool enabled;
-
-	long long easing;
-	long long easing_function;
-
-	long long int_to;
-	long long int_from;
-
-	double double_to;
-	double double_from;
-
-	struct vec4 color_to;
-	struct vec4 color_from;
-
-	long long value_type;
-	DARRAY(obs_source_t *) filters_done;
-
-	long long next_move_on;
-	bool reverse;
-};
 
 void move_value_start(struct move_value_info *move_value)
 {

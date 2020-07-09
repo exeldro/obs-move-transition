@@ -2,7 +2,6 @@
 #include <obs-module.h>
 #include <stdio.h>
 #include <util/dstr.h>
-#include <util/darray.h>
 
 struct move_source_info {
 	obs_source_t *source;
@@ -583,6 +582,22 @@ bool move_source_get_transform(obs_properties_t *props,
 	return settings_changed;
 }
 
+void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
+				      void *data)
+{
+	UNUSED_PARAMETER(parent);
+	if (strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_SOURCE_FILTER_ID) != 0 &&
+	    strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_VALUE_FILTER_ID) != 0 &&
+	    strcmp(obs_source_get_unversioned_id(child),
+		   MOVE_AUDIO_VALUE_FILTER_ID) != 0)
+		return;
+	obs_property_t *p = data;
+	const char *name = obs_source_get_name(child);
+	obs_property_list_add_string(p, name, name);
+}
+
 bool move_source_changed(void *data, obs_properties_t *props,
 			 obs_property_t *property, obs_data_t *settings)
 {
@@ -603,6 +618,22 @@ bool move_source_changed(void *data, obs_properties_t *props,
 		if (scene)
 			obs_scene_enum_items(scene, find_sceneitem, data);
 	}
+	obs_property_t *p = obs_properties_get(props, S_NEXT_MOVE);
+	if (p) {
+		obs_property_list_clear(p);
+		obs_property_list_add_string(
+			p, obs_module_text("NextMove.None"), "");
+		obs_property_list_add_string(
+			p, obs_module_text("NextMove.Reverse"),
+			NEXT_MOVE_REVERSE);
+		obs_source_enum_filters(parent,
+					prop_list_add_move_source_filter, p);
+		obs_source_t *source =
+			obs_sceneitem_get_source(move_source->scene_item);
+		if (source)
+			obs_source_enum_filters(
+				source, prop_list_add_move_source_filter, p);
+	}
 	refresh = move_source_get_transform(props, property, data);
 	return refresh;
 }
@@ -611,18 +642,6 @@ bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item,
 			  void *data);
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
-
-void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
-				      void *data)
-{
-	UNUSED_PARAMETER(parent);
-	if (strcmp(obs_source_get_unversioned_id(child),
-		   MOVE_SOURCE_FILTER_ID) != 0)
-		return;
-	obs_property_t *p = data;
-	const char *name = obs_source_get_name(child);
-	obs_property_list_add_string(p, name, name);
-}
 
 bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 					obs_property_t *property,
@@ -770,6 +789,12 @@ static obs_properties_t *move_source_properties(void *data)
 					  NULL);
 		return ppts;
 	}
+	if (!move_source->scene_item && move_source->source_name &&
+	    strlen(move_source->source_name)) {
+		obs_scene_enum_items(scene, find_sceneitem,
+						     move_source);
+		
+	}
 	obs_property_t *p = obs_properties_add_list(ppts, S_SOURCE,
 						    obs_module_text("Source"),
 						    OBS_COMBO_TYPE_LIST,
@@ -887,6 +912,11 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_string(p, obs_module_text("NextMove.Reverse"),
 				     NEXT_MOVE_REVERSE);
 	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
+	obs_source_t *source =
+		obs_sceneitem_get_source(move_source->scene_item);
+	if (source)
+		obs_source_enum_filters(source,
+					prop_list_add_move_source_filter, p);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE_ON,
 				    obs_module_text("NextMoveOn"),
@@ -927,6 +957,8 @@ static const char *move_source_get_name(void *type_data)
 float get_eased(float f, long long easing, long long easing_function);
 void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 		 struct vec2 *end, const float t);
+
+void move_value_start(struct move_value_info *move_value);
 
 void move_source_tick(void *data, float seconds)
 {
@@ -994,9 +1026,9 @@ void move_source_tick(void *data, float seconds)
 
 	struct vec2 pos;
 	if (move_source->curve != 0.0f) {
-		float diff_x =
+		const float diff_x =
 			fabsf(move_source->pos_from.x - move_source->pos_to.x);
-		float diff_y =
+		const float diff_y =
 			fabsf(move_source->pos_from.y - move_source->pos_to.y);
 		struct vec2 control_pos;
 		vec2_set(&control_pos,
@@ -1122,24 +1154,58 @@ void move_source_tick(void *data, float seconds)
 							parent,
 							move_source
 								->next_move_name);
-					if (filter &&
-					    strcmp(obs_source_get_unversioned_id(
-							   filter),
-						   MOVE_SOURCE_FILTER_ID) ==
+					if (!filter) {
+						filter = obs_source_get_filter_by_name(
+							obs_sceneitem_get_source(
+								move_source
+									->scene_item),
+							move_source
+								->next_move_name);
+					}
+					if (filter) {
+						if (strcmp(obs_source_get_unversioned_id(
+								   filter),
+							   MOVE_SOURCE_FILTER_ID) ==
 						    0) {
-						struct move_source_info
-							*filter_data =
+							struct move_source_info *filter_data =
 								obs_obj_get_data(
 									filter);
-						if (move_source->start_trigger ==
-							    START_TRIGGER_ENABLE_DISABLE &&
-						    !obs_source_enabled(
-							    filter_data->source))
-							obs_source_set_enabled(
-								filter_data
-									->source,
-								true);
-						move_source_start(filter_data);
+							if (move_source->start_trigger ==
+								    START_TRIGGER_ENABLE_DISABLE &&
+							    !obs_source_enabled(
+								    filter_data
+									    ->source))
+								obs_source_set_enabled(
+									filter_data
+										->source,
+									true);
+							move_source_start(
+								filter_data);
+						} else if (
+							strcmp(obs_source_get_unversioned_id(
+								       filter),
+							       MOVE_VALUE_FILTER_ID) ==
+								0 ||
+							strcmp(obs_source_get_unversioned_id(
+								       filter),
+							       MOVE_AUDIO_VALUE_FILTER_ID) ==
+								0) {
+							struct move_value_info *filter_data =
+								obs_obj_get_data(
+									filter);
+							if (move_source->start_trigger ==
+								    START_TRIGGER_ENABLE_DISABLE &&
+							    !obs_source_enabled(
+								    filter_data
+									    ->source))
+								obs_source_set_enabled(
+									filter_data
+										->source,
+									true);
+							move_value_start(
+								filter_data);
+						}
+						obs_source_release(filter);
 					}
 				}
 			}
