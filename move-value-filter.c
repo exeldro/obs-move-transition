@@ -154,12 +154,18 @@ void move_value_update(void *data, obs_data_t *settings)
 	if (!move_value->filter_name ||
 	    strcmp(move_value->filter_name, filter_name) != 0) {
 		bfree(move_value->filter_name);
-
-		move_value->filter_name = bstrdup(filter_name);
-		obs_hotkey_unregister(move_value->move_start_hotkey);
-		move_value->move_start_hotkey = obs_hotkey_register_source(
-			parent, move_value->filter_name,
-			move_value->filter_name, move_value_start_hotkey, data);
+		move_value->filter_name = NULL;
+		if (move_value->move_start_hotkey != OBS_INVALID_HOTKEY_ID) {
+			obs_hotkey_unregister(move_value->move_start_hotkey);
+			move_value->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+		}
+		if (parent) {
+			move_value->filter_name = bstrdup(filter_name);
+			move_value->move_start_hotkey =
+				obs_hotkey_register_source(
+					parent, filter_name, filter_name,
+					move_value_start_hotkey, data);
+		}
 	}
 
 	const char *setting_filter_name =
@@ -169,8 +175,10 @@ void move_value_update(void *data, obs_data_t *settings)
 		bfree(move_value->setting_filter_name);
 		move_value->setting_filter_name = bstrdup(setting_filter_name);
 		obs_source_release(move_value->filter);
-		move_value->filter = obs_source_get_filter_by_name(
-			parent, setting_filter_name);
+		move_value->filter = NULL;
+		if (parent)
+			move_value->filter = obs_source_get_filter_by_name(
+				parent, setting_filter_name);
 	}
 
 	const char *setting_name =
@@ -209,11 +217,11 @@ void move_value_update(void *data, obs_data_t *settings)
 
 static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
-	UNUSED_PARAMETER(settings);
 	struct move_value_info *move_value =
 		bzalloc(sizeof(struct move_value_info));
 	move_value->source = source;
 	move_value->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+	move_value_update(move_value, settings);
 	return move_value;
 }
 

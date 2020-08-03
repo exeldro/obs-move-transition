@@ -363,7 +363,7 @@ void move_source_update(void *data, obs_data_t *settings)
 		}
 
 		bfree(move_source->source_name);
-		move_source->source_name = bstrdup(source_name);
+		move_source->source_name = NULL;
 
 		source = obs_get_source_by_name(source_name);
 		if (source) {
@@ -382,13 +382,15 @@ void move_source_update(void *data, obs_data_t *settings)
 				signal_handler_connect(sh, "hide",
 						       move_source_source_hide,
 						       data);
+				move_source->source_name = bstrdup(source_name);
 			}
 			obs_source_release(source);
 		}
 
 		obs_sceneitem_release(move_source->scene_item);
 		move_source->scene_item = NULL;
-		obs_scene_enum_items(scene, find_sceneitem, data);
+		if (move_source->source_name)
+			obs_scene_enum_items(scene, find_sceneitem, data);
 	}
 	const char *filter_name = obs_source_get_name(move_source->source);
 	if (!move_source->filter_name ||
@@ -493,11 +495,11 @@ void move_source_source_rename(void *data, calldata_t *call_data)
 
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
-	UNUSED_PARAMETER(settings);
 	struct move_source_info *move_source =
 		bzalloc(sizeof(struct move_source_info));
 	move_source->source = source;
 	move_source->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+	move_source_update(move_source, settings);
 	signal_handler_connect(obs_get_signal_handler(), "source_rename",
 			       move_source_source_rename, move_source);
 	return move_source;
