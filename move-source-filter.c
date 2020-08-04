@@ -465,7 +465,7 @@ void update_transform_text(obs_data_t *settings)
 	char transform_text[500];
 	snprintf(
 		transform_text, 500,
-		"pos: {%.0f,%.0f}, rot: %.1f, scale: {%.3f,%.3f}, bounds: {%.0f,%.0f}, crop: {%d,%d,%d,%d}",
+		"pos: x %.0f y %.0f rot: %.1f scale: x %.3f y %.3f bounds: x %.0f y %.0f crop: l %d t %d r %d b %d",
 		pos.x, pos.y, rot, scale.x, scale.y, bounds.x, bounds.y,
 		(int)obs_data_get_int(settings, S_CROP_LEFT),
 		(int)obs_data_get_int(settings, S_CROP_TOP),
@@ -697,7 +697,7 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 	struct vec2 bounds;
 	struct obs_sceneitem_crop crop;
 	if (sscanf(transform_text,
-		   "pos: {%f,%f}, rot: %f, scale: {%f,%f}, bounds: {%f,%f}, crop: {%d,%d,%d,%d}",
+		   "pos: x %f y %f rot: %f scale: x %f y %f bounds: x %f y %f crop: l %d t %d r %d b %d",
 		   &pos.x, &pos.y, &rot, &scale.x, &scale.y, &bounds.x,
 		   &bounds.y, &crop.left, &crop.top, &crop.right,
 		   &crop.bottom) != 11) {
