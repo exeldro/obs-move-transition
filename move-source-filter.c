@@ -396,14 +396,19 @@ void move_source_update(void *data, obs_data_t *settings)
 	if (!move_source->filter_name ||
 	    strcmp(move_source->filter_name, filter_name) != 0) {
 		bfree(move_source->filter_name);
-
-		move_source->filter_name = bstrdup(filter_name);
-		if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
+		move_source->filter_name = NULL;
+		if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID) {
 			obs_hotkey_unregister(move_source->move_start_hotkey);
-		move_source->move_start_hotkey = obs_hotkey_register_source(
-			parent, move_source->filter_name,
-			move_source->filter_name, move_source_start_hotkey,
-			data);
+			move_source->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+		}
+		if (parent) {
+			move_source->filter_name = bstrdup(filter_name);
+			move_source->move_start_hotkey =
+				obs_hotkey_register_source(
+					parent, move_source->filter_name,
+					move_source->filter_name,
+					move_source_start_hotkey, data);
+		}
 	}
 	move_source->change_visibility =
 		obs_data_get_int(settings, S_CHANGE_VISIBILITY);
