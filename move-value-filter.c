@@ -8,9 +8,12 @@ void move_value_start(struct move_value_info *move_value)
 	    strlen(move_value->setting_filter_name)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_value->source);
-		if (parent)
+		if (parent) {
 			move_value->filter = obs_source_get_filter_by_name(
 				parent, move_value->setting_filter_name);
+		} else {
+			return;
+		}
 	}
 	if (move_value->reverse) {
 		move_value->running_duration = 0.0f;
@@ -311,7 +314,8 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 
 	const char *filter_name = obs_data_get_string(settings, S_FILTER);
 	if (!move_value->setting_filter_name ||
-	    strcmp(move_value->setting_filter_name, filter_name) != 0) {
+	    strcmp(move_value->setting_filter_name, filter_name) != 0 ||
+	    (!move_value->filter && strlen(filter_name))) {
 		bfree(move_value->setting_filter_name);
 		move_value->setting_filter_name = bstrdup(filter_name);
 		obs_source_release(move_value->filter);

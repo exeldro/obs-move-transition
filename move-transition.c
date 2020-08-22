@@ -2086,9 +2086,9 @@ void prop_list_add_transitions(obs_property_t *p)
 				     NULL);
 	obs_frontend_get_transitions(&transitions);
 	for (size_t i = 0; i < transitions.sources.num; i++) {
-		if (strcmp(obs_source_get_unversioned_id(
-				   transitions.sources.array[i]),
-			   "move_transition") == 0)
+		const char *id = obs_source_get_unversioned_id(
+			transitions.sources.array[i]);
+		if (!id || strcmp(id, "move_transition") == 0)
 			continue;
 		const char *name =
 			obs_source_get_name(transitions.sources.array[i]);
@@ -2128,8 +2128,8 @@ static obs_properties_t *move_properties(void *data)
 				obs_module_text("CacheTransitions"));
 
 	p = obs_properties_add_int_slider(group, S_SWITCH_PERCENTAGE,
-				      obs_module_text("SwitchPoint"), 0, 100,
-				      1);
+					  obs_module_text("SwitchPoint"), 0,
+					  100, 1);
 	obs_property_int_set_suffix(p, "%");
 
 	obs_properties_add_group(ppts, S_MOVE_ALL, obs_module_text("MoveAll"),
