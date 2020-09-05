@@ -20,6 +20,21 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->moving = true;
 		return;
 	}
+	if (move_value->moving && obs_source_enabled(move_value->source)) {
+		if (move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
+		    move_value->next_move_name &&
+		    strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) ==
+			    0) {
+			move_value->reverse = !move_value->reverse;
+			move_value->running_duration =
+				(float)(move_value->duration +
+					move_value->start_delay +
+					move_value->end_delay) /
+					1000.0f -
+				move_value->running_duration;
+		}
+		return;
+	}
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
@@ -60,9 +75,10 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->moving = true;
 		}
 	}
-	if (!move_value->moving &&
-	    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE) {
-		obs_source_set_enabled(move_value->source, false);
+	if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	    obs_source_enabled(move_value->source) != move_value->moving) {
+		move_value->enabled = move_value;
+		obs_source_set_enabled(move_value->source, move_value->moving);
 	}
 	obs_data_release(ss);
 }
@@ -121,6 +137,17 @@ void move_value_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 			da_push_back(move_value->filters_done,
 				     &move_value->source);
 			return;
+		}
+		if (filter_data->moving &&
+		    obs_source_enabled(filter_data->source) &&
+		    (filter_data->reverse || !filter_data->next_move_name ||
+		     strcmp(filter_data->next_move_name, NEXT_MOVE_REVERSE) !=
+			     0)) {
+			filter_data->moving = false;
+			if (filter_data->start_trigger ==
+			    START_TRIGGER_ENABLE_DISABLE)
+				obs_source_set_enabled(filter_data->source,
+						       false);
 		}
 		if (filter_data->next_move_on != NEXT_MOVE_ON_HOTKEY) {
 			filter_data = obs_obj_get_data(filter);
@@ -214,6 +241,7 @@ void move_value_update(void *data, obs_data_t *settings)
 	    strcmp(move_value->next_move_name, next_move_name) != 0) {
 		bfree(move_value->next_move_name);
 		move_value->next_move_name = bstrdup(next_move_name);
+		move_value->reverse = false;
 	}
 	move_value->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
 }
@@ -704,11 +732,15 @@ void move_value_tick(void *data, float seconds)
 						if (move_value->start_trigger ==
 							    START_TRIGGER_ENABLE_DISABLE &&
 						    !obs_source_enabled(
-							    filter_data->source))
+							    filter_data
+								    ->source)) {
+							filter_data->enabled =
+								true;
 							obs_source_set_enabled(
 								filter_data
 									->source,
 								true);
+						}
 						move_value_start(filter_data);
 					}
 				}
