@@ -109,6 +109,7 @@ static obs_properties_t *move_filter_properties(void *data)
 				    obs_module_text("Transition"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("NoOverride"), NULL);
 	prop_list_add_transitions(p);
 	p = obs_properties_add_list(group, S_TRANSITION_SCALE,
 				    obs_module_text("TransitionScaleType"),
@@ -170,6 +171,8 @@ static obs_properties_t *move_filter_properties(void *data)
 				    obs_module_text("Transition"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("NoOverride"),
+				  NULL);
 	prop_list_add_transitions(p);
 
 	curve_group = obs_properties_create();
@@ -225,6 +228,7 @@ static obs_properties_t *move_filter_properties(void *data)
 				    obs_module_text("Transition"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("NoOverride"), NULL);
 	prop_list_add_transitions(p);
 
 	curve_group = obs_properties_create();

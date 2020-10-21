@@ -681,6 +681,8 @@ obs_source_t *get_transition(const char *transition_name, void *pool_data,
 			     size_t *index, bool cache)
 {
 
+	if (!transition_name || strlen(transition_name) == 0 || strcmp(transition_name, "None") == 0)
+		return NULL;
 	DARRAY(obs_source_t *) *transition_pool = pool_data;
 	const size_t i = *index;
 	if (cache && transition_pool->num && *index < transition_pool->num) {
@@ -1701,8 +1703,10 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				const char *cv_b = obs_data_get_string(
 					settings_b, S_TRANSITION_MATCH);
 				if (cv_a && strlen(cv_a)) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(cv_a);
 				} else if (cv_b && strlen(cv_b)) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(cv_b);
 				}
 				val_a = obs_data_get_int(settings_a,
@@ -1794,6 +1798,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					settings_a, S_TRANSITION_OUT);
 				if (!item->move_scene && ti && strlen(ti) &&
 				    item->item_a && !item->item_b) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(ti);
 				}
 				const char *tm = obs_data_get_string(
@@ -1801,6 +1806,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				if (tm && strlen(tm) &&
 				    ((item->item_a && item->item_b) ||
 				     item->move_scene)) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(tm);
 				}
 				if (((item->item_a && item->item_b) ||
@@ -1881,6 +1887,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 					settings_b, S_TRANSITION_IN);
 				if (!item->move_scene && to && strlen(to) &&
 				    !item->item_a && item->item_b) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(to);
 				}
 				const char *tm = obs_data_get_string(
@@ -1888,6 +1895,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				if (tm && strlen(tm) &&
 				    ((item->item_a && item->item_b) ||
 				     item->move_scene)) {
+					bfree(item->transition_name);
 					item->transition_name = bstrdup(tm);
 				}
 				if (((item->item_a && item->item_b) ||
@@ -1932,22 +1940,30 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			obs_data_release(settings_b);
 			if (!item->transition_name && !item->move_scene &&
 			    !item->item_a && item->item_b &&
-			    move->transition_in && strlen(move->transition_in))
+			    move->transition_in &&
+			    strlen(move->transition_in)) {
+
+				bfree(item->transition_name);
 				item->transition_name =
 					bstrdup(move->transition_in);
+			}
 			if (!item->transition_name && !item->move_scene &&
 			    item->item_a && !item->item_b &&
 			    move->transition_out &&
-			    strlen(move->transition_out))
+			    strlen(move->transition_out)) {
+				bfree(item->transition_name);
 				item->transition_name =
 					bstrdup(move->transition_out);
+			}
 			if (!item->transition_name &&
 			    ((item->item_a && item->item_b) ||
 			     item->move_scene) &&
 			    move->transition_move &&
-			    strlen(move->transition_move))
+			    strlen(move->transition_move)) {
+				bfree(item->transition_name);
 				item->transition_name =
 					bstrdup(move->transition_move);
+			}
 		}
 	}
 
@@ -2083,7 +2099,7 @@ void prop_list_add_transitions(obs_property_t *p)
 {
 	struct obs_frontend_source_list transitions = {0};
 	obs_property_list_add_string(p, obs_module_text("Transition.None"),
-				     NULL);
+				     "None");
 	obs_frontend_get_transitions(&transitions);
 	for (size_t i = 0; i < transitions.sources.num; i++) {
 		const char *id = obs_source_get_unversioned_id(
