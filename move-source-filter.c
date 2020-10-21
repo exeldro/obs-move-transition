@@ -145,13 +145,24 @@ void move_source_start(struct move_source_info *move_source)
 				move_source->order_position);
 		}
 	}
-	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW ||
+	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW_START ||
+	     move_source->change_visibility == CHANGE_VISIBILITY_SHOW_START_END ||
 	     move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE) &&
 	    !obs_sceneitem_visible(move_source->scene_item)) {
 		obs_sceneitem_set_visible(move_source->scene_item, true);
 		move_source->visibility_toggled = true;
 	} else {
 		move_source->visibility_toggled = false;
+	}
+	if (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE_START) {
+		obs_sceneitem_set_visible(
+			move_source->scene_item,
+			!obs_sceneitem_visible(move_source->scene_item));
+	} else if (move_source->change_visibility ==
+			   CHANGE_VISIBILITY_HIDE_START ||
+		   move_source->change_visibility ==
+			   CHANGE_VISIBILITY_HIDE_START_END) {
+		obs_sceneitem_set_visible(move_source->scene_item, false);
 	}
 	move_source->running_duration = 0.0f;
 	if (!move_source->reverse) {
@@ -188,11 +199,18 @@ void move_source_start(struct move_source_info *move_source)
 	    move_source->crop_from.top != move_source->crop_to.top ||
 	    move_source->crop_from.right != move_source->crop_to.right ||
 	    move_source->crop_from.bottom != move_source->crop_to.bottom ||
-	    (move_source->change_visibility == CHANGE_VISIBILITY_HIDE &&
+	    (move_source->change_visibility == CHANGE_VISIBILITY_HIDE_END &&
 	     obs_sceneitem_visible(move_source->scene_item)) ||
 	    (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE &&
 	     !move_source->visibility_toggled) ||
-	    move_source->visibility_toggled) {
+	    move_source->visibility_toggled ||
+	    (move_source->change_visibility == CHANGE_VISIBILITY_SHOW_END &&
+	     !obs_sceneitem_visible(move_source->scene_item)) ||
+	    move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE_END ||
+	    move_source->change_visibility ==
+		    CHANGE_VISIBILITY_SHOW_START_END ||
+	    move_source->change_visibility ==
+		    CHANGE_VISIBILITY_HIDE_START_END) {
 		move_source->moving = true;
 		if (move_source->start_trigger ==
 			    START_TRIGGER_ENABLE_DISABLE &&
@@ -912,12 +930,32 @@ static obs_properties_t *move_source_properties(void *data)
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.No"),
 				  CHANGE_VISIBILITY_NONE);
-	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Show"),
-				  CHANGE_VISIBILITY_SHOW);
-	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Hide"),
-				  CHANGE_VISIBILITY_HIDE);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeVisibility.ShowStart"),
+				  CHANGE_VISIBILITY_SHOW_START);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeVisibility.ShowEnd"),
+				  CHANGE_VISIBILITY_SHOW_END);
+	obs_property_list_add_int(
+		p, obs_module_text("ChangeVisibility.ShowStartEnd"),
+		CHANGE_VISIBILITY_SHOW_START_END);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeVisibility.HideStart"),
+				  CHANGE_VISIBILITY_HIDE_START);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeVisibility.HideEnd"),
+				  CHANGE_VISIBILITY_HIDE_END);
+	obs_property_list_add_int(
+		p, obs_module_text("ChangeVisibility.HideStartEnd"),
+		CHANGE_VISIBILITY_HIDE_START_END);
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Toggle"),
 				  CHANGE_VISIBILITY_TOGGLE);
+	obs_property_list_add_int(
+		p, obs_module_text("ChangeVisibility.ToggleStart"),
+		CHANGE_VISIBILITY_TOGGLE_START);
+	obs_property_list_add_int(p,
+				  obs_module_text("ChangeVisibility.ToggleEnd"),
+				  CHANGE_VISIBILITY_TOGGLE_END);
 
 	p = obs_properties_add_list(ppts, S_CHANGE_ORDER,
 				    obs_module_text("ChangeOrder"),
@@ -1189,9 +1227,23 @@ void move_source_tick(void *data, float seconds)
 			     0)) {
 			obs_source_set_enabled(move_source->source, false);
 		}
-		if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE) {
+		if (move_source->change_visibility ==
+		    CHANGE_VISIBILITY_HIDE_END || move_source->change_visibility ==
+		    CHANGE_VISIBILITY_SHOW_START_END) {
 			obs_sceneitem_set_visible(move_source->scene_item,
 						  false);
+		} else if (move_source->change_visibility ==
+				   CHANGE_VISIBILITY_SHOW_END ||
+			   move_source->change_visibility ==
+				   CHANGE_VISIBILITY_HIDE_START_END) {
+			obs_sceneitem_set_visible(move_source->scene_item,
+						  true);
+		} else if (move_source->change_visibility ==
+			   CHANGE_VISIBILITY_TOGGLE_END) {
+			obs_sceneitem_set_visible(
+				move_source->scene_item,
+				!obs_sceneitem_visible(
+					move_source->scene_item));
 		} else if (move_source->change_visibility ==
 				   CHANGE_VISIBILITY_TOGGLE &&
 			   !move_source->visibility_toggled) {
