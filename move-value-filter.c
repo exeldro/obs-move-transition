@@ -77,7 +77,7 @@ void move_value_start(struct move_value_info *move_value)
 	}
 	if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
 	    obs_source_enabled(move_value->source) != move_value->moving) {
-		move_value->enabled = move_value;
+		move_value->enabled = move_value->moving;
 		obs_source_set_enabled(move_value->source, move_value->moving);
 	}
 	obs_data_release(ss);
@@ -592,9 +592,9 @@ void move_value_tick(void *data, float seconds)
 	}
 	const bool enabled = obs_source_enabled(move_value->source);
 	if (move_value->enabled != enabled) {
-		if (enabled &&
+		if (enabled && (
 			    move_value->start_trigger == START_TRIGGER_ENABLE ||
-		    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE)
+		    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE))
 			move_value_start(move_value);
 		move_value->enabled = enabled;
 	}
