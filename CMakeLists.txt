@@ -1,4 +1,4 @@
-project(move-transition VERSION 1.8.0)
+project(move-transition VERSION 1.8.1)
 set(PROJECT_FULL_NAME "Move Transition")
 
 set(move-transition_HEADERS

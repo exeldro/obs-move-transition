@@ -46,6 +46,28 @@ struct move_source_info {
 	int order_position;
 };
 
+void move_source_item_remove(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	obs_scene_t *scene = NULL;
+	calldata_get_ptr(call_data, "scene", &scene);
+	obs_sceneitem_t *item = NULL;
+	calldata_get_ptr(call_data, "item", &item);
+	if (item == move_source->scene_item) {
+		obs_sceneitem_release(move_source->scene_item);
+		move_source->scene_item = NULL;
+		obs_source_t *parent = obs_scene_get_source(scene);
+		if (parent) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(parent);
+			if (sh)
+				signal_handler_disconnect(sh, "item_remove",
+						       move_source_item_remove,
+						       move_source);
+		}
+	}
+}
+
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 {
 	UNUSED_PARAMETER(scene);
@@ -55,6 +77,15 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	if (name && strcmp(name, move_source->source_name) == 0) {
 		obs_sceneitem_addref(scene_item);
 		move_source->scene_item = scene_item;
+		obs_source_t *parent = obs_scene_get_source(scene);
+		if (parent) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(parent);
+			if (sh)
+				signal_handler_connect(sh, "item_remove",
+						       move_source_item_remove,
+						       move_source);
+		}
 		return false;
 	}
 	return true;
@@ -146,7 +177,8 @@ void move_source_start(struct move_source_info *move_source)
 		}
 	}
 	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW_START ||
-	     move_source->change_visibility == CHANGE_VISIBILITY_SHOW_START_END ||
+	     move_source->change_visibility ==
+		     CHANGE_VISIBILITY_SHOW_START_END ||
 	     move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE) &&
 	    !obs_sceneitem_visible(move_source->scene_item)) {
 		obs_sceneitem_set_visible(move_source->scene_item, true);
@@ -460,6 +492,14 @@ void move_source_update(void *data, obs_data_t *settings)
 
 		obs_sceneitem_release(move_source->scene_item);
 		move_source->scene_item = NULL;
+		if (parent) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(parent);
+			if (sh)
+				signal_handler_disconnect(
+					sh, "item_remove",
+					move_source_item_remove, move_source);
+		}
 		if (move_source->source_name)
 			obs_scene_enum_items(scene, find_sceneitem, data);
 	}
@@ -587,6 +627,13 @@ static void move_source_destroy(void *data)
 	struct move_source_info *move_source = data;
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
+
+	obs_source_t *parent = obs_filter_get_parent(move_source->source);
+	if (parent) {
+		signal_handler_t *sh = obs_source_get_signal_handler(parent);
+		signal_handler_disconnect(sh, "item_remove",
+					  move_source_item_remove, move_source);
+	}
 
 	obs_source_t *source = NULL;
 	if (move_source->scene_item) {
@@ -725,6 +772,11 @@ bool move_source_changed(void *data, obs_properties_t *props,
 	move_source->scene_item = NULL;
 	obs_source_t *parent = obs_filter_get_parent(move_source->source);
 	if (parent) {
+		signal_handler_t *sh = obs_source_get_signal_handler(parent);
+		if (sh)
+			signal_handler_disconnect(sh, "item_remove",
+						  move_source_item_remove,
+						  move_source);
 		obs_scene_t *scene = obs_scene_from_source(parent);
 		if (scene)
 			obs_scene_enum_items(scene, find_sceneitem, data);
