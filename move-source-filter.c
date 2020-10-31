@@ -121,6 +121,8 @@ void calc_relative_to(struct move_source_info *move_source, float f)
 	obs_data_release(settings);
 }
 
+void move_source_ended(struct move_source_info *move_source);
+
 void move_source_start(struct move_source_info *move_source)
 {
 	if (!move_source->scene_item && move_source->source_name &&
@@ -250,8 +252,8 @@ void move_source_start(struct move_source_info *move_source)
 			move_source->enabled = true;
 			obs_source_set_enabled(move_source->source, true);
 		}
-	} else if (move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE) {
-		obs_source_set_enabled(move_source->source, false);
+	} else {
+		move_source_ended(move_source);
 	}
 }
 
@@ -1139,6 +1141,144 @@ float get_eased(float f, long long easing, long long easing_function);
 void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 		 struct vec2 *end, const float t);
 
+void move_source_ended(struct move_source_info *move_source)
+{
+	if (move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	    (move_source->reverse ||
+	     move_source->next_move_on == NEXT_MOVE_ON_HOTKEY ||
+	     !move_source->next_move_name ||
+	     strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) != 0)) {
+		obs_source_set_enabled(move_source->source, false);
+	}
+	if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE_END ||
+	    move_source->change_visibility ==
+		    CHANGE_VISIBILITY_SHOW_START_END) {
+		obs_sceneitem_set_visible(move_source->scene_item, false);
+	} else if (move_source->change_visibility ==
+			   CHANGE_VISIBILITY_SHOW_END ||
+		   move_source->change_visibility ==
+			   CHANGE_VISIBILITY_HIDE_START_END) {
+		obs_sceneitem_set_visible(move_source->scene_item, true);
+	} else if (move_source->change_visibility ==
+		   CHANGE_VISIBILITY_TOGGLE_END) {
+		obs_sceneitem_set_visible(
+			move_source->scene_item,
+			!obs_sceneitem_visible(move_source->scene_item));
+	} else if (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE &&
+		   !move_source->visibility_toggled) {
+		obs_sceneitem_set_visible(move_source->scene_item, false);
+	}
+	if ((move_source->change_order & CHANGE_ORDER_END) != 0) {
+		if ((move_source->change_order & CHANGE_ORDER_RELATIVE) != 0 &&
+		    move_source->order_position) {
+			if (move_source->order_position > 0) {
+				for (int i = 0; i < move_source->order_position;
+				     i++) {
+					obs_sceneitem_set_order(
+						move_source->scene_item,
+						OBS_ORDER_MOVE_UP);
+				}
+			} else if (move_source->order_position < 0) {
+				for (int i = 0; i > move_source->order_position;
+				     i--) {
+					obs_sceneitem_set_order(
+						move_source->scene_item,
+						OBS_ORDER_MOVE_DOWN);
+				}
+			}
+		} else if ((move_source->change_order &
+			    CHANGE_ORDER_ABSOLUTE) != 0) {
+			obs_sceneitem_set_order_position(
+				move_source->scene_item,
+				move_source->order_position);
+		}
+	}
+	if (move_source->next_move_on == NEXT_MOVE_ON_END &&
+	    move_source->next_move_name &&
+	    strlen(move_source->next_move_name) &&
+	    (!move_source->filter_name ||
+	     strcmp(move_source->filter_name, move_source->next_move_name) !=
+		     0)) {
+		if (strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) ==
+		    0) {
+			move_source->reverse = !move_source->reverse;
+			if (move_source->reverse)
+				move_source_start(move_source);
+		} else {
+			obs_source_t *parent =
+				obs_filter_get_parent(move_source->source);
+			if (parent) {
+				obs_source_t *filter =
+					obs_source_get_filter_by_name(
+						parent,
+						move_source->next_move_name);
+				if (!filter) {
+					filter = obs_source_get_filter_by_name(
+						obs_sceneitem_get_source(
+							move_source->scene_item),
+						move_source->next_move_name);
+				}
+				if (filter) {
+					if (strcmp(obs_source_get_unversioned_id(
+							   filter),
+						   MOVE_SOURCE_FILTER_ID) ==
+					    0) {
+						struct move_source_info
+							*filter_data =
+								obs_obj_get_data(
+									filter);
+						if (move_source->start_trigger ==
+							    START_TRIGGER_ENABLE_DISABLE &&
+						    !obs_source_enabled(
+							    filter_data
+								    ->source)) {
+							filter_data->enabled =
+								true;
+							obs_source_set_enabled(
+								filter_data
+									->source,
+								true);
+						}
+						move_source_start(filter_data);
+					} else if (
+						strcmp(obs_source_get_unversioned_id(
+							       filter),
+						       MOVE_VALUE_FILTER_ID) ==
+							0 ||
+						strcmp(obs_source_get_unversioned_id(
+							       filter),
+						       MOVE_AUDIO_VALUE_FILTER_ID) ==
+							0) {
+						struct move_value_info
+							*filter_data =
+								obs_obj_get_data(
+									filter);
+						if (move_source->start_trigger ==
+							    START_TRIGGER_ENABLE_DISABLE &&
+						    !obs_source_enabled(
+							    filter_data
+								    ->source)) {
+							filter_data->enabled =
+								true;
+							obs_source_set_enabled(
+								filter_data
+									->source,
+								true);
+						}
+						move_value_start(filter_data);
+					}
+					obs_source_release(filter);
+				}
+			}
+		}
+	} else if (move_source->next_move_on == NEXT_MOVE_ON_HOTKEY &&
+		   move_source->next_move_name &&
+		   strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) ==
+			   0) {
+		move_source->reverse = !move_source->reverse;
+	}
+}
+
 void move_source_tick(void *data, float seconds)
 {
 	struct move_source_info *move_source = data;
@@ -1270,155 +1410,7 @@ void move_source_tick(void *data, float seconds)
 	obs_sceneitem_set_crop(move_source->scene_item, &crop);
 	obs_sceneitem_defer_update_end(move_source->scene_item);
 	if (!move_source->moving) {
-		if (move_source->start_trigger ==
-			    START_TRIGGER_ENABLE_DISABLE &&
-		    (move_source->reverse ||
-		     move_source->next_move_on == NEXT_MOVE_ON_HOTKEY ||
-		     !move_source->next_move_name ||
-		     strcmp(move_source->next_move_name, NEXT_MOVE_REVERSE) !=
-			     0)) {
-			obs_source_set_enabled(move_source->source, false);
-		}
-		if (move_source->change_visibility ==
-		    CHANGE_VISIBILITY_HIDE_END || move_source->change_visibility ==
-		    CHANGE_VISIBILITY_SHOW_START_END) {
-			obs_sceneitem_set_visible(move_source->scene_item,
-						  false);
-		} else if (move_source->change_visibility ==
-				   CHANGE_VISIBILITY_SHOW_END ||
-			   move_source->change_visibility ==
-				   CHANGE_VISIBILITY_HIDE_START_END) {
-			obs_sceneitem_set_visible(move_source->scene_item,
-						  true);
-		} else if (move_source->change_visibility ==
-			   CHANGE_VISIBILITY_TOGGLE_END) {
-			obs_sceneitem_set_visible(
-				move_source->scene_item,
-				!obs_sceneitem_visible(
-					move_source->scene_item));
-		} else if (move_source->change_visibility ==
-				   CHANGE_VISIBILITY_TOGGLE &&
-			   !move_source->visibility_toggled) {
-			obs_sceneitem_set_visible(move_source->scene_item,
-						  false);
-		}
-		if ((move_source->change_order & CHANGE_ORDER_END) != 0) {
-			if ((move_source->change_order &
-			     CHANGE_ORDER_RELATIVE) != 0 &&
-			    move_source->order_position) {
-				if (move_source->order_position > 0) {
-					for (int i = 0;
-					     i < move_source->order_position;
-					     i++) {
-						obs_sceneitem_set_order(
-							move_source->scene_item,
-							OBS_ORDER_MOVE_UP);
-					}
-				} else if (move_source->order_position < 0) {
-					for (int i = 0;
-					     i > move_source->order_position;
-					     i--) {
-						obs_sceneitem_set_order(
-							move_source->scene_item,
-							OBS_ORDER_MOVE_DOWN);
-					}
-				}
-			} else if ((move_source->change_order &
-				    CHANGE_ORDER_ABSOLUTE) != 0) {
-				obs_sceneitem_set_order_position(
-					move_source->scene_item,
-					move_source->order_position);
-			}
-		}
-		if (move_source->next_move_on == NEXT_MOVE_ON_END &&
-		    move_source->next_move_name &&
-		    strlen(move_source->next_move_name) &&
-		    (!move_source->filter_name ||
-		     strcmp(move_source->filter_name,
-			    move_source->next_move_name) != 0)) {
-			if (strcmp(move_source->next_move_name,
-				   NEXT_MOVE_REVERSE) == 0) {
-				move_source->reverse = !move_source->reverse;
-				if (move_source->reverse)
-					move_source_start(move_source);
-			} else {
-				obs_source_t *parent = obs_filter_get_parent(
-					move_source->source);
-				if (parent) {
-					obs_source_t *filter =
-						obs_source_get_filter_by_name(
-							parent,
-							move_source
-								->next_move_name);
-					if (!filter) {
-						filter = obs_source_get_filter_by_name(
-							obs_sceneitem_get_source(
-								move_source
-									->scene_item),
-							move_source
-								->next_move_name);
-					}
-					if (filter) {
-						if (strcmp(obs_source_get_unversioned_id(
-								   filter),
-							   MOVE_SOURCE_FILTER_ID) ==
-						    0) {
-							struct move_source_info *filter_data =
-								obs_obj_get_data(
-									filter);
-							if (move_source->start_trigger ==
-								    START_TRIGGER_ENABLE_DISABLE &&
-							    !obs_source_enabled(
-								    filter_data
-									    ->source)) {
-								filter_data
-									->enabled =
-									true;
-								obs_source_set_enabled(
-									filter_data
-										->source,
-									true);
-							}
-							move_source_start(
-								filter_data);
-						} else if (
-							strcmp(obs_source_get_unversioned_id(
-								       filter),
-							       MOVE_VALUE_FILTER_ID) ==
-								0 ||
-							strcmp(obs_source_get_unversioned_id(
-								       filter),
-							       MOVE_AUDIO_VALUE_FILTER_ID) ==
-								0) {
-							struct move_value_info *filter_data =
-								obs_obj_get_data(
-									filter);
-							if (move_source->start_trigger ==
-								    START_TRIGGER_ENABLE_DISABLE &&
-							    !obs_source_enabled(
-								    filter_data
-									    ->source)) {
-								filter_data
-									->enabled =
-									true;
-								obs_source_set_enabled(
-									filter_data
-										->source,
-									true);
-							}
-							move_value_start(
-								filter_data);
-						}
-						obs_source_release(filter);
-					}
-				}
-			}
-		} else if (move_source->next_move_on == NEXT_MOVE_ON_HOTKEY &&
-			   move_source->next_move_name &&
-			   strcmp(move_source->next_move_name,
-				  NEXT_MOVE_REVERSE) == 0) {
-			move_source->reverse = !move_source->reverse;
-		}
+		move_source_ended(move_source);
 	}
 }
 
