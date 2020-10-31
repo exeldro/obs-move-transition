@@ -266,6 +266,12 @@ jobs:
           robocopy .\build64\rundir\RelWithDebInfo\obs-plugins\64bit\ .\package\obs-plugins\64bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore
           robocopy .\build64\rundir\RelWithDebInfo\data\obs-plugins\${{ env.PLUGIN_NAME }}\ .\package\data\obs-plugins\${{ env.PLUGIN_NAME }}\ /E /XF .gitignore
           exit 0
+      - name: Publish zip
+        if: success()
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: '${{ env.FILE_NAME }}'
+          path: package/*
       - name: "Package Installer (Prereqs)"
         run: |
           curl "-kL" "https://github.com/Xaymar/msvc-redist-helper/releases/download/0.1/msvc-redist-helper-64.exe" "-f" "--retry" "5" "-o" "msvc-redist-helper.exe"
@@ -274,9 +280,9 @@ jobs:
       - name: "Package Installer (Compile)"
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' /Qp ".\build64\plugins\${{ env.PLUGIN_NAME }}\installer.iss"
-      - name: Publish
+      - name: Publish installer
         if: success()
         uses: actions/upload-artifact@v2.2.0
         with:
-          name: '${{ env.FILE_NAME }}'
-          path: package/*
+          name: '${{ env.FILE_NAME }}-installer'
+          path: package/*.exe
