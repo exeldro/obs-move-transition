@@ -43,7 +43,16 @@ struct move_source_info {
 	bool reverse;
 
 	long long change_order;
-	int order_position;
+	long long order_position;
+
+	long long media_action_start;
+	int64_t media_time_start;
+	long long media_action_end;
+	int64_t media_time_end;
+
+	bool audio_fade;
+	float audio_fade_from;
+	float audio_fade_to;
 };
 
 void move_source_item_remove(void *data, calldata_t *call_data)
@@ -61,9 +70,9 @@ void move_source_item_remove(void *data, calldata_t *call_data)
 			signal_handler_t *sh =
 				obs_source_get_signal_handler(parent);
 			if (sh)
-				signal_handler_disconnect(sh, "item_remove",
-						       move_source_item_remove,
-						       move_source);
+				signal_handler_disconnect(
+					sh, "item_remove",
+					move_source_item_remove, move_source);
 		}
 	}
 }
@@ -119,6 +128,116 @@ void calc_relative_to(struct move_source_info *move_source, float f)
 		move_source->crop_from.bottom +
 		(int)obs_data_get_int(settings, S_CROP_BOTTOM) * (int)f;
 	obs_data_release(settings);
+}
+
+void move_source_media_action(struct move_source_info *move_source,
+			      long long media_action, int64_t media_time)
+{
+	if (media_action == MEDIA_ACTION_PLAY) {
+		const enum obs_media_state state = obs_source_media_get_state(
+			obs_sceneitem_get_source(move_source->scene_item));
+		if (state == OBS_MEDIA_STATE_PAUSED) {
+			obs_source_media_play_pause(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				false);
+		} else if (state != OBS_MEDIA_STATE_PLAYING) {
+			obs_source_media_restart(obs_sceneitem_get_source(
+				move_source->scene_item));
+		}
+	} else if (media_action == MEDIA_ACTION_PAUSE) {
+		obs_source_media_play_pause(
+			obs_sceneitem_get_source(move_source->scene_item),
+			true);
+	} else if (media_action == MEDIA_ACTION_STOP) {
+		obs_source_media_stop(
+			obs_sceneitem_get_source(move_source->scene_item));
+	} else if (media_action == MEDIA_ACTION_RESTART) {
+		obs_source_media_restart(
+			obs_sceneitem_get_source(move_source->scene_item));
+	} else if (media_action == MEDIA_ACTION_NEXT) {
+		obs_source_media_next(
+			obs_sceneitem_get_source(move_source->scene_item));
+	} else if (media_action == MEDIA_ACTION_PREVIOUS) {
+		obs_source_media_previous(
+			obs_sceneitem_get_source(move_source->scene_item));
+	} else if (media_action == MEDIA_ACTION_PLAY_FROM) {
+		const int64_t duration = obs_source_media_get_duration(
+			obs_sceneitem_get_source(move_source->scene_item));
+		if (media_time < 0 && duration + media_time > 0) {
+			const enum obs_media_state state =
+				obs_source_media_get_state(
+					obs_sceneitem_get_source(
+						move_source->scene_item));
+			if (state == OBS_MEDIA_STATE_PAUSED) {
+				obs_source_media_play_pause(
+					obs_sceneitem_get_source(
+						move_source->scene_item),
+					false);
+			} else if (state != OBS_MEDIA_STATE_PLAYING) {
+				obs_source_media_restart(
+					obs_sceneitem_get_source(
+						move_source->scene_item));
+			}
+			obs_source_media_set_time(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				duration + media_time);
+		} else if (media_time >= 0 && media_time <= duration) {
+			const enum obs_media_state state =
+				obs_source_media_get_state(
+					obs_sceneitem_get_source(
+						move_source->scene_item));
+			if (state == OBS_MEDIA_STATE_PAUSED) {
+				obs_source_media_play_pause(
+					obs_sceneitem_get_source(
+						move_source->scene_item),
+					false);
+			} else if (state != OBS_MEDIA_STATE_PLAYING) {
+				obs_source_media_restart(
+					obs_sceneitem_get_source(
+						move_source->scene_item));
+			}
+			obs_source_media_set_time(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				media_time);
+		}
+	} else if (media_action == MEDIA_ACTION_PAUSE_AT) {
+		const int64_t duration = obs_source_media_get_duration(
+			obs_sceneitem_get_source(move_source->scene_item));
+		if (media_time < 0 && duration + media_time > 0) {
+			obs_source_media_play_pause(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				true);
+			obs_source_media_set_time(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				duration + media_time);
+		} else if (media_time >= 0 && media_time <= duration) {
+			obs_source_media_play_pause(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				true);
+			obs_source_media_set_time(
+				obs_sceneitem_get_source(
+					move_source->scene_item),
+				media_time);
+		}
+	} else if (media_action == MEDIA_ACTION_MUTE &&
+		   !obs_source_muted(
+			   obs_sceneitem_get_source(move_source->scene_item))) {
+		obs_source_set_muted(
+			obs_sceneitem_get_source(move_source->scene_item),
+			true);
+	} else if (media_action == MEDIA_ACTION_UNMUTE &&
+		   obs_source_muted(
+			   obs_sceneitem_get_source(move_source->scene_item))) {
+		obs_source_set_muted(
+			obs_sceneitem_get_source(move_source->scene_item),
+			false);
+	}
 }
 
 void move_source_ended(struct move_source_info *move_source);
@@ -198,6 +317,8 @@ void move_source_start(struct move_source_info *move_source)
 			   CHANGE_VISIBILITY_HIDE_START_END) {
 		obs_sceneitem_set_visible(move_source->scene_item, false);
 	}
+	move_source_media_action(move_source, move_source->media_action_start,
+				 move_source->media_time_start);
 	move_source->running_duration = 0.0f;
 	if (!move_source->reverse) {
 		move_source->rot_from =
@@ -219,41 +340,16 @@ void move_source_start(struct move_source_info *move_source)
 		if (move_source->relative) {
 			calc_relative_to(move_source, 1.0f);
 		}
+		move_source->audio_fade_from = obs_source_get_volume(
+			obs_sceneitem_get_source(move_source->scene_item));
 	} else if (move_source->relative) {
 		calc_relative_to(move_source, -1.0f);
 	}
-	if (move_source->rot_from != move_source->rot_to ||
-	    move_source->pos_from.x != move_source->pos_to.x ||
-	    move_source->pos_from.y != move_source->pos_to.y ||
-	    move_source->scale_from.x != move_source->scale_to.x ||
-	    move_source->scale_from.y != move_source->scale_to.y ||
-	    move_source->bounds_from.x != move_source->bounds_to.x ||
-	    move_source->bounds_from.y != move_source->bounds_to.y ||
-	    move_source->crop_from.left != move_source->crop_to.left ||
-	    move_source->crop_from.top != move_source->crop_to.top ||
-	    move_source->crop_from.right != move_source->crop_to.right ||
-	    move_source->crop_from.bottom != move_source->crop_to.bottom ||
-	    (move_source->change_visibility == CHANGE_VISIBILITY_HIDE_END &&
-	     obs_sceneitem_visible(move_source->scene_item)) ||
-	    (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE &&
-	     !move_source->visibility_toggled) ||
-	    move_source->visibility_toggled ||
-	    (move_source->change_visibility == CHANGE_VISIBILITY_SHOW_END &&
-	     !obs_sceneitem_visible(move_source->scene_item)) ||
-	    move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE_END ||
-	    move_source->change_visibility ==
-		    CHANGE_VISIBILITY_SHOW_START_END ||
-	    move_source->change_visibility ==
-		    CHANGE_VISIBILITY_HIDE_START_END) {
-		move_source->moving = true;
-		if (move_source->start_trigger ==
-			    START_TRIGGER_ENABLE_DISABLE &&
-		    !obs_source_enabled(move_source->source)) {
-			move_source->enabled = true;
-			obs_source_set_enabled(move_source->source, true);
-		}
-	} else {
-		move_source_ended(move_source);
+	move_source->moving = true;
+	if (move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	    !obs_source_enabled(move_source->source)) {
+		move_source->enabled = true;
+		obs_source_set_enabled(move_source->source, true);
 	}
 }
 
@@ -565,6 +661,20 @@ void move_source_update(void *data, obs_data_t *settings)
 	move_source->change_order = obs_data_get_int(settings, S_CHANGE_ORDER);
 	move_source->order_position =
 		obs_data_get_int(settings, S_ORDER_POSITION);
+
+	move_source->media_action_start =
+		obs_data_get_int(settings, S_MEDIA_ACTION_START);
+	move_source->media_time_start =
+		obs_data_get_int(settings, S_MEDIA_ACTION_START_TIME);
+	move_source->media_action_end =
+		obs_data_get_int(settings, S_MEDIA_ACTION_END);
+	move_source->media_time_end =
+		obs_data_get_int(settings, S_MEDIA_ACTION_END_TIME);
+
+	move_source->audio_fade = obs_data_get_bool(settings, S_AUDIO_FADE);
+	move_source->audio_fade_to =
+		(float)obs_data_get_double(settings, S_AUDIO_FADE_PERCENT) /
+		100.0f;
 }
 
 void update_transform_text(obs_data_t *settings)
@@ -799,6 +909,35 @@ bool move_source_changed(void *data, obs_properties_t *props,
 			obs_source_enum_filters(
 				source, prop_list_add_move_source_filter, p);
 	}
+
+	obs_source_t *source = obs_get_source_by_name(move_source->source_name);
+	if (source) {
+		uint32_t flags = obs_source_get_output_flags(source);
+		const bool media = flags & OBS_SOURCE_CONTROLLABLE_MEDIA;
+		p = obs_properties_get(props, S_MEDIA_ACTION_START);
+		obs_property_set_visible(p, media);
+		p = obs_properties_get(props, S_MEDIA_ACTION_START_TIME);
+		obs_property_set_visible(p, media);
+		p = obs_properties_get(props, S_MEDIA_ACTION_END);
+		obs_property_set_visible(p, media);
+		p = obs_properties_get(props, S_MEDIA_ACTION_END_TIME);
+		obs_property_set_visible(p, media);
+		p = obs_properties_get(props, S_AUDIO_FADE);
+		const bool audio = flags & OBS_SOURCE_AUDIO;
+		obs_property_set_visible(p, audio);
+		obs_source_release(source);
+	} else {
+		p = obs_properties_get(props, S_MEDIA_ACTION_START);
+		obs_property_set_visible(p, false);
+		p = obs_properties_get(props, S_MEDIA_ACTION_START_TIME);
+		obs_property_set_visible(p, false);
+		p = obs_properties_get(props, S_MEDIA_ACTION_END);
+		obs_property_set_visible(p, false);
+		p = obs_properties_get(props, S_MEDIA_ACTION_END_TIME);
+		obs_property_set_visible(p, false);
+		p = obs_properties_get(props, S_AUDIO_FADE);
+		obs_property_set_visible(p, false);
+	}
 	refresh = move_source_get_transform(props, property, data);
 	return refresh;
 }
@@ -940,6 +1079,32 @@ bool move_source_transform_relative_changed(void *data, obs_properties_t *props,
 	}
 	update_transform_text(settings);
 	return true;
+}
+
+static void prop_list_add_media_actions(obs_property_t *p)
+{
+	obs_property_list_add_int(p, obs_module_text("MediaAction.None"),
+				  MEDIA_ACTION_NONE);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Play"),
+				  MEDIA_ACTION_PLAY);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Pause"),
+				  MEDIA_ACTION_PAUSE);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Stop"),
+				  MEDIA_ACTION_STOP);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Restart"),
+				  MEDIA_ACTION_RESTART);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Next"),
+				  MEDIA_ACTION_NEXT);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Previous"),
+				  MEDIA_ACTION_PREVIOUS);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.PlayFrom"),
+				  MEDIA_ACTION_PLAY_FROM);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.PauseAt"),
+				  MEDIA_ACTION_PAUSE_AT);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Mute"),
+				  MEDIA_ACTION_MUTE);
+	obs_property_list_add_int(p, obs_module_text("MediaAction.Unmute"),
+				  MEDIA_ACTION_UNMUTE);
 }
 
 static obs_properties_t *move_source_properties(void *data)
@@ -1087,6 +1252,47 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceHide"),
 				  START_TRIGGER_SOURCE_HIDE);
 
+	obs_source_t *source =
+		obs_sceneitem_get_source(move_source->scene_item);
+	const uint32_t flags = source ? obs_source_get_output_flags(source) : 0;
+	const bool media = flags & OBS_SOURCE_CONTROLLABLE_MEDIA;
+
+	p = obs_properties_add_list(ppts, S_MEDIA_ACTION_START,
+				    obs_module_text("MediaAction.Start"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_media_actions(p);
+	obs_property_set_visible(p, media);
+
+	p = obs_properties_add_int(ppts, S_MEDIA_ACTION_START_TIME,
+				   obs_module_text("MediaAction.Time"),
+				   -1000000, 1000000, 100);
+	obs_property_int_set_suffix(p, "ms");
+
+	obs_property_set_visible(p, media);
+
+	p = obs_properties_add_list(ppts, S_MEDIA_ACTION_END,
+				    obs_module_text("MediaAction.End"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	prop_list_add_media_actions(p);
+	obs_property_set_visible(p, media);
+
+	p = obs_properties_add_int(ppts, S_MEDIA_ACTION_END_TIME,
+				   obs_module_text("MediaAction.Time"),
+				   -1000000, 1000000, 100);
+	obs_property_int_set_suffix(p, "ms");
+	obs_property_set_visible(p, media);
+
+	const bool audio = flags & OBS_SOURCE_AUDIO;
+
+	obs_properties_t *fade = obs_properties_create();
+	p = obs_properties_add_float_slider(
+		fade, S_AUDIO_FADE_PERCENT,
+		obs_module_text("AudioFade.Percent"), 0.0, 100.0, 1.0);
+	p = obs_properties_add_group(ppts, S_AUDIO_FADE,
+				     obs_module_text("AudioFade"),
+				     OBS_GROUP_CHECKABLE, fade);
+	obs_property_set_visible(p, audio);
+
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
 				    obs_module_text("NextMove"),
 				    OBS_COMBO_TYPE_LIST,
@@ -1095,8 +1301,6 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_string(p, obs_module_text("NextMove.Reverse"),
 				     NEXT_MOVE_REVERSE);
 	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
-	obs_source_t *source =
-		obs_sceneitem_get_source(move_source->scene_item);
 	if (source)
 		obs_source_enum_filters(source,
 					prop_list_add_move_source_filter, p);
@@ -1168,6 +1372,8 @@ void move_source_ended(struct move_source_info *move_source)
 		   !move_source->visibility_toggled) {
 		obs_sceneitem_set_visible(move_source->scene_item, false);
 	}
+	move_source_media_action(move_source, move_source->media_action_end,
+				 move_source->media_time_end);
 	if ((move_source->change_order & CHANGE_ORDER_END) != 0) {
 		if ((move_source->change_order & CHANGE_ORDER_RELATIVE) != 0 &&
 		    move_source->order_position) {
@@ -1316,6 +1522,9 @@ void move_source_tick(void *data, float seconds)
 			if (move_source->relative) {
 				calc_relative_to(move_source, 1.0f);
 			}
+			move_source->audio_fade_from =
+				obs_source_get_volume(obs_sceneitem_get_source(
+					move_source->scene_item));
 		} else if (move_source->relative) {
 			calc_relative_to(move_source, -1.0f);
 		}
@@ -1343,6 +1552,13 @@ void move_source_tick(void *data, float seconds)
 		ot = 1.0f;
 	else if (t < 0.0f)
 		ot = 0.0f;
+
+	if (move_source->audio_fade) {
+		obs_source_set_volume(
+			obs_sceneitem_get_source(move_source->scene_item),
+			(1.0f - ot) * move_source->audio_fade_from +
+				ot * move_source->audio_fade_to);
+	}
 
 	struct vec2 pos;
 	if (move_source->curve != 0.0f) {

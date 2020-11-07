@@ -73,6 +73,12 @@
 #define S_CHANGE_VISIBILITY "change_visibility"
 #define S_CHANGE_ORDER "change_order"
 #define S_ORDER_POSITION "order_position"
+#define S_MEDIA_ACTION_START "media_action_start"
+#define S_MEDIA_ACTION_START_TIME "media_action_start_time"
+#define S_MEDIA_ACTION_END "media_action_end"
+#define S_MEDIA_ACTION_END_TIME "media_action_end_time"
+#define S_AUDIO_FADE "audio_fade"
+#define S_AUDIO_FADE_PERCENT "audio_fade_percent"
 
 #define NO_OVERRIDE (-1)
 
@@ -141,6 +147,20 @@
 #define CHANGE_ORDER_ABSOLUTE (1 << 1)
 #define CHANGE_ORDER_START (1 << 2)
 #define CHANGE_ORDER_END (1 << 3)
+
+#define MEDIA_ACTION_NONE 0
+#define MEDIA_ACTION_PLAY 1
+#define MEDIA_ACTION_PAUSE 2
+#define MEDIA_ACTION_STOP 3
+#define MEDIA_ACTION_RESTART 4
+#define MEDIA_ACTION_NEXT 5
+#define MEDIA_ACTION_PREVIOUS 6
+#define MEDIA_ACTION_PLAY_FROM 7
+#define MEDIA_ACTION_PAUSE_AT 8
+#define MEDIA_ACTION_MUTE 9
+#define MEDIA_ACTION_UNMUTE 10
+
+
 
 struct move_value_info {
 	obs_source_t *source;
