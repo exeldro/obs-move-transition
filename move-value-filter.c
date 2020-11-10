@@ -1,6 +1,7 @@
 #include "move-transition.h"
 #include <obs-module.h>
 #include <util/dstr.h>
+#include <../UI/obs-frontend-api/obs-frontend-api.h>
 
 void move_value_start(struct move_value_info *move_value)
 {
@@ -20,6 +21,8 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->moving = true;
 		return;
 	}
+	if (!move_value->custom_duration)
+		move_value->duration = obs_frontend_get_transition_duration();
 	if (move_value->moving && obs_source_enabled(move_value->source)) {
 		if (move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
 		    move_value->next_move_name &&
@@ -227,7 +230,10 @@ void move_value_update(void *data, obs_data_t *settings)
 	vec4_from_rgba(&move_value->color_to,
 		       (uint32_t)obs_data_get_int(settings, S_SETTING_COLOR));
 
-	move_value->duration = obs_data_get_int(settings, S_DURATION);
+	move_value->custom_duration =
+		obs_data_get_bool(settings, S_CUSTOM_DURATION);
+	if (move_value->custom_duration)
+		move_value->duration = obs_data_get_int(settings, S_DURATION);
 	move_value->start_delay = obs_data_get_int(settings, S_START_DELAY);
 	move_value->end_delay = obs_data_get_int(settings, S_END_DELAY);
 	move_value->easing = obs_data_get_int(settings, S_EASING_MATCH);
@@ -489,9 +495,17 @@ static obs_properties_t *move_value_properties(void *data)
 				   100);
 	obs_property_int_set_suffix(p, "ms");
 
-	p = obs_properties_add_int(
-		ppts, S_DURATION, obs_module_text("Duration"), 10, 100000, 100);
+	obs_properties_t *duration = obs_properties_create();
+	
+	p = obs_properties_add_int(duration, S_DURATION,
+				   "", 10, 100000,
+				   100);
 	obs_property_int_set_suffix(p, "ms");
+	
+	p = obs_properties_add_group(ppts, S_CUSTOM_DURATION,
+				     obs_module_text("CustomDuration"),
+				     OBS_GROUP_CHECKABLE, duration);
+	
 
 	p = obs_properties_add_int(ppts, S_END_DELAY,
 				   obs_module_text("EndDelay"), 0, 10000000,
@@ -548,10 +562,12 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_properties_add_button(ppts, "move_value_start",
 				  obs_module_text("Start"),
 				  move_value_start_button);
+	
 	return ppts;
 }
 void move_value_defaults(obs_data_t *settings)
 {
+	obs_data_set_default_bool(settings, S_CUSTOM_DURATION, true);
 	obs_data_set_default_int(settings, S_DURATION, 300);
 	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
@@ -592,9 +608,9 @@ void move_value_tick(void *data, float seconds)
 	}
 	const bool enabled = obs_source_enabled(move_value->source);
 	if (move_value->enabled != enabled) {
-		if (enabled && (
-			    move_value->start_trigger == START_TRIGGER_ENABLE ||
-		    move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE))
+		if (enabled &&
+		    (move_value->start_trigger == START_TRIGGER_ENABLE ||
+		     move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE))
 			move_value_start(move_value);
 		move_value->enabled = enabled;
 	}

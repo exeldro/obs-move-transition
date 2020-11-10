@@ -17,6 +17,7 @@
 #define S_NAME_NUMBER_MATCH "name_number_match"
 #define S_NAME_LAST_WORD_MATCH "name_last_word_match"
 
+#define S_GENERAL "general"
 #define S_SOURCE "source"
 #define S_POSITION_IN "position_in"
 #define S_POSITION_OUT "position_out"
@@ -46,6 +47,7 @@
 #define S_END_DELAY_MATCH_TO "end_delay_match_to"
 #define S_END_DELAY_IN "end_delay_in"
 #define S_END_DELAY_OUT "end_delay_out"
+#define S_CUSTOM_DURATION "custom_duration"
 #define S_DURATION "duration"
 #define S_ROT "rot"
 #define S_POS "pos"
@@ -61,6 +63,7 @@
 #define S_START_TRIGGER "start_trigger"
 #define S_START_DELAY "start_delay"
 #define S_END_DELAY "end_delay"
+#define S_ACTIONS "actions"
 #define S_NEXT_MOVE "next_move"
 #define S_NEXT_MOVE_ON "next_move_on"
 #define S_FILTER "filter"
@@ -69,14 +72,19 @@
 #define S_SETTING_FLOAT "setting_float"
 #define S_SETTING_COLOR "setting_color"
 #define S_VALUE_TYPE "value_type"
+#define S_TRANSFORM "transform"
 #define S_TRANSFORM_RELATIVE "transform_relative"
+#define S_VISIBILITY_ORDER "visibility_order"
 #define S_CHANGE_VISIBILITY "change_visibility"
 #define S_CHANGE_ORDER "change_order"
 #define S_ORDER_POSITION "order_position"
+#define S_MEDIA_ACTION "media_action"
 #define S_MEDIA_ACTION_START "media_action_start"
 #define S_MEDIA_ACTION_START_TIME "media_action_start_time"
 #define S_MEDIA_ACTION_END "media_action_end"
 #define S_MEDIA_ACTION_END_TIME "media_action_end_time"
+#define S_AUDIO_ACTION "audio_action"
+#define S_MUTE_ACTION "mute_action"
 #define S_AUDIO_FADE "audio_fade"
 #define S_AUDIO_FADE_PERCENT "audio_fade_percent"
 
@@ -121,6 +129,8 @@
 #define START_TRIGGER_SOURCE_SHOW 8
 #define START_TRIGGER_SOURCE_HIDE 9
 #define START_TRIGGER_ENABLE_DISABLE 10
+#define START_TRIGGER_MEDIA_STARTED 11
+#define START_TRIGGER_MEDIA_ENDED 12
 
 #define MOVE_VALUE_UNKNOWN 0
 #define MOVE_VALUE_INT 1
@@ -157,9 +167,14 @@
 #define MEDIA_ACTION_PREVIOUS 6
 #define MEDIA_ACTION_PLAY_FROM 7
 #define MEDIA_ACTION_PAUSE_AT 8
-#define MEDIA_ACTION_MUTE 9
-#define MEDIA_ACTION_UNMUTE 10
 
+#define MUTE_ACTION_NONE 0
+#define MUTE_ACTION_MUTE_START 1
+#define MUTE_ACTION_UNMUTE_START 2
+#define MUTE_ACTION_MUTE_END 3
+#define MUTE_ACTION_UNMUTE_END 4
+#define MUTE_ACTION_MUTE_DURING 5
+#define MUTE_ACTION_UNMUTE_DURING 6
 
 
 struct move_value_info {
@@ -171,6 +186,7 @@ struct move_value_info {
 
 	obs_hotkey_id move_start_hotkey;
 
+	bool custom_duration;
 	uint64_t duration;
 	uint64_t start_delay;
 	uint64_t end_delay;
