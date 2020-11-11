@@ -84,6 +84,39 @@ void move_value_start(struct move_value_info *move_value)
 		obs_source_set_enabled(move_value->source, move_value->moving);
 	}
 	obs_data_release(ss);
+	if (move_value->moving && move_value->simultaneous_move_name &&
+	    strlen(move_value->simultaneous_move_name) &&
+	    (!move_value->filter_name ||
+	     strcmp(move_value->filter_name,
+		    move_value->simultaneous_move_name) !=
+		     0)) {
+		obs_source_t *parent =
+			obs_filter_get_parent(move_value->source);
+		if (parent) {
+			obs_source_t *filter = obs_source_get_filter_by_name(
+				parent, move_value->simultaneous_move_name);
+			if (filter &&
+			    (strcmp(obs_source_get_unversioned_id(filter),
+				    MOVE_VALUE_FILTER_ID) == 0 ||
+			     strcmp(obs_source_get_unversioned_id(filter),
+				    MOVE_AUDIO_VALUE_FILTER_ID) == 0)) {
+				struct move_value_info *filter_data =
+					obs_obj_get_data(filter);
+				if (!filter_data->moving) {
+					if (move_value->start_trigger ==
+						    START_TRIGGER_ENABLE_DISABLE &&
+					    !obs_source_enabled(
+						    filter_data->source)) {
+						filter_data->enabled = true;
+						obs_source_set_enabled(
+							filter_data->source,
+							true);
+					}
+					move_value_start(filter_data);
+				}
+			}
+		}
+	}
 }
 
 bool move_value_start_button(obs_properties_t *props, obs_property_t *property,
@@ -242,6 +275,16 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 
+  	const char *simultaneous_move_name =
+		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
+	if (!move_value->simultaneous_move_name ||
+	    strcmp(move_value->simultaneous_move_name,
+		   simultaneous_move_name) != 0) {
+		bfree(move_value->simultaneous_move_name);
+		move_value->simultaneous_move_name =
+			bstrdup(simultaneous_move_name);
+	}
+
 	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
 	if (!move_value->next_move_name ||
 	    strcmp(move_value->next_move_name, next_move_name) != 0) {
@@ -270,6 +313,7 @@ static void move_value_destroy(void *data)
 		obs_hotkey_unregister(move_value->move_start_hotkey);
 	bfree(move_value->filter_name);
 	bfree(move_value->setting_filter_name);
+	bfree(move_value->simultaneous_move_name);
 	bfree(move_value->next_move_name);
 	da_free(move_value->filters_done);
 	bfree(move_value);
@@ -541,6 +585,13 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_list_add_int(p,
 				  obs_module_text("StartTrigger.EnableDisable"),
 				  START_TRIGGER_ENABLE_DISABLE);
+
+  	p = obs_properties_add_list(ppts, S_SIMULTANEOUS_MOVE,
+				    obs_module_text("SimultaneousMove"),
+				    OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("SimultaneousMove.None"), "");
+	obs_source_enum_filters(parent, prop_list_add_move_value_filter, p);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
 				    obs_module_text("NextMove"),

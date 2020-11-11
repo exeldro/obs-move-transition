@@ -64,6 +64,7 @@
 #define S_START_DELAY "start_delay"
 #define S_END_DELAY "end_delay"
 #define S_ACTIONS "actions"
+#define S_SIMULTANEOUS_MOVE "simultaneous_move"
 #define S_NEXT_MOVE "next_move"
 #define S_NEXT_MOVE_ON "next_move_on"
 #define S_FILTER "filter"
@@ -193,6 +194,7 @@ struct move_value_info {
 	uint32_t start_trigger;
 	bool moving;
 	float running_duration;
+	char *simultaneous_move_name;
 	char *next_move_name;
 	bool enabled;
 
