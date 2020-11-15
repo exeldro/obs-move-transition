@@ -354,6 +354,8 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
+	if (source == move_value->source)
+		return settings_changed;
 	obs_properties_t *sps = obs_source_properties(source);
 	obs_property_t *sp = obs_properties_get(sps, move_value->setting_name);
 
@@ -407,7 +409,7 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 
 	obs_source_t *source = move_value->filter ? move_value->filter : parent;
 	obs_data_t *s = obs_source_get_settings(source);
-	if (!s)
+	if (!s || source == move_value->source)
 		return refresh;
 
 	obs_properties_t *sps = obs_source_properties(source);
@@ -447,6 +449,8 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
+	if (source == move_value->source)
+		return refresh;
 	obs_properties_t *sps = obs_source_properties(source);
 	obs_property_t *sp = obs_properties_get(sps, setting_name);
 
