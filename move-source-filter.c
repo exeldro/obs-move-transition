@@ -620,6 +620,14 @@ void move_source_source_media_ended(void *data, calldata_t *call_data)
 	UNUSED_PARAMETER(call_data);
 }
 
+void move_source_source_remove(void *data, calldata_t *call_data)
+{
+	struct move_source_info *move_source = data;
+	obs_sceneitem_release(move_source->scene_item);
+	move_source->scene_item = NULL;
+	UNUSED_PARAMETER(call_data);
+}
+
 void move_source_update(void *data, obs_data_t *settings)
 {
 	struct move_source_info *move_source = data;
@@ -656,6 +664,9 @@ void move_source_update(void *data, obs_data_t *settings)
 				signal_handler_disconnect(
 					sh, "media_ended",
 					move_source_source_media_ended, data);
+				signal_handler_disconnect(
+					sh, "remove", move_source_source_remove,
+					data);
 			}
 			obs_source_release(source);
 		}
@@ -686,6 +697,9 @@ void move_source_update(void *data, obs_data_t *settings)
 				signal_handler_connect(
 					sh, "media_ended",
 					move_source_source_media_ended, data);
+				signal_handler_connect(
+					sh, "remove", move_source_source_remove,
+					data);
 
 				move_source->source_name = bstrdup(source_name);
 			}
@@ -891,6 +905,7 @@ static void move_source_destroy(void *data)
 		}
 	}
 	obs_sceneitem_release(move_source->scene_item);
+	move_source->scene_item = NULL;
 	if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_unregister(move_source->move_start_hotkey);
 
