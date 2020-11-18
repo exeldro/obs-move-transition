@@ -68,10 +68,15 @@
 #define S_NEXT_MOVE "next_move"
 #define S_NEXT_MOVE_ON "next_move_on"
 #define S_FILTER "filter"
+#define S_SINGLE_SETTING "single_setting"
+#define S_SETTING_VALUE "setting_value"
 #define S_SETTING_NAME "setting_name"
 #define S_SETTING_INT "setting_int"
 #define S_SETTING_FLOAT "setting_float"
 #define S_SETTING_COLOR "setting_color"
+#define S_SETTINGS "settings"
+#define S_SETTING_FROM "setting_from"
+#define S_SETTING_TO "setting_to"
 #define S_VALUE_TYPE "value_type"
 #define S_TRANSFORM "transform"
 #define S_TRANSFORM_RELATIVE "transform_relative"
@@ -209,6 +214,8 @@ struct move_value_info {
 
 	struct vec4 color_to;
 	struct vec4 color_from;
+
+	obs_data_array_t *settings;
 
 	long long value_type;
 	DARRAY(obs_source_t *) filters_done;

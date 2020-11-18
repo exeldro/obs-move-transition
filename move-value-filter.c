@@ -42,7 +42,29 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
-	if (move_value->value_type == MOVE_VALUE_INT) {
+	if (move_value->settings) {
+		const size_t count = obs_data_array_count(move_value->settings);
+		for (size_t i = 0; i < count; i++) {
+			obs_data_t *item =
+				obs_data_array_item(move_value->settings, i);
+			const char *setting_name =
+				obs_data_get_string(item, S_SETTING_NAME);
+			const long long value_type =
+				obs_data_get_int(item, S_VALUE_TYPE);
+			if (value_type == MOVE_VALUE_INT ||
+			    value_type == MOVE_VALUE_COLOR) {
+				obs_data_set_int(
+					item, S_SETTING_FROM,
+					obs_data_get_int(ss, setting_name));
+			} else if (value_type == MOVE_VALUE_FLOAT) {
+				obs_data_set_double(
+					item, S_SETTING_FROM,
+					obs_data_get_double(ss, setting_name));
+			}
+		}
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
+	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		move_value->int_from =
 			obs_data_get_int(ss, move_value->setting_name);
 		if (move_value->int_from != move_value->int_to) {
@@ -88,8 +110,7 @@ void move_value_start(struct move_value_info *move_value)
 	    strlen(move_value->simultaneous_move_name) &&
 	    (!move_value->filter_name ||
 	     strcmp(move_value->filter_name,
-		    move_value->simultaneous_move_name) !=
-		     0)) {
+		    move_value->simultaneous_move_name) != 0)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_value->source);
 		if (parent) {
@@ -249,12 +270,104 @@ void move_value_update(void *data, obs_data_t *settings)
 
 	const char *setting_name =
 		obs_data_get_string(settings, S_SETTING_NAME);
-	;
 	if (!move_value->setting_name ||
 	    strcmp(move_value->setting_name, setting_name) != 0) {
 		bfree(move_value->setting_name);
 
 		move_value->setting_name = bstrdup(setting_name);
+	}
+	if (obs_data_get_bool(settings, S_SINGLE_SETTING)) {
+		obs_data_array_release(move_value->settings);
+		move_value->settings = NULL;
+	} else {
+		if (!move_value->settings)
+			move_value->settings = obs_data_array_create();
+		obs_source_t *source =
+			move_value->filter
+				? move_value->filter
+				: obs_filter_get_parent(move_value->source);
+		if (source && source != move_value->source) {
+			obs_properties_t *sps = obs_source_properties(source);
+			obs_data_t *s = obs_source_get_settings(source);
+			size_t index = 0;
+			while (index <
+			       obs_data_array_count(move_value->settings)) {
+				obs_data_t *item = obs_data_array_item(
+					move_value->settings, index);
+				const char *setting_name2 = obs_data_get_string(
+					item, S_SETTING_NAME);
+				if (obs_properties_get(sps, setting_name2) ==
+				    NULL) {
+					obs_data_array_erase(
+						move_value->settings, index);
+				} else {
+					index++;
+				}
+			}
+			obs_data_item_t *item = obs_data_first(s);
+			for (; item != NULL; obs_data_item_next(&item)) {
+				if (obs_data_item_gettype(item) !=
+				    OBS_DATA_NUMBER)
+					continue;
+				const char *name = obs_data_item_get_name(item);
+				obs_property_t *prop =
+					obs_properties_get(sps, name);
+				const enum obs_property_type prop_type =
+					obs_property_get_type(prop);
+				if (prop_type != OBS_PROPERTY_INT &&
+				    prop_type != OBS_PROPERTY_FLOAT &&
+				    prop_type != OBS_PROPERTY_COLOR)
+					continue;
+
+				obs_data_t *setting = NULL;
+				const size_t count = obs_data_array_count(
+					move_value->settings);
+				for (size_t i = 0; i < count; i++) {
+					obs_data_t *item2 = obs_data_array_item(
+						move_value->settings, i);
+					const char *setting_name2 =
+						obs_data_get_string(
+							item2, S_SETTING_NAME);
+					if (strcmp(setting_name2, name) == 0) {
+						setting = item2;
+					}
+				}
+				if (!setting) {
+					setting = obs_data_create();
+					obs_data_set_string(
+						setting, S_SETTING_NAME, name);
+					obs_data_array_push_back(
+						move_value->settings, setting);
+				}
+				if (prop_type == OBS_PROPERTY_INT) {
+					obs_data_set_int(setting, S_VALUE_TYPE,
+							 MOVE_VALUE_INT);
+					obs_data_set_int(
+						setting, S_SETTING_TO,
+						obs_data_get_int(settings,
+								 name));
+				} else if (prop_type == OBS_PROPERTY_FLOAT) {
+					obs_data_set_int(setting, S_VALUE_TYPE,
+							 MOVE_VALUE_FLOAT);
+					obs_data_set_double(
+						setting, S_SETTING_TO,
+						obs_data_get_double(settings,
+								    name));
+				} else if (prop_type == OBS_PROPERTY_COLOR) {
+					obs_data_set_int(setting, S_VALUE_TYPE,
+							 MOVE_VALUE_COLOR);
+					obs_data_set_int(
+						setting, S_SETTING_TO,
+						obs_data_get_int(settings,
+								 name));
+				} else {
+				}
+			}
+		} else {
+			while (obs_data_array_count(move_value->settings)) {
+				obs_data_array_erase(move_value->settings, 0);
+			}
+		}
 	}
 
 	move_value->value_type = obs_data_get_int(settings, S_VALUE_TYPE);
@@ -275,7 +388,7 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 
-  	const char *simultaneous_move_name =
+	const char *simultaneous_move_name =
 		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
 	if (!move_value->simultaneous_move_name ||
 	    strcmp(move_value->simultaneous_move_name,
@@ -354,7 +467,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
-	if (source == move_value->source)
+	if (source == NULL || source == move_value->source)
 		return settings_changed;
 	obs_properties_t *sps = obs_source_properties(source);
 	obs_property_t *sp = obs_properties_get(sps, move_value->setting_name);
@@ -382,6 +495,49 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	obs_data_release(settings);
 	return settings_changed;
 }
+
+bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
+			   void *data)
+{
+	bool settings_changed = false;
+	struct move_value_info *move_value = data;
+	obs_source_t *source =
+		move_value->filter ? move_value->filter
+				   : obs_filter_get_parent(move_value->source);
+	if (source == NULL || source == move_value->source)
+		return settings_changed;
+
+	obs_data_t *settings = obs_source_get_settings(move_value->source);
+	obs_data_t *ss = obs_source_get_settings(source);
+
+	obs_property_t *ps = obs_properties_get(props, S_SETTINGS);
+	obs_properties_t *g = obs_property_group_content(ps);
+	obs_property_t *i = obs_properties_first(g);
+	while (i != NULL) {
+		const char *name = obs_property_name(i);
+		const enum obs_property_type prop_type =
+			obs_property_get_type(i);
+		obs_property_next(&i);
+		if (strcmp(name, "values_get") == 0)
+			continue;
+		settings_changed = true;
+		if (prop_type == OBS_PROPERTY_INT) {
+			const long long value =
+				obs_data_get_int(ss, move_value->setting_name);
+			obs_data_set_int(settings, S_SETTING_INT, value);
+		} else if (prop_type == OBS_PROPERTY_FLOAT) {
+			const double value = obs_data_get_double(
+				ss, move_value->setting_name);
+			obs_data_set_double(settings, S_SETTING_FLOAT, value);
+		} else if (prop_type == OBS_PROPERTY_COLOR) {
+			const long long color =
+				obs_data_get_int(ss, move_value->setting_name);
+			obs_data_set_int(settings, S_SETTING_COLOR, color);
+		}
+	}
+	obs_data_release(settings);
+	return settings_changed;
+}
 bool move_value_filter_changed(void *data, obs_properties_t *props,
 			       obs_property_t *property, obs_data_t *settings)
 {
@@ -390,7 +546,6 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	bool refresh = false;
 
 	obs_source_t *parent = obs_filter_get_parent(move_value->source);
-	obs_property_t *p = obs_properties_get(props, S_SETTING_NAME);
 
 	const char *filter_name = obs_data_get_string(settings, S_FILTER);
 	if (!move_value->setting_filter_name ||
@@ -404,8 +559,20 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	}
 
 	refresh = true;
+	obs_property_t *p = obs_properties_get(props, S_SETTING_NAME);
 	obs_property_list_clear(p);
 	obs_property_list_add_string(p, obs_module_text("Setting.None"), "");
+
+	obs_property_t *ps = obs_properties_get(props, S_SETTINGS);
+	obs_properties_t *g = obs_property_group_content(ps);
+	obs_property_t *i = obs_properties_first(g);
+	while (i != NULL) {
+		const char *name = obs_property_name(i);
+		obs_property_next(&i);
+		if (strcmp(name, "values_get") == 0)
+			continue;
+		obs_properties_remove_by_name(g, name);
+	}
 
 	obs_source_t *source = move_value->filter ? move_value->filter : parent;
 	obs_data_t *s = obs_source_get_settings(source);
@@ -419,13 +586,86 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 		if (obs_data_item_gettype(item) != OBS_DATA_NUMBER)
 			continue;
 		const char *name = obs_data_item_get_name(item);
-		const char *description =
-			obs_property_description(obs_properties_get(sps, name));
+		obs_property_t *prop = obs_properties_get(sps, name);
+		const char *description = obs_property_description(prop);
 		obs_property_list_add_string(
 			p, description ? description : name, name);
+
+		const enum obs_property_type prop_type =
+			obs_property_get_type(prop);
+
+		if (prop_type == OBS_PROPERTY_INT) {
+			obs_property_t *np;
+			if (obs_property_int_type(prop) == OBS_NUMBER_SLIDER) {
+				np = obs_properties_add_int_slider(
+					g, name, description,
+					obs_property_int_min(prop),
+					obs_property_int_max(prop),
+					obs_property_int_step(prop));
+			} else {
+				np = obs_properties_add_int(
+					g, name, description,
+					obs_property_int_min(prop),
+					obs_property_int_max(prop),
+					obs_property_int_step(prop));
+			}
+			if (obs_data_has_default_value(s, name))
+				obs_data_set_default_int(
+					settings, name,
+					obs_data_get_default_int(s, name));
+			obs_property_int_set_suffix(
+				np, obs_property_int_suffix(prop));
+		} else if (prop_type == OBS_PROPERTY_FLOAT) {
+			obs_property_t *np;
+			if (obs_property_int_type(prop) == OBS_NUMBER_SLIDER) {
+				np = obs_properties_add_float_slider(
+					g, name, description,
+					obs_property_float_min(prop),
+					obs_property_float_max(prop),
+					obs_property_float_step(prop));
+			} else {
+				np = obs_properties_add_float(
+					g, name, description,
+					obs_property_float_min(prop),
+					obs_property_float_max(prop),
+					obs_property_float_step(prop));
+			}
+			if (obs_data_has_default_value(s, name))
+				obs_data_set_default_double(
+					settings, name,
+					obs_data_get_default_double(s, name));
+			obs_property_float_set_suffix(
+				np, obs_property_float_suffix(prop));
+		} else if (prop_type == OBS_PROPERTY_COLOR) {
+			obs_properties_add_color(g, name, description);
+			if (obs_data_has_default_value(s, name))
+				obs_data_set_default_int(
+					settings, name,
+					obs_data_get_default_int(s, name));
+		}
 	}
 
 	obs_data_release(s);
+	return refresh;
+}
+
+bool move_value_single_setting_changed(void *data, obs_properties_t *props,
+				       obs_property_t *property,
+				       obs_data_t *settings)
+{
+	bool refresh = false;
+	const bool single_setting =
+		obs_data_get_bool(settings, S_SINGLE_SETTING);
+	obs_property_t *p = obs_properties_get(props, S_SETTING_VALUE);
+	if (obs_property_visible(p) != single_setting) {
+		obs_property_set_visible(p, single_setting);
+		refresh = true;
+	}
+	p = obs_properties_get(props, S_SETTINGS);
+	if (obs_property_visible(p) == single_setting) {
+		obs_property_set_visible(p, !single_setting);
+		refresh = true;
+	}
 	return refresh;
 }
 
@@ -514,7 +754,15 @@ static obs_properties_t *move_value_properties(void *data)
 
 	obs_property_set_modified_callback2(p, move_value_filter_changed, data);
 
-	p = obs_properties_add_list(ppts, S_SETTING_NAME,
+	p = obs_properties_add_bool(ppts, S_SINGLE_SETTING,
+				    obs_module_text("SingleSetting"));
+
+	obs_property_set_modified_callback2(
+		p, move_value_single_setting_changed, data);
+
+	obs_properties_t *setting_value = obs_properties_create();
+
+	p = obs_properties_add_list(setting_value, S_SETTING_NAME,
 				    obs_module_text("Setting"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
@@ -524,19 +772,30 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_set_modified_callback2(p, move_value_setting_changed,
 					    data);
 
-	p = obs_properties_add_int(ppts, S_SETTING_INT,
+	p = obs_properties_add_int(setting_value, S_SETTING_INT,
 				   obs_module_text("Value"), 0, 0, 0);
 	obs_property_set_visible(p, false);
-	p = obs_properties_add_float(ppts, S_SETTING_FLOAT,
+	p = obs_properties_add_float(setting_value, S_SETTING_FLOAT,
 				     obs_module_text("Value"), 0, 0, 0);
 	obs_property_set_visible(p, false);
-	p = obs_properties_add_color(ppts, S_SETTING_COLOR,
+	p = obs_properties_add_color(setting_value, S_SETTING_COLOR,
 				     obs_module_text("Value"));
 	obs_property_set_visible(p, false);
 
-	obs_properties_add_button(ppts, "value_get",
+	obs_properties_add_button(setting_value, "value_get",
 				  obs_module_text("GetValue"),
 				  move_value_get_value);
+
+	obs_properties_add_group(ppts, S_SETTING_VALUE,
+				 obs_module_text("Setting"), OBS_GROUP_NORMAL,
+				 setting_value);
+
+	obs_properties_t *settings = obs_properties_create();
+	obs_properties_add_button(settings, "values_get",
+				  obs_module_text("GetValues"),
+				  move_value_get_values);
+	obs_properties_add_group(ppts, S_SETTINGS, obs_module_text("Settings"),
+				 OBS_GROUP_NORMAL, settings);
 
 	p = obs_properties_add_int(ppts, S_START_DELAY,
 				   obs_module_text("StartDelay"), 0, 10000000,
@@ -544,16 +803,13 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_int_set_suffix(p, "ms");
 
 	obs_properties_t *duration = obs_properties_create();
-	
-	p = obs_properties_add_int(duration, S_DURATION,
-				   "", 10, 100000,
-				   100);
+
+	p = obs_properties_add_int(duration, S_DURATION, "", 10, 100000, 100);
 	obs_property_int_set_suffix(p, "ms");
-	
+
 	p = obs_properties_add_group(ppts, S_CUSTOM_DURATION,
 				     obs_module_text("CustomDuration"),
 				     OBS_GROUP_CHECKABLE, duration);
-	
 
 	p = obs_properties_add_int(ppts, S_END_DELAY,
 				   obs_module_text("EndDelay"), 0, 10000000,
@@ -590,11 +846,12 @@ static obs_properties_t *move_value_properties(void *data)
 				  obs_module_text("StartTrigger.EnableDisable"),
 				  START_TRIGGER_ENABLE_DISABLE);
 
-  	p = obs_properties_add_list(ppts, S_SIMULTANEOUS_MOVE,
+	p = obs_properties_add_list(ppts, S_SIMULTANEOUS_MOVE,
 				    obs_module_text("SimultaneousMove"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
-	obs_property_list_add_string(p, obs_module_text("SimultaneousMove.None"), "");
+	obs_property_list_add_string(
+		p, obs_module_text("SimultaneousMove.None"), "");
 	obs_source_enum_filters(parent, prop_list_add_move_value_filter, p);
 
 	p = obs_properties_add_list(ppts, S_NEXT_MOVE,
@@ -617,11 +874,12 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_properties_add_button(ppts, "move_value_start",
 				  obs_module_text("Start"),
 				  move_value_start_button);
-	
+
 	return ppts;
 }
 void move_value_defaults(obs_data_t *settings)
 {
+	obs_data_set_default_bool(settings, S_SINGLE_SETTING, true);
 	obs_data_set_default_bool(settings, S_CUSTOM_DURATION, true);
 	obs_data_set_default_int(settings, S_DURATION, 300);
 	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
@@ -715,7 +973,59 @@ void move_value_tick(void *data, float seconds)
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
-	if (move_value->value_type == MOVE_VALUE_INT) {
+	if (move_value->settings) {
+		const size_t count = obs_data_array_count(move_value->settings);
+		for (size_t i = 0; i < count; i++) {
+			obs_data_t *item =
+				obs_data_array_item(move_value->settings, i);
+			const char *setting_name =
+				obs_data_get_string(item, S_SETTING_NAME);
+			const long long value_type =
+				obs_data_get_int(item, S_VALUE_TYPE);
+			if (value_type == MOVE_VALUE_INT) {
+				const long long int_from =
+					obs_data_get_int(item, S_SETTING_FROM);
+				const long long int_to =
+					obs_data_get_int(item, S_SETTING_TO);
+				const long long value_int =
+					(long long)((1.0 - t) *
+							    (double)int_from +
+						    t * (double)int_to);
+				obs_data_set_int(ss, setting_name, value_int);
+			} else if (value_type == MOVE_VALUE_FLOAT) {
+				const double double_from = obs_data_get_double(
+					item, S_SETTING_FROM);
+				const double double_to =
+					obs_data_get_double(item, S_SETTING_TO);
+				const double value_double =
+					((1.0 - t) * double_from +
+					 t * double_to);
+				obs_data_set_double(ss, setting_name,
+						    value_double);
+			} else if (value_type == MOVE_VALUE_COLOR) {
+				struct vec4 color_from;
+				vec4_from_rgba(&color_from,
+					       (uint32_t)obs_data_get_int(
+						       item, S_SETTING_FROM));
+				struct vec4 color_to;
+				vec4_from_rgba(&color_to,
+					       (uint32_t)obs_data_get_int(
+						       item, S_SETTING_TO));
+				struct vec4 color;
+				color.w = (1.0f - t) * color_from.w +
+					  t * color_to.w;
+				color.x = (1.0f - t) * color_from.x +
+					  t * color_to.x;
+				color.y = (1.0f - t) * color_from.y +
+					  t * color_to.y;
+				color.z = (1.0f - t) * color_from.z +
+					  t * color_to.z;
+				const long long value_int =
+					vec4_to_rgba(&color);
+				obs_data_set_int(ss, setting_name, value_int);
+			}
+		}
+	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		const long long value_int =
 			(long long)((1.0 - t) * (double)move_value->int_from +
 				    t * (double)move_value->int_to);
