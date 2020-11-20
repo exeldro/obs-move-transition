@@ -33,24 +33,16 @@ jobs:
       - name: 'Install prerequisites (Homebrew)'
         shell: bash
         run: |
-          brew update --preinstall
+          if [ -d /usr/local/opt/openssl@1.0.2t ]; then
+              brew uninstall openssl@1.0.2t
+              brew untap local/openssl
+          fi
+
+          if [ -d /usr/local/opt/python@2.7.17 ]; then
+              brew uninstall python@2.7.17
+              brew untap local/python2
+          fi
           brew bundle --file ./CI/scripts/macos/Brewfile
-      - name: 'Restore pre-built dependencies from cache'
-        id: deps-cache
-        uses: actions/cache@v2.1.2
-        env:
-          CACHE_NAME: 'deps-cache'
-        with:
-          path: /tmp/obsdeps
-          key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.MACOS_DEPS_VERSION }}
-      - name: 'Restore pre-built Qt dependency from cache'
-        id: deps-qt-cache
-        uses: actions/cache@v2.1.2
-        env:
-          CACHE_NAME: 'deps-qt-cache'
-        with:
-          path: /tmp/obsdeps
-          key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.MACOS_DEPS_VERSION }}
       - name: 'Install prerequisite: Pre-built dependencies'
         if: steps.deps-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -70,7 +62,7 @@ jobs:
           echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
           mkdir ./build
           cd ./build
-          cmake -DDISABLE_PYTHON=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.11 -DQTDIR="/tmp/obsdeps" -DSWIGDIR="/tmp/obsdeps" -DDepsPath="/tmp/obsdeps" ..
+          cmake -DDISABLE_PYTHON=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DQTDIR="/tmp/obsdeps" -DSWIGDIR="/tmp/obsdeps" -DDepsPath="/tmp/obsdeps" ..
           cd -
       - name: Build
         shell: bash
@@ -146,6 +138,7 @@ jobs:
            libluajit-5.1-dev \
            libpulse-dev \
            libqt5x11extras5-dev \
+           libsndio-dev \
            libspeexdsp-dev \
            libswresample-dev \
            libswscale-dev \
