@@ -1245,6 +1245,8 @@ static obs_properties_t *move_source_properties(void *data)
 	struct move_source_info *move_source = data;
 	obs_source_t *parent = obs_filter_get_parent(move_source->source);
 	obs_scene_t *scene = obs_scene_from_source(parent);
+	if (!scene)
+		scene = obs_group_from_source(parent);
 	if (!scene) {
 		obs_properties_add_button(ppts, "warning",
 					  obs_module_text("ScenesOnlyFilter"),
