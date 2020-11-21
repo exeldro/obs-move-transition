@@ -61,6 +61,7 @@
 #define S_SWITCH_PERCENTAGE "switch_percentage"
 #define S_CACHE_TRANSITIONS "cache_transitions"
 #define S_START_TRIGGER "start_trigger"
+#define S_STOP_TRIGGER "stop_trigger"
 #define S_START_DELAY "start_delay"
 #define S_END_DELAY "end_delay"
 #define S_ACTIONS "actions"
@@ -197,6 +198,7 @@ struct move_value_info {
 	uint64_t start_delay;
 	uint64_t end_delay;
 	uint32_t start_trigger;
+	uint32_t stop_trigger;
 	bool moving;
 	float running_duration;
 	char *simultaneous_move_name;

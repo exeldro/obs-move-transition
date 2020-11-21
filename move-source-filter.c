@@ -35,6 +35,7 @@ struct move_source_info {
 	uint32_t canvas_width;
 	uint32_t canvas_height;
 	uint32_t start_trigger;
+	uint32_t stop_trigger;
 	bool enabled;
 	char *simultaneous_move_name;
 	char *next_move_name;
@@ -572,11 +573,22 @@ void move_source_start_hotkey(void *data, obs_hotkey_id id,
 	UNUSED_PARAMETER(hotkey);
 }
 
+void move_source_stop(struct move_source_info *move_source)
+{
+	move_source->moving = false;
+	if (move_source->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	    obs_source_enabled(move_source->source)) {
+		obs_source_set_enabled(move_source->source, false);
+	}
+}
+
 void move_source_source_activate(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_ACTIVATE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_SOURCE_ACTIVATE)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -585,6 +597,8 @@ void move_source_source_deactivate(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_DEACTIVATE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_SOURCE_DEACTIVATE)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -593,6 +607,8 @@ void move_source_source_show(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_SHOW)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_SOURCE_SHOW)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -601,6 +617,8 @@ void move_source_source_hide(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SOURCE_HIDE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_SOURCE_HIDE)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -609,6 +627,8 @@ void move_source_source_media_started(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_MEDIA_STARTED)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_MEDIA_STARTED)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -617,6 +637,8 @@ void move_source_source_media_ended(void *data, calldata_t *call_data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_MEDIA_ENDED)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_MEDIA_ENDED)
+		move_source_stop(move_source);
 	UNUSED_PARAMETER(call_data);
 }
 
@@ -770,6 +792,8 @@ void move_source_update(void *data, obs_data_t *settings)
 	}
 	move_source->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
+	move_source->stop_trigger =
+		(uint32_t)obs_data_get_int(settings, S_STOP_TRIGGER);
 
 	const char *simultaneous_move_name =
 		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
@@ -1480,6 +1504,38 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaEnded"),
 				  START_TRIGGER_MEDIA_ENDED);
 
+	p = obs_properties_add_list(group, S_STOP_TRIGGER,
+				    obs_module_text("StopTrigger"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("StopTrigger.None"),
+				  START_TRIGGER_NONE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Activate"),
+				  START_TRIGGER_ACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Deactivate"),
+				  START_TRIGGER_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Show"),
+				  START_TRIGGER_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"),
+				  START_TRIGGER_HIDE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
+				  START_TRIGGER_ENABLE);
+	obs_property_list_add_int(
+		p, obs_module_text("StartTrigger.SourceActivate"),
+		START_TRIGGER_SOURCE_ACTIVATE);
+	obs_property_list_add_int(
+		p, obs_module_text("StartTrigger.SourceDeactivate"),
+		START_TRIGGER_SOURCE_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceShow"),
+				  START_TRIGGER_SOURCE_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceHide"),
+				  START_TRIGGER_SOURCE_HIDE);
+	obs_property_list_add_int(p,
+				  obs_module_text("StartTrigger.MediaStarted"),
+				  START_TRIGGER_MEDIA_STARTED);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaEnded"),
+				  START_TRIGGER_MEDIA_ENDED);
+
 	p = obs_properties_add_list(group, S_SIMULTANEOUS_MOVE,
 				    obs_module_text("SimultaneousMove"),
 				    OBS_COMBO_TYPE_LIST,
@@ -1530,6 +1586,8 @@ void move_source_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
 				 EASING_CUBIC);
 	obs_data_set_default_double(settings, S_CURVE_MATCH, 0.0);
+	obs_data_set_default_int(settings, S_START_TRIGGER,
+				 START_TRIGGER_ENABLE_DISABLE);
 }
 
 void move_source_video_render(void *data, gs_effect_t *effect)
@@ -1716,6 +1774,10 @@ void move_source_tick(void *data, float seconds)
 		     move_source->start_trigger ==
 			     START_TRIGGER_ENABLE_DISABLE))
 			move_source_start(move_source);
+		if (enabled &&
+		    move_source->stop_trigger == START_TRIGGER_ENABLE)
+			move_source_stop(move_source);
+
 		move_source->enabled = enabled;
 	}
 	if (!move_source->moving || !enabled)
@@ -1859,6 +1921,8 @@ void move_source_activate(void *data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_ACTIVATE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_ACTIVATE)
+		move_source_stop(move_source);
 }
 
 void move_source_deactivate(void *data)
@@ -1866,6 +1930,8 @@ void move_source_deactivate(void *data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_DEACTIVATE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_DEACTIVATE)
+		move_source_stop(move_source);
 }
 
 void move_source_show(void *data)
@@ -1873,6 +1939,8 @@ void move_source_show(void *data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_SHOW)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_SHOW)
+		move_source_stop(move_source);
 }
 
 void move_source_hide(void *data)
@@ -1880,6 +1948,8 @@ void move_source_hide(void *data)
 	struct move_source_info *move_source = data;
 	if (move_source->start_trigger == START_TRIGGER_HIDE)
 		move_source_start(move_source);
+	if (move_source->stop_trigger == START_TRIGGER_HIDE)
+		move_source_stop(move_source);
 }
 
 struct obs_source_info move_source_filter = {

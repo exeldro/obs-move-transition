@@ -387,6 +387,8 @@ void move_value_update(void *data, obs_data_t *settings)
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
 	move_value->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
+	move_value->stop_trigger =
+		(uint32_t)obs_data_get_int(settings, S_STOP_TRIGGER);
 
 	const char *simultaneous_move_name =
 		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
@@ -846,6 +848,23 @@ static obs_properties_t *move_value_properties(void *data)
 				  obs_module_text("StartTrigger.EnableDisable"),
 				  START_TRIGGER_ENABLE_DISABLE);
 
+	p = obs_properties_add_list(ppts, S_STOP_TRIGGER,
+				    obs_module_text("StopTrigger"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("StopTrigger.None"),
+				  START_TRIGGER_NONE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Activate"),
+				  START_TRIGGER_ACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Deactivate"),
+				  START_TRIGGER_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Show"),
+				  START_TRIGGER_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"),
+				  START_TRIGGER_HIDE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
+				  START_TRIGGER_ENABLE);
+
 	p = obs_properties_add_list(ppts, S_SIMULTANEOUS_MOVE,
 				    obs_module_text("SimultaneousMove"),
 				    OBS_COMBO_TYPE_LIST,
@@ -904,6 +923,15 @@ float get_eased(float f, long long easing, long long easing_function);
 void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 		 struct vec2 *end, const float t);
 
+void move_value_stop(struct move_value_info *move_value)
+{
+	move_value->moving = false;
+	if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	    obs_source_enabled(move_value->source)) {
+		obs_source_set_enabled(move_value->source, false);
+	}
+}
+
 void move_value_tick(void *data, float seconds)
 {
 	struct move_value_info *move_value = data;
@@ -925,6 +953,8 @@ void move_value_tick(void *data, float seconds)
 		    (move_value->start_trigger == START_TRIGGER_ENABLE ||
 		     move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE))
 			move_value_start(move_value);
+		if (enabled && move_value->stop_trigger == START_TRIGGER_ENABLE)
+			move_value_stop(move_value);
 		move_value->enabled = enabled;
 	}
 	if (!move_value->moving || !enabled)
@@ -1140,6 +1170,8 @@ void move_value_activate(void *data)
 	struct move_value_info *move_value = data;
 	if (move_value->start_trigger == START_TRIGGER_ACTIVATE)
 		move_value_start(move_value);
+	if (move_value->stop_trigger == START_TRIGGER_ACTIVATE)
+		move_value_stop(move_value);
 }
 
 void move_value_deactivate(void *data)
@@ -1147,6 +1179,8 @@ void move_value_deactivate(void *data)
 	struct move_value_info *move_value = data;
 	if (move_value->start_trigger == START_TRIGGER_DEACTIVATE)
 		move_value_start(move_value);
+	if (move_value->stop_trigger == START_TRIGGER_DEACTIVATE)
+		move_value_stop(move_value);
 }
 
 void move_value_show(void *data)
@@ -1154,6 +1188,8 @@ void move_value_show(void *data)
 	struct move_value_info *move_value = data;
 	if (move_value->start_trigger == START_TRIGGER_SHOW)
 		move_value_start(move_value);
+	if (move_value->stop_trigger == START_TRIGGER_SHOW)
+		move_value_stop(move_value);
 }
 
 void move_value_hide(void *data)
@@ -1161,6 +1197,8 @@ void move_value_hide(void *data)
 	struct move_value_info *move_value = data;
 	if (move_value->start_trigger == START_TRIGGER_HIDE)
 		move_value_start(move_value);
+	if (move_value->stop_trigger == START_TRIGGER_HIDE)
+		move_value_stop(move_value);
 }
 
 struct obs_source_info move_value_filter = {
