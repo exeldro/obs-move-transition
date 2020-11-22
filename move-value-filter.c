@@ -525,16 +525,16 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 		settings_changed = true;
 		if (prop_type == OBS_PROPERTY_INT) {
 			const long long value =
-				obs_data_get_int(ss, move_value->setting_name);
-			obs_data_set_int(settings, S_SETTING_INT, value);
+				obs_data_get_int(ss, name);
+			obs_data_set_int(settings, name, value);
 		} else if (prop_type == OBS_PROPERTY_FLOAT) {
 			const double value = obs_data_get_double(
-				ss, move_value->setting_name);
-			obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				ss, name);
+			obs_data_set_double(settings, name, value);
 		} else if (prop_type == OBS_PROPERTY_COLOR) {
 			const long long color =
-				obs_data_get_int(ss, move_value->setting_name);
-			obs_data_set_int(settings, S_SETTING_COLOR, color);
+				obs_data_get_int(ss, name);
+			obs_data_set_int(settings, name, color);
 		}
 	}
 	obs_data_release(settings);
@@ -585,9 +585,9 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 
 	obs_data_item_t *item = obs_data_first(s);
 	for (; item != NULL; obs_data_item_next(&item)) {
+		const char *name = obs_data_item_get_name(item);
 		if (obs_data_item_gettype(item) != OBS_DATA_NUMBER)
 			continue;
-		const char *name = obs_data_item_get_name(item);
 		obs_property_t *prop = obs_properties_get(sps, name);
 		const char *description = obs_property_description(prop);
 		obs_property_list_add_string(
@@ -644,6 +644,8 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 				obs_data_set_default_int(
 					settings, name,
 					obs_data_get_default_int(s, name));
+		}else {
+			int z = 0;
 		}
 	}
 
