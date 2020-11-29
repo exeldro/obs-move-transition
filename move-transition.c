@@ -2311,6 +2311,7 @@ extern struct obs_source_info move_transition_override_filter;
 extern struct obs_source_info move_source_filter;
 extern struct obs_source_info move_value_filter;
 extern struct obs_source_info move_audio_value_filter;
+extern struct obs_source_info audio_move_filter;
 
 bool obs_module_load(void)
 {
@@ -2320,5 +2321,6 @@ bool obs_module_load(void)
 	obs_register_source(&move_source_filter);
 	obs_register_source(&move_value_filter);
 	obs_register_source(&move_audio_value_filter);
+	obs_register_source(&audio_move_filter);
 	return true;
 }

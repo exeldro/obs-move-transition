@@ -12,6 +12,7 @@ set(move-transition_SOURCES
 	move-transition-override-filter.c
 	move-source-filter.c
 	move-value-filter.c
+	audio-move.c
 	easing.c)
 
 if(WIN32)
