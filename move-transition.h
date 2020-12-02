@@ -94,6 +94,7 @@
 #define S_MUTE_ACTION "mute_action"
 #define S_AUDIO_FADE "audio_fade"
 #define S_AUDIO_FADE_PERCENT "audio_fade_percent"
+#define S_ENABLED_MATCH_MOVING "enabled_match_moving"
 
 #define NO_OVERRIDE (-1)
 
@@ -135,9 +136,10 @@
 #define START_TRIGGER_SOURCE_DEACTIVATE 7
 #define START_TRIGGER_SOURCE_SHOW 8
 #define START_TRIGGER_SOURCE_HIDE 9
-#define START_TRIGGER_ENABLE_DISABLE 10
+#define START_TRIGGER_ENABLE_DISABLE_OLD 10
 #define START_TRIGGER_MEDIA_STARTED 11
 #define START_TRIGGER_MEDIA_ENDED 12
+#define START_TRIGGER_LOAD 13
 
 #define MOVE_VALUE_UNKNOWN 0
 #define MOVE_VALUE_INT 1
@@ -224,4 +226,5 @@ struct move_value_info {
 
 	long long next_move_on;
 	bool reverse;
+	bool enabled_match_moving;
 };

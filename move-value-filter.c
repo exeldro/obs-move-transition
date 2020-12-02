@@ -100,7 +100,7 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->moving = true;
 		}
 	}
-	if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	if (move_value->enabled_match_moving &&
 	    obs_source_enabled(move_value->source) != move_value->moving) {
 		move_value->enabled = move_value->moving;
 		obs_source_set_enabled(move_value->source, move_value->moving);
@@ -124,15 +124,6 @@ void move_value_start(struct move_value_info *move_value)
 				struct move_value_info *filter_data =
 					obs_obj_get_data(filter);
 				if (!filter_data->moving) {
-					if (move_value->start_trigger ==
-						    START_TRIGGER_ENABLE_DISABLE &&
-					    !obs_source_enabled(
-						    filter_data->source)) {
-						filter_data->enabled = true;
-						obs_source_set_enabled(
-							filter_data->source,
-							true);
-					}
 					move_value_start(filter_data);
 				}
 			}
@@ -201,8 +192,7 @@ void move_value_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 		     strcmp(filter_data->next_move_name, NEXT_MOVE_REVERSE) !=
 			     0)) {
 			filter_data->moving = false;
-			if (filter_data->start_trigger ==
-			    START_TRIGGER_ENABLE_DISABLE)
+			if (filter_data->enabled_match_moving)
 				obs_source_set_enabled(filter_data->source,
 						       false);
 		}
@@ -392,6 +382,11 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->easing = obs_data_get_int(settings, S_EASING_MATCH);
 	move_value->easing_function =
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
+	move_value->enabled_match_moving =
+		obs_data_get_bool(settings, S_ENABLED_MATCH_MOVING);
+	if (move_value->enabled_match_moving && !move_value->moving &&
+	    obs_source_enabled(move_value->source))
+		move_value_start(move_value);
 	move_value->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 	move_value->stop_trigger =
@@ -415,6 +410,9 @@ void move_value_update(void *data, obs_data_t *settings)
 		move_value->reverse = false;
 	}
 	move_value->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
+	if (move_value->start_trigger == START_TRIGGER_LOAD) {
+		move_value_start(move_value);
+	}
 }
 
 static void *move_value_create(obs_data_t *settings, obs_source_t *source)
@@ -861,6 +859,9 @@ static obs_properties_t *move_value_properties(void *data)
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_easing_functions(p);
 
+		p = obs_properties_add_bool(ppts, S_ENABLED_MATCH_MOVING,
+				    obs_module_text("EnabledMatchMoving"));
+
 	p = obs_properties_add_list(ppts, S_START_TRIGGER,
 				    obs_module_text("StartTrigger"),
 				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -877,9 +878,8 @@ static obs_properties_t *move_value_properties(void *data)
 				  START_TRIGGER_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"),
 				  START_TRIGGER_ENABLE);
-	obs_property_list_add_int(p,
-				  obs_module_text("StartTrigger.EnableDisable"),
-				  START_TRIGGER_ENABLE_DISABLE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Load"),
+				  START_TRIGGER_LOAD);
 
 	p = obs_properties_add_list(ppts, S_STOP_TRIGGER,
 				    obs_module_text("StopTrigger"),
@@ -937,6 +937,7 @@ void move_value_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
 				 EASING_CUBIC);
+	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
 }
 
 void move_value_video_render(void *data, gs_effect_t *effect)
@@ -959,7 +960,7 @@ void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control,
 void move_value_stop(struct move_value_info *move_value)
 {
 	move_value->moving = false;
-	if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+	if (move_value->enabled_match_moving &&
 	    obs_source_enabled(move_value->source)) {
 		obs_source_set_enabled(move_value->source, false);
 	}
@@ -984,7 +985,7 @@ void move_value_tick(void *data, float seconds)
 	if (move_value->enabled != enabled) {
 		if (enabled &&
 		    (move_value->start_trigger == START_TRIGGER_ENABLE ||
-		     move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE))
+		     (move_value->enabled_match_moving && !move_value->moving)))
 			move_value_start(move_value);
 		if (enabled && move_value->stop_trigger == START_TRIGGER_ENABLE)
 			move_value_stop(move_value);
@@ -1134,7 +1135,7 @@ void move_value_tick(void *data, float seconds)
 	obs_data_release(ss);
 	obs_source_update(source, NULL);
 	if (!move_value->moving) {
-		if (move_value->start_trigger == START_TRIGGER_ENABLE_DISABLE &&
+		if (move_value->enabled_match_moving &&
 		    (move_value->reverse || !move_value->next_move_name ||
 		     strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) !=
 			     0)) {
@@ -1173,18 +1174,6 @@ void move_value_tick(void *data, float seconds)
 							*filter_data =
 								obs_obj_get_data(
 									filter);
-						if (move_value->start_trigger ==
-							    START_TRIGGER_ENABLE_DISABLE &&
-						    !obs_source_enabled(
-							    filter_data
-								    ->source)) {
-							filter_data->enabled =
-								true;
-							obs_source_set_enabled(
-								filter_data
-									->source,
-								true);
-						}
 						move_value_start(filter_data);
 					}
 				}
