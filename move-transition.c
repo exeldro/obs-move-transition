@@ -5,6 +5,7 @@
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
 #include "easing.h"
+#include "version.h"
 
 struct move_info {
 	obs_source_t *source;
@@ -2313,6 +2314,7 @@ extern struct obs_source_info move_audio_value_filter;
 
 bool obs_module_load(void)
 {
+	blog(LOG_INFO, "[Move Transition] loaded version %s", PROJECT_VERSION);
 	obs_register_source(&move_transition);
 	obs_register_source(&move_transition_override_filter);
 	obs_register_source(&move_source_filter);

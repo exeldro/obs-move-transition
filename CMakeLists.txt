@@ -1,9 +1,12 @@
 project(move-transition VERSION 2.1.2)
 set(PROJECT_FULL_NAME "Move Transition")
 
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
+
 set(move-transition_HEADERS
 	move-transition.h
-	easing.h)
+	easing.h
+	version.h)
 set(move-transition_SOURCES
 	move-transition.c
 	move-transition-override-filter.c
