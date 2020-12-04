@@ -3,6 +3,107 @@
 #include <util/dstr.h>
 #include <../UI/obs-frontend-api/obs-frontend-api.h>
 
+static void load_properties(obs_properties_t *props_from,
+			    obs_data_array_t *array, obs_data_t *settings_to,
+			    obs_data_t *settings_from)
+{
+	obs_property_t *prop_from = obs_properties_first(props_from);
+	for (; prop_from != NULL; obs_property_next(&prop_from)) {
+		const char *name = obs_property_name(prop_from);
+		if (!obs_property_visible(prop_from))
+			continue;
+
+		obs_data_t *setting = NULL;
+		const size_t count = obs_data_array_count(array);
+		for (size_t i = 0; i < count; i++) {
+			obs_data_t *item2 = obs_data_array_item(array, i);
+			const char *setting_name2 =
+				obs_data_get_string(item2, S_SETTING_NAME);
+			if (strcmp(setting_name2, name) == 0) {
+				setting = item2;
+			}
+		}
+
+		const enum obs_property_type prop_type =
+			obs_property_get_type(prop_from);
+		if (prop_type == OBS_PROPERTY_GROUP) {
+			load_properties(obs_property_group_content(prop_from),
+					array, settings_to, settings_from);
+		} else if (prop_type == OBS_PROPERTY_INT) {
+			if (!setting) {
+				setting = obs_data_create();
+				obs_data_set_string(setting, S_SETTING_NAME,
+						    name);
+				obs_data_array_push_back(array, setting);
+			}
+			obs_data_set_int(setting, S_VALUE_TYPE, MOVE_VALUE_INT);
+			const long long to =
+				obs_data_get_int(settings_to, name);
+			obs_data_set_int(setting, S_SETTING_TO, to);
+			const long long from =
+				obs_data_get_int(settings_from, name);
+			obs_data_set_int(setting, S_SETTING_FROM, from);
+		} else if (prop_type == OBS_PROPERTY_FLOAT) {
+			if (!setting) {
+				setting = obs_data_create();
+				obs_data_set_string(setting, S_SETTING_NAME,
+						    name);
+				obs_data_array_push_back(array, setting);
+			}
+			obs_data_set_int(setting, S_VALUE_TYPE,
+					 MOVE_VALUE_FLOAT);
+			const double to =
+				obs_data_get_double(settings_to, name);
+			obs_data_set_double(setting, S_SETTING_TO, to);
+			const double from =
+				obs_data_get_double(settings_from, name);
+			obs_data_set_double(setting, S_SETTING_FROM, from);
+		} else if (prop_type == OBS_PROPERTY_COLOR) {
+			if (!setting) {
+				setting = obs_data_create();
+				obs_data_set_string(setting, S_SETTING_NAME,
+						    name);
+				obs_data_array_push_back(array, setting);
+			}
+			obs_data_set_int(setting, S_VALUE_TYPE,
+					 MOVE_VALUE_COLOR);
+			obs_data_set_int(setting, S_SETTING_TO,
+					 obs_data_get_int(settings_to, name));
+			const long long from =
+				obs_data_get_int(settings_from, name);
+			obs_data_set_int(setting, S_SETTING_FROM, from);
+		}
+	}
+}
+
+void move_values_load_properties(struct move_value_info *move_value,
+				 obs_source_t *source, obs_data_t *settings)
+{
+	if (source && source != move_value->source) {
+		obs_properties_t *sps = obs_source_properties(source);
+		size_t index = 0;
+		while (index < obs_data_array_count(move_value->settings)) {
+			obs_data_t *item = obs_data_array_item(
+				move_value->settings, index);
+			const char *setting_name =
+				obs_data_get_string(item, S_SETTING_NAME);
+			if (obs_properties_get(sps, setting_name) == NULL) {
+				obs_data_array_erase(move_value->settings,
+						     index);
+			} else {
+				index++;
+			}
+		}
+		obs_data_t *data_from = obs_source_get_settings(source);
+		load_properties(sps, move_value->settings, settings, data_from);
+		obs_data_release(data_from);
+	} else {
+		while (obs_data_array_count(move_value->settings)) {
+			obs_data_array_erase(move_value->settings, 0);
+		}
+	}
+}
+
 void move_value_start(struct move_value_info *move_value)
 {
 	if (!move_value->filter && move_value->setting_filter_name &&
@@ -38,30 +139,20 @@ void move_value_start(struct move_value_info *move_value)
 		}
 		return;
 	}
+	if (!move_value->setting_filter_name) {
+		obs_source_update(move_value->source, NULL);
+	}
 	obs_source_t *source =
-		move_value->filter ? move_value->filter
-				   : obs_filter_get_parent(move_value->source);
+		move_value->setting_filter_name &&
+				strlen(move_value->setting_filter_name)
+			? move_value->filter
+			: obs_filter_get_parent(move_value->source);
 	obs_data_t *ss = obs_source_get_settings(source);
 	if (move_value->settings) {
-		const size_t count = obs_data_array_count(move_value->settings);
-		for (size_t i = 0; i < count; i++) {
-			obs_data_t *item =
-				obs_data_array_item(move_value->settings, i);
-			const char *setting_name =
-				obs_data_get_string(item, S_SETTING_NAME);
-			const long long value_type =
-				obs_data_get_int(item, S_VALUE_TYPE);
-			if (value_type == MOVE_VALUE_INT ||
-			    value_type == MOVE_VALUE_COLOR) {
-				obs_data_set_int(
-					item, S_SETTING_FROM,
-					obs_data_get_int(ss, setting_name));
-			} else if (value_type == MOVE_VALUE_FLOAT) {
-				obs_data_set_double(
-					item, S_SETTING_FROM,
-					obs_data_get_double(ss, setting_name));
-			}
-		}
+		obs_data_t *settings =
+			obs_source_get_settings(move_value->source);
+		move_values_load_properties(move_value, source, settings);
+		obs_data_release(settings);
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
@@ -222,77 +313,6 @@ void move_value_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 	UNUSED_PARAMETER(hotkey);
 }
 
-void load_properties(obs_properties_t *props_from, obs_data_array_t *array,
-		     obs_data_t *settings_to, obs_data_t *settings_from)
-{
-	obs_property_t *prop_from = obs_properties_first(props_from);
-	for (; prop_from != NULL; obs_property_next(&prop_from)) {
-		const char *name = obs_property_name(prop_from);
-		if (!obs_property_visible(prop_from))
-			continue;
-
-		obs_data_t *setting = NULL;
-		const size_t count = obs_data_array_count(array);
-		for (size_t i = 0; i < count; i++) {
-			obs_data_t *item2 = obs_data_array_item(array, i);
-			const char *setting_name2 =
-				obs_data_get_string(item2, S_SETTING_NAME);
-			if (strcmp(setting_name2, name) == 0) {
-				setting = item2;
-			}
-		}
-
-		const enum obs_property_type prop_type =
-			obs_property_get_type(prop_from);
-		if (prop_type == OBS_PROPERTY_GROUP) {
-			load_properties(obs_property_group_content(prop_from),
-					array, settings_to, settings_from);
-		} else if (prop_type == OBS_PROPERTY_INT) {
-			if (!setting) {
-				setting = obs_data_create();
-				obs_data_set_string(setting, S_SETTING_NAME,
-						    name);
-				obs_data_array_push_back(array, setting);
-			}
-			obs_data_set_int(setting, S_VALUE_TYPE, MOVE_VALUE_INT);
-			const long long to =
-				obs_data_get_int(settings_to, name);
-			obs_data_set_int(setting, S_SETTING_TO, to);
-			const long long from = obs_data_get_int(settings_from, name);
-			obs_data_set_int(setting, S_SETTING_FROM, from);
-		} else if (prop_type == OBS_PROPERTY_FLOAT) {
-			if (!setting) {
-				setting = obs_data_create();
-				obs_data_set_string(setting, S_SETTING_NAME,
-						    name);
-				obs_data_array_push_back(array, setting);
-			}
-			obs_data_set_int(setting, S_VALUE_TYPE,
-					 MOVE_VALUE_FLOAT);
-			const double to =
-				obs_data_get_double(settings_to, name);
-			obs_data_set_double(setting, S_SETTING_TO, to);
-			const double from =
-				obs_data_get_double(settings_from, name);
-			obs_data_set_double(setting, S_SETTING_FROM, from);
-		} else if (prop_type == OBS_PROPERTY_COLOR) {
-			if (!setting) {
-				setting = obs_data_create();
-				obs_data_set_string(setting, S_SETTING_NAME,
-						    name);
-				obs_data_array_push_back(array, setting);
-			}
-			obs_data_set_int(setting, S_VALUE_TYPE,
-					 MOVE_VALUE_COLOR);
-			obs_data_set_int(setting, S_SETTING_TO,
-					 obs_data_get_int(settings_to, name));
-			const long long from =
-				obs_data_get_int(settings_from, name);
-			obs_data_set_int(setting, S_SETTING_FROM, from);
-		}
-	}
-}
-
 void move_value_update(void *data, obs_data_t *settings)
 {
 	struct move_value_info *move_value = data;
@@ -350,32 +370,7 @@ void move_value_update(void *data, obs_data_t *settings)
 					strlen(move_value->setting_filter_name)
 				? move_value->filter
 				: obs_filter_get_parent(move_value->source);
-		if (source && source != move_value->source) {
-			obs_properties_t *sps = obs_source_properties(source);
-			size_t index = 0;
-			while (index <
-			       obs_data_array_count(move_value->settings)) {
-				obs_data_t *item = obs_data_array_item(
-					move_value->settings, index);
-				const char *setting_name2 = obs_data_get_string(
-					item, S_SETTING_NAME);
-				if (obs_properties_get(sps, setting_name2) ==
-				    NULL) {
-					obs_data_array_erase(
-						move_value->settings, index);
-				} else {
-					index++;
-				}
-			}
-			obs_data_t *data_from = obs_source_get_settings(source);
-			load_properties(sps, move_value->settings, settings,
-					data_from);
-			obs_data_release(data_from);
-		} else {
-			while (obs_data_array_count(move_value->settings)) {
-				obs_data_array_erase(move_value->settings, 0);
-			}
-		}
+		move_values_load_properties(move_value, source, settings);
 	}
 
 	move_value->value_type = obs_data_get_int(settings, S_VALUE_TYPE);
