@@ -97,6 +97,7 @@ void move_values_load_properties(struct move_value_info *move_value,
 		obs_data_t *data_from = obs_source_get_settings(source);
 		load_properties(sps, move_value->settings, settings, data_from);
 		obs_data_release(data_from);
+		obs_properties_destroy(sps);
 	} else {
 		while (obs_data_array_count(move_value->settings)) {
 			obs_data_array_erase(move_value->settings, 0);
@@ -435,12 +436,15 @@ static void move_value_destroy(void *data)
 {
 	struct move_value_info *move_value = data;
 	obs_source_release(move_value->filter);
+	move_value->filter = NULL;
 	if (move_value->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_unregister(move_value->move_start_hotkey);
 	bfree(move_value->filter_name);
 	bfree(move_value->setting_filter_name);
+	bfree(move_value->setting_name);
 	bfree(move_value->simultaneous_move_name);
 	bfree(move_value->next_move_name);
+	obs_data_array_release(move_value->settings);
 	da_free(move_value->filters_done);
 	bfree(move_value);
 }
@@ -506,6 +510,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 		settings_changed = true;
 	}
 	obs_data_release(settings);
+	obs_properties_destroy(sps);
 	return settings_changed;
 }
 
@@ -543,6 +548,7 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 	if (count > 0) {
 		obs_properties_t *sps = obs_source_properties(source);
 		load_properties(sps, move_value->settings, settings, ss);
+		obs_properties_destroy(sps);
 	}
 	obs_data_release(ss);
 	obs_data_release(settings);
@@ -681,8 +687,8 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 		return refresh;
 
 	obs_properties_t *sps = obs_source_properties(source);
-
 	copy_properties(sps, g, s, settings, p);
+	obs_properties_destroy(sps);
 
 	obs_data_release(s);
 	return refresh;
@@ -776,6 +782,7 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_UNKNOWN);
 	}
 	obs_data_release(ss);
+	obs_properties_destroy(sps);
 	return refresh;
 }
 
