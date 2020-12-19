@@ -317,7 +317,8 @@ static void load_properties(obs_properties_t *props_from,
 		if (prop_type == OBS_PROPERTY_GROUP) {
 			load_properties(obs_property_group_content(prop_from),
 					setting_list);
-		} else if (prop_type == OBS_PROPERTY_FLOAT) {
+		} else if (prop_type == OBS_PROPERTY_FLOAT ||
+			   prop_type == OBS_PROPERTY_INT) {
 			obs_property_list_add_string(setting_list, description,
 						     name);
 		}
@@ -677,7 +678,21 @@ void audio_move_tick(void *data, float seconds)
 			obs_source_get_settings(filter->target_source);
 		const double val = filter->factor * filter->audio_value +
 				   filter->base_value;
-		obs_data_set_double(settings, filter->setting_name, val);
+		obs_data_item_t *setting =
+			obs_data_item_byname(settings, filter->setting_name);
+		if (setting) {
+			const enum obs_data_number_type num_type =
+				obs_data_item_numtype(setting);
+			if (num_type == OBS_DATA_NUM_INT) {
+				obs_data_item_set_int(&setting, val);
+			} else if (num_type == OBS_DATA_NUM_DOUBLE) {
+				obs_data_item_set_double(&setting, val);
+			}	
+			obs_data_item_release(&setting);
+		} else {
+			obs_data_set_double(settings, filter->setting_name,
+					    val);
+		}
 		obs_data_release(settings);
 		obs_source_update(filter->target_source, NULL);
 	}
