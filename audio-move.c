@@ -85,6 +85,27 @@ void audio_move_volmeter_updated(void *data,
 				  (1.0 - audio_move->easing) * v;
 }
 
+void audio_move_item_remove(void *data, calldata_t *call_data)
+{
+	struct audio_move_info *audio_move = data;
+	obs_scene_t *scene = NULL;
+	calldata_get_ptr(call_data, "scene", &scene);
+	obs_sceneitem_t *item = NULL;
+	calldata_get_ptr(call_data, "item", &item);
+	if (item == audio_move->sceneitem) {
+		audio_move->sceneitem = NULL;
+		obs_source_t *parent = obs_scene_get_source(scene);
+		if (parent) {
+			signal_handler_t *sh =
+				obs_source_get_signal_handler(parent);
+			if (sh)
+				signal_handler_disconnect(
+					sh, "item_remove",
+					audio_move_item_remove, audio_move);
+		}
+	}
+}
+
 void audio_move_update(void *data, obs_data_t *settings)
 {
 	struct audio_move_info *audio_move = data;
@@ -117,8 +138,23 @@ void audio_move_update(void *data, obs_data_t *settings)
 	obs_source_t *source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
 	obs_scene_t *scene = obs_scene_from_source(source);
+	if (audio_move->sceneitem) {
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
+		if (sh)
+			signal_handler_disconnect(sh, "item_remove",
+						  audio_move_item_remove,
+						  audio_move);
+	}
 	audio_move->sceneitem =
 		scene ? obs_scene_find_source(scene, sceneitem_name) : NULL;
+
+	if (audio_move->sceneitem && source) {
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
+		if (sh)
+			signal_handler_connect(sh, "item_remove",
+					       audio_move_item_remove,
+					       audio_move);
+	}
 
 	obs_source_release(audio_move->target_source);
 	audio_move->target_source = NULL;
@@ -150,7 +186,7 @@ void audio_move_update(void *data, obs_data_t *settings)
 				audio_move->target_source = filter;
 				obs_source_release(source);
 			} else {
-				audio_move->target_source = filter;
+				audio_move->target_source = source;
 			}
 		}
 	}
@@ -186,7 +222,10 @@ static void audio_move_destroy(void *data)
 	obs_volmeter_remove_callback(audio_move->volmeter,
 				     audio_move_volmeter_updated, audio_move);
 	obs_volmeter_destroy(audio_move->volmeter);
+	audio_move->volmeter = NULL;
 	obs_source_release(audio_move->target_source);
+	audio_move->target_source = NULL;
+	audio_move->sceneitem = NULL;
 	bfree(audio_move->setting_name);
 	bfree(audio_move);
 }
@@ -687,7 +726,7 @@ void audio_move_tick(void *data, float seconds)
 				obs_data_item_set_int(&setting, val);
 			} else if (num_type == OBS_DATA_NUM_DOUBLE) {
 				obs_data_item_set_double(&setting, val);
-			}	
+			}
 			obs_data_item_release(&setting);
 		} else {
 			obs_data_set_double(settings, filter->setting_name,

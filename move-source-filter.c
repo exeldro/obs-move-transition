@@ -70,7 +70,6 @@ void move_source_item_remove(void *data, calldata_t *call_data)
 	obs_sceneitem_t *item = NULL;
 	calldata_get_ptr(call_data, "item", &item);
 	if (item == move_source->scene_item) {
-		obs_sceneitem_release(move_source->scene_item);
 		move_source->scene_item = NULL;
 		obs_source_t *parent = obs_scene_get_source(scene);
 		if (parent) {
@@ -91,7 +90,6 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	const char *name =
 		obs_source_get_name(obs_sceneitem_get_source(scene_item));
 	if (name && strcmp(name, move_source->source_name) == 0) {
-		obs_sceneitem_addref(scene_item);
 		move_source->scene_item = scene_item;
 		obs_source_t *parent = obs_scene_get_source(scene);
 		if (parent) {
@@ -620,7 +618,6 @@ void move_source_source_media_ended(void *data, calldata_t *call_data)
 void move_source_source_remove(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
-	obs_sceneitem_release(move_source->scene_item);
 	move_source->scene_item = NULL;
 	UNUSED_PARAMETER(call_data);
 }
@@ -702,8 +699,6 @@ void move_source_update(void *data, obs_data_t *settings)
 			}
 			obs_source_release(source);
 		}
-
-		obs_sceneitem_release(move_source->scene_item);
 		move_source->scene_item = NULL;
 		if (parent) {
 			signal_handler_t *sh =
@@ -862,6 +857,16 @@ void move_source_source_rename(void *data, calldata_t *call_data)
 	obs_data_release(settings);
 }
 
+static void move_source_frontend_event(enum obs_frontend_event event,
+				       void *private_data)
+{
+	if (event == OBS_FRONTEND_EVENT_SCENE_CHANGED) {
+		int i = 0;
+	} else if (event == OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED) {
+		int i = 0;
+	}
+}
+
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_source_info *move_source =
@@ -871,12 +876,17 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 	move_source_update(move_source, settings);
 	signal_handler_connect(obs_get_signal_handler(), "source_rename",
 			       move_source_source_rename, move_source);
+
+	obs_frontend_add_event_callback(move_source_frontend_event,
+					move_source);
 	return move_source;
 }
 
 static void move_source_destroy(void *data)
 {
 	struct move_source_info *move_source = data;
+	obs_frontend_remove_event_callback(move_source_frontend_event,
+					   move_source);
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
 
@@ -909,9 +919,16 @@ static void move_source_destroy(void *data)
 				sh, "show", move_source_source_show, data);
 			signal_handler_disconnect(
 				sh, "hide", move_source_source_hide, data);
+			signal_handler_disconnect(
+				sh, "media_started",
+				move_source_source_media_started, data);
+			signal_handler_disconnect(
+				sh, "media_ended",
+				move_source_source_media_ended, data);
+			signal_handler_disconnect(
+				sh, "remove", move_source_source_remove, data);
 		}
 	}
-	obs_sceneitem_release(move_source->scene_item);
 	move_source->scene_item = NULL;
 	if (move_source->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_unregister(move_source->move_start_hotkey);
@@ -1022,7 +1039,6 @@ bool move_source_changed(void *data, obs_properties_t *props,
 		return refresh;
 	bfree(move_source->source_name);
 	move_source->source_name = bstrdup(source_name);
-	obs_sceneitem_release(move_source->scene_item);
 	move_source->scene_item = NULL;
 	obs_source_t *parent = obs_filter_get_parent(move_source->source);
 	if (parent) {
