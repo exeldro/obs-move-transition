@@ -682,7 +682,8 @@ obs_source_t *get_transition(const char *transition_name, void *pool_data,
 			     size_t *index, bool cache)
 {
 
-	if (!transition_name || strlen(transition_name) == 0 || strcmp(transition_name, "None") == 0)
+	if (!transition_name || strlen(transition_name) == 0 ||
+	    strcmp(transition_name, "None") == 0)
 		return NULL;
 	DARRAY(obs_source_t *) *transition_pool = pool_data;
 	const size_t i = *index;
@@ -1303,6 +1304,61 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	return true;
 }
 
+void get_override_filter(obs_source_t *source, obs_source_t *filter,
+			 void *param)
+{
+	UNUSED_PARAMETER(source);
+	if (!obs_source_enabled(filter))
+		return;
+	if (strcmp(obs_source_get_unversioned_id(filter),
+		   "move_transition_override_filter") != 0)
+		return;
+	obs_source_t *target = *(obs_source_t **)param;
+	if (!target) {
+		*(obs_source_t **)param = filter;
+		return;
+	}
+
+	if (obs_source_get_type(target) == OBS_SOURCE_TYPE_FILTER)
+		return;
+	obs_data_t *settings = obs_source_get_settings(filter);
+	if (!settings)
+		return;
+	const char *sn = obs_data_get_string(settings, S_SOURCE);
+	if (sn && strlen(sn)) {
+		if (strcmp(obs_source_get_name(target), sn) == 0) {
+			*(obs_source_t **)param = filter;
+		}
+	}
+	obs_data_release(settings);
+}
+
+obs_data_t *get_override_filter_settings(obs_sceneitem_t *item)
+{
+	if (!item)
+		return NULL;
+	obs_source_t *filter = obs_sceneitem_get_source(item);
+	obs_scene_t *scene = obs_sceneitem_get_scene(item);
+	if (scene) {
+		obs_source_t *scene_source = obs_scene_get_source(scene);
+		obs_source_enum_filters(scene_source, get_override_filter,
+					&filter);
+	}
+
+	obs_source_t *source = obs_sceneitem_get_source(item);
+	if (!source)
+		return NULL;
+
+	if (filter && filter != source)
+		return obs_source_get_settings(filter);
+
+	filter = NULL;
+	obs_source_enum_filters(source, get_override_filter, &filter);
+	if (filter && filter != source)
+		return obs_source_get_settings(filter);
+	return NULL;
+}
+
 bool same_transform_type(struct obs_transform_info *info_a,
 			 struct obs_transform_info *info_b)
 {
@@ -1329,6 +1385,15 @@ struct move_item *match_item2(struct move_info *move,
 {
 	struct move_item *item = NULL;
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	const char *name_b = obs_source_get_name(source);
+	obs_data_t *override_filter = get_override_filter_settings(scene_item);
+	const char *name_b2 =
+		override_filter
+			? obs_data_get_string(override_filter, S_MATCH_SOURCE)
+			: NULL;
+	if (override_filter)
+		obs_data_release(override_filter);
+
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *check_item = move->items_a.array[i];
 		if (check_item->item_b)
@@ -1355,12 +1420,28 @@ struct move_item *match_item2(struct move_info *move,
 			break;
 		}
 		const char *name_a = obs_source_get_name(check_source);
-		const char *name_b = obs_source_get_name(source);
 		if (name_a && name_b) {
 			if (strcmp(name_a, name_b) == 0) {
 				item = check_item;
 				*found_pos = i;
 				break;
+			}
+			if (name_b2 && strcmp(name_a, name_b2) == 0) {
+				item = check_item;
+				*found_pos = i;
+				break;
+			}
+			override_filter = get_override_filter_settings(
+				check_item->item_a);
+			if (override_filter) {
+				const char *name_a2 = obs_data_get_string(
+					override_filter, S_MATCH_SOURCE);
+				obs_data_release(override_filter);
+				if (strcmp(name_a2, name_b) == 0) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
 			}
 			if (part_match) {
 				size_t len_a = strlen(name_a);
@@ -1524,60 +1605,6 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		move->matched_scene_a = true;
 	da_push_back(move->items_b, &item);
 	return true;
-}
-void get_override_filter(obs_source_t *source, obs_source_t *filter,
-			 void *param)
-{
-	UNUSED_PARAMETER(source);
-	if (!obs_source_enabled(filter))
-		return;
-	if (strcmp(obs_source_get_unversioned_id(filter),
-		   "move_transition_override_filter") != 0)
-		return;
-	obs_source_t *target = *(obs_source_t **)param;
-	if (!target) {
-		*(obs_source_t **)param = filter;
-		return;
-	}
-
-	if (obs_source_get_type(target) == OBS_SOURCE_TYPE_FILTER)
-		return;
-	obs_data_t *settings = obs_source_get_settings(filter);
-	if (!settings)
-		return;
-	const char *sn = obs_data_get_string(settings, S_SOURCE);
-	if (sn && strlen(sn)) {
-		if (strcmp(obs_source_get_name(target), sn) == 0) {
-			*(obs_source_t **)param = filter;
-		}
-	}
-	obs_data_release(settings);
-}
-
-obs_data_t *get_override_filter_settings(obs_sceneitem_t *item)
-{
-	if (!item)
-		return NULL;
-	obs_source_t *filter = obs_sceneitem_get_source(item);
-	obs_scene_t *scene = obs_sceneitem_get_scene(item);
-	if (scene) {
-		obs_source_t *scene_source = obs_scene_get_source(scene);
-		obs_source_enum_filters(scene_source, get_override_filter,
-					&filter);
-	}
-
-	obs_source_t *source = obs_sceneitem_get_source(item);
-	if (!source)
-		return NULL;
-
-	if (filter && filter != source)
-		return obs_source_get_settings(filter);
-
-	filter = NULL;
-	obs_source_enum_filters(source, get_override_filter, &filter);
-	if (filter && filter != source)
-		return obs_source_get_settings(filter);
-	return NULL;
 }
 
 static void move_video_render(void *data, gs_effect_t *effect)

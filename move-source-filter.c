@@ -1101,7 +1101,7 @@ bool move_source_changed(void *data, obs_properties_t *props,
 	return refresh;
 }
 
-bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item,
+bool prop_list_add_sceneitem(obs_scene_t *scene, obs_sceneitem_t *item,
 			  void *data);
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
@@ -1285,7 +1285,7 @@ static obs_properties_t *move_source_properties(void *data)
 						    obs_module_text("Source"),
 						    OBS_COMBO_TYPE_LIST,
 						    OBS_COMBO_FORMAT_STRING);
-	obs_scene_enum_items(scene, prop_list_add_source, p);
+	obs_scene_enum_items(scene, prop_list_add_sceneitem, p);
 	obs_property_set_modified_callback2(p, move_source_changed, data);
 
 	p = obs_properties_add_int(group, S_START_DELAY,

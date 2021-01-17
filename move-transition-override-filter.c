@@ -46,12 +46,22 @@ void prop_list_add_positions(obs_property_t *p);
 void prop_list_add_transitions(obs_property_t *p);
 void prop_list_add_scales(obs_property_t *p);
 
-bool prop_list_add_source(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
+bool prop_list_add_sceneitem(obs_scene_t *scene, obs_sceneitem_t *item,
+			     void *data)
 {
 	UNUSED_PARAMETER(scene);
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(obs_sceneitem_get_source(item));
 	obs_property_list_add_string(p, name, name);
+	return true;
+}
+
+bool prop_list_add_source(void *data, obs_source_t *source)
+{
+	obs_property_t *p = data;
+	const char *name = obs_source_get_name(source);
+	if (name && strlen(name))
+		obs_property_list_add_string(p, name, name);
 	return true;
 }
 
@@ -68,11 +78,19 @@ static obs_properties_t *move_filter_properties(void *data)
 					    obs_module_text("Source"),
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_STRING);
-		obs_scene_enum_items(scene, prop_list_add_source, p);
+		obs_scene_enum_items(scene, prop_list_add_sceneitem, p);
 	}
 
 	//Matched items
 	obs_properties_t *group = obs_properties_create();
+
+	p = obs_properties_add_list(group, S_MATCH_SOURCE,
+				    obs_module_text("MatchSource"),
+				    OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, "", "");
+	obs_enum_sources(prop_list_add_source, p);
+	obs_enum_scenes(prop_list_add_source, p);
 
 	p = obs_properties_add_int_slider(group, S_START_DELAY_MATCH_TO,
 					  obs_module_text("StartDelayTo"), -1,
@@ -171,8 +189,7 @@ static obs_properties_t *move_filter_properties(void *data)
 				    obs_module_text("Transition"),
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
-	obs_property_list_add_string(p, obs_module_text("NoOverride"),
-				  NULL);
+	obs_property_list_add_string(p, obs_module_text("NoOverride"), NULL);
 	prop_list_add_transitions(p);
 
 	curve_group = obs_properties_create();

@@ -96,6 +96,7 @@
 #define S_AUDIO_FADE "audio_fade"
 #define S_AUDIO_FADE_PERCENT "audio_fade_percent"
 #define S_ENABLED_MATCH_MOVING "enabled_match_moving"
+#define S_MATCH_SOURCE "match_source"
 
 #define NO_OVERRIDE (-1)
 
