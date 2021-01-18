@@ -72,13 +72,21 @@ static obs_properties_t *move_filter_properties(void *data)
 	obs_property_t *p;
 	obs_source_t *parent = obs_filter_get_parent(move_filter->source);
 	obs_scene_t *scene = obs_scene_from_source(parent);
-
+	obs_source_t *source = NULL;
 	if (scene) {
 		p = obs_properties_add_list(ppts, S_SOURCE,
 					    obs_module_text("Source"),
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_STRING);
 		obs_scene_enum_items(scene, prop_list_add_sceneitem, p);
+		obs_data_t *settings =
+			obs_source_get_settings(move_filter->source);
+		if (settings) {
+			source = obs_sceneitem_get_source(obs_scene_find_source(
+				scene,
+				obs_data_get_string(settings, S_SOURCE)));
+			obs_data_release(settings);
+		}
 	}
 
 	//Matched items
@@ -145,6 +153,26 @@ static obs_properties_t *move_filter_properties(void *data)
 				 obs_module_text("CurveOverride"),
 				 OBS_GROUP_CHECKABLE, curve_group);
 
+	p = obs_properties_add_list(group, S_START_MOVE_MATCH_FROM,
+				    obs_module_text("StartMoveMatchFrom"),
+				    OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, "", "");
+	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
+	if (source)
+		obs_source_enum_filters(source,
+					prop_list_add_move_source_filter, p);
+
+	p = obs_properties_add_list(group, S_START_MOVE_MATCH_TO,
+				    obs_module_text("StartMoveMatchTo"),
+				    OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, "", "");
+	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
+	if (source)
+		obs_source_enum_filters(source,
+					prop_list_add_move_source_filter, p);
+
 	obs_properties_add_group(ppts, S_MOVE_MATCH,
 				 obs_module_text("MoveMatch"), OBS_GROUP_NORMAL,
 				 group);
@@ -201,6 +229,16 @@ static obs_properties_t *move_filter_properties(void *data)
 				 obs_module_text("CurveOverride"),
 				 OBS_GROUP_CHECKABLE, curve_group);
 
+	p = obs_properties_add_list(group, S_START_MOVE_IN,
+				    obs_module_text("StartMove"),
+				    OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, "", "");
+	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
+	if (source)
+		obs_source_enum_filters(source,
+					prop_list_add_move_source_filter, p);
+
 	obs_properties_add_group(ppts, S_MOVE_IN, obs_module_text("MoveIn"),
 				 OBS_GROUP_NORMAL, group);
 
@@ -256,6 +294,16 @@ static obs_properties_t *move_filter_properties(void *data)
 	obs_properties_add_group(group, S_CURVE_OVERRIDE_OUT,
 				 obs_module_text("CurveOverride"),
 				 OBS_GROUP_CHECKABLE, curve_group);
+
+	p = obs_properties_add_list(group, S_START_MOVE_OUT,
+				    obs_module_text("StartMove"),
+				    OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, "", "");
+	obs_source_enum_filters(parent, prop_list_add_move_source_filter, p);
+	if (source)
+		obs_source_enum_filters(source,
+					prop_list_add_move_source_filter, p);
 
 	obs_properties_add_group(ppts, S_MOVE_OUT, obs_module_text("MoveOut"),
 				 OBS_GROUP_NORMAL, group);

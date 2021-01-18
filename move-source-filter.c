@@ -4,64 +4,6 @@
 #include <stdio.h>
 #include <util/dstr.h>
 
-struct move_source_info {
-	obs_source_t *source;
-	char *source_name;
-	char *filter_name;
-	obs_sceneitem_t *scene_item;
-	obs_hotkey_id move_start_hotkey;
-
-	long long easing;
-	long long easing_function;
-	float curve;
-
-	bool transform;
-	struct vec2 pos_from;
-	struct vec2 pos_to;
-	float rot_from;
-	float rot_to;
-	struct vec2 scale_from;
-	struct vec2 scale_to;
-	struct vec2 bounds_from;
-	struct vec2 bounds_to;
-	struct obs_sceneitem_crop crop_from;
-	struct obs_sceneitem_crop crop_to;
-	bool custom_duration;
-	uint64_t duration;
-	uint64_t start_delay;
-	uint64_t end_delay;
-	bool moving;
-	float running_duration;
-	uint32_t canvas_width;
-	uint32_t canvas_height;
-	uint32_t start_trigger;
-	uint32_t stop_trigger;
-	bool enabled;
-	char *simultaneous_move_name;
-	char *next_move_name;
-	bool relative;
-	DARRAY(obs_source_t *) filters_done;
-
-	long long next_move_on;
-	long long change_visibility;
-	bool visibility_toggled;
-	bool reverse;
-
-	long long change_order;
-	long long order_position;
-
-	long long media_action_start;
-	int64_t media_time_start;
-	long long media_action_end;
-	int64_t media_time_end;
-
-	bool audio_fade;
-	float audio_fade_from;
-	float audio_fade_to;
-	long long mute_action;
-	bool enabled_match_moving;
-};
-
 void move_source_item_remove(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
@@ -234,7 +176,6 @@ void move_source_media_action(struct move_source_info *move_source,
 }
 
 void move_source_ended(struct move_source_info *move_source);
-void move_value_start(struct move_value_info *move_value);
 
 void move_source_start(struct move_source_info *move_source)
 {
@@ -1102,7 +1043,7 @@ bool move_source_changed(void *data, obs_properties_t *props,
 }
 
 bool prop_list_add_sceneitem(obs_scene_t *scene, obs_sceneitem_t *item,
-			  void *data);
+			     void *data);
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
 

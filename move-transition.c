@@ -1607,6 +1607,27 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	return true;
 }
 
+void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
+{
+	obs_scene_t *scene = obs_sceneitem_get_scene(item);
+	obs_source_t *scene_source = obs_scene_get_source(scene);
+	obs_source_t *filter =
+		obs_source_get_filter_by_name(scene_source, start_move);
+	if (!filter) {
+		obs_source_t *source = obs_sceneitem_get_source(item);
+		filter = obs_source_get_filter_by_name(source, start_move);
+	}
+	if (!filter)
+		return;
+	const char *filter_id = obs_source_get_unversioned_id(filter);
+	if (strcmp(filter_id, MOVE_SOURCE_FILTER_ID) == 0) {
+		move_source_start(obs_obj_get_data(filter));
+	} else if (strcmp(filter_id, MOVE_VALUE_FILTER_ID) == 0 ||
+		   strcmp(filter_id, MOVE_AUDIO_VALUE_FILTER_ID) == 0) {
+		move_value_start(obs_obj_get_data(filter));
+	}
+}
+
 static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
@@ -1657,6 +1678,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				move->items_b.num = 0;
 			}
 		}
+		// insert missing items from items_a into items_b
 		move->item_pos = 0;
 		for (size_t i = 0; i < move->items_a.num; i++) {
 			struct move_item *item = move->items_a.array[i];
@@ -1784,6 +1806,18 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				} else if (val_b != NO_OVERRIDE) {
 					item->end_percentage = 100 - (int)val_b;
 				}
+				const char *start_move_a = obs_data_get_string(
+					settings_a, S_START_MOVE_MATCH_FROM);
+				if (start_move_a && strlen(start_move_a)) {
+					sceneitem_start_move(item->item_a,
+							     start_move_a);
+				}
+				const char *start_move_b = obs_data_get_string(
+					settings_b, S_START_MOVE_MATCH_TO);
+				if (start_move_b && strlen(start_move_b)) {
+					sceneitem_start_move(item->item_b,
+							     start_move_b);
+				}
 			} else if (settings_a) {
 				long long val;
 				if ((item->item_a && item->item_b) ||
@@ -1873,6 +1907,20 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				if (val != NO_OVERRIDE) {
 					item->end_percentage = 100 - (int)val;
 				}
+				const char *move_start =
+					((item->item_a && item->item_b) ||
+					 item->move_scene)
+						? obs_data_get_string(
+							  settings_a,
+							  S_START_MOVE_MATCH_FROM)
+						: obs_data_get_string(
+							  settings_a,
+							  S_START_MOVE_OUT);
+				if (move_start && strlen(move_start)) {
+					sceneitem_start_move(item->item_a,
+							     move_start);
+				}
+
 			} else if (settings_b) {
 				long long val;
 				if ((item->item_a && item->item_b) ||
@@ -1962,6 +2010,19 @@ static void move_video_render(void *data, gs_effect_t *effect)
 							       S_END_DELAY_IN);
 				if (val != NO_OVERRIDE) {
 					item->end_percentage = 100 - (int)val;
+				}
+				const char *move_start =
+					((item->item_a && item->item_b) ||
+					 item->move_scene)
+						? obs_data_get_string(
+							  settings_b,
+							  S_START_MOVE_MATCH_TO)
+						: obs_data_get_string(
+							  settings_a,
+							  S_START_MOVE_IN);
+				if (move_start && strlen(move_start)) {
+					sceneitem_start_move(item->item_b,
+							     move_start);
 				}
 			}
 			obs_data_release(settings_a);

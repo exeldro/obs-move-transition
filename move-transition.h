@@ -48,6 +48,10 @@
 #define S_END_DELAY_MATCH_TO "end_delay_match_to"
 #define S_END_DELAY_IN "end_delay_in"
 #define S_END_DELAY_OUT "end_delay_out"
+#define S_START_MOVE_MATCH_FROM "start_move_match_from"
+#define S_START_MOVE_MATCH_TO "start_move_match_to"
+#define S_START_MOVE_IN "start_move_match_in"
+#define S_START_MOVE_OUT "start_move_match_out"
 #define S_CUSTOM_DURATION "custom_duration"
 #define S_DURATION "duration"
 #define S_ROT "rot"
@@ -187,7 +191,6 @@
 #define MUTE_ACTION_MUTE_DURING 5
 #define MUTE_ACTION_UNMUTE_DURING 6
 
-
 struct move_value_info {
 	obs_source_t *source;
 	char *filter_name;
@@ -230,3 +233,66 @@ struct move_value_info {
 	bool reverse;
 	bool enabled_match_moving;
 };
+
+struct move_source_info {
+	obs_source_t *source;
+	char *source_name;
+	char *filter_name;
+	obs_sceneitem_t *scene_item;
+	obs_hotkey_id move_start_hotkey;
+
+	long long easing;
+	long long easing_function;
+	float curve;
+
+	bool transform;
+	struct vec2 pos_from;
+	struct vec2 pos_to;
+	float rot_from;
+	float rot_to;
+	struct vec2 scale_from;
+	struct vec2 scale_to;
+	struct vec2 bounds_from;
+	struct vec2 bounds_to;
+	struct obs_sceneitem_crop crop_from;
+	struct obs_sceneitem_crop crop_to;
+	bool custom_duration;
+	uint64_t duration;
+	uint64_t start_delay;
+	uint64_t end_delay;
+	bool moving;
+	float running_duration;
+	uint32_t canvas_width;
+	uint32_t canvas_height;
+	uint32_t start_trigger;
+	uint32_t stop_trigger;
+	bool enabled;
+	char *simultaneous_move_name;
+	char *next_move_name;
+	bool relative;
+	DARRAY(obs_source_t *) filters_done;
+
+	long long next_move_on;
+	long long change_visibility;
+	bool visibility_toggled;
+	bool reverse;
+
+	long long change_order;
+	long long order_position;
+
+	long long media_action_start;
+	int64_t media_time_start;
+	long long media_action_end;
+	int64_t media_time_end;
+
+	bool audio_fade;
+	float audio_fade_from;
+	float audio_fade_to;
+	long long mute_action;
+	bool enabled_match_moving;
+};
+
+void move_value_start(struct move_value_info *move_value);
+void move_source_start(struct move_source_info *move_source);
+void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
+				      void *data);
