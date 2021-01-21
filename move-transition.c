@@ -1666,9 +1666,11 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			while (i < move->items_a.num) {
 				struct move_item *item = move->items_a.array[i];
 				if (move->matched_scene_a && item->item_a) {
+					obs_sceneitem_release(item->item_a);
 					da_erase(move->items_a, i);
 				} else if (move->matched_scene_b &&
 					   item->item_b) {
+					obs_sceneitem_release(item->item_b);
 					da_erase(move->items_a, i);
 				} else {
 					i++;

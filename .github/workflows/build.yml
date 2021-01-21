@@ -245,10 +245,10 @@ jobs:
           mkdir ./build64
           cd ./build64
           cmake -G"${{ env.CMAKE_GENERATOR }}" -A"x64" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win64" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019_64" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
-      - name: Build
-        run: |
-          msbuild /m /p:Configuration=RelWithDebInfo .\build32\obs-studio.sln
-          msbuild /m /p:Configuration=RelWithDebInfo .\build64\obs-studio.sln
+      - name: 'Build 32'
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\obs-studio.sln
+      - name: 'Build 64'
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\obs-studio.sln
       - name: Package
         if: success()
         run: |
