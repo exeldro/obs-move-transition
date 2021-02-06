@@ -37,6 +37,11 @@ static void load_properties(obs_properties_t *props_from,
 				obs_data_array_push_back(array, setting);
 			}
 			obs_data_set_int(setting, S_VALUE_TYPE, MOVE_VALUE_INT);
+			if (obs_data_has_default_value(settings_from, name))
+				obs_data_set_default_int(
+					settings_to, name,
+					obs_data_get_default_int(settings_from,
+								 name));
 			const long long to =
 				obs_data_get_int(settings_to, name);
 			obs_data_set_int(setting, S_SETTING_TO, to);
@@ -52,6 +57,11 @@ static void load_properties(obs_properties_t *props_from,
 			}
 			obs_data_set_int(setting, S_VALUE_TYPE,
 					 MOVE_VALUE_FLOAT);
+			if (obs_data_has_default_value(settings_from, name))
+				obs_data_set_default_double(
+					settings_to, name,
+					obs_data_get_default_double(
+						settings_from, name));
 			const double to =
 				obs_data_get_double(settings_to, name);
 			obs_data_set_double(setting, S_SETTING_TO, to);
@@ -67,6 +77,11 @@ static void load_properties(obs_properties_t *props_from,
 			}
 			obs_data_set_int(setting, S_VALUE_TYPE,
 					 MOVE_VALUE_COLOR);
+			if (obs_data_has_default_value(settings_from, name))
+				obs_data_set_default_int(
+					settings_to, name,
+					obs_data_get_default_int(settings_from,
+								 name));
 			obs_data_set_int(setting, S_SETTING_TO,
 					 obs_data_get_int(settings_to, name));
 			const long long from =
@@ -363,14 +378,14 @@ void move_value_update(void *data, obs_data_t *settings)
 	if (obs_data_get_bool(settings, S_SINGLE_SETTING)) {
 		obs_data_array_release(move_value->settings);
 		move_value->settings = NULL;
-	} else {
+	} else if (parent) {
 		if (!move_value->settings)
 			move_value->settings = obs_data_array_create();
 		obs_source_t *source =
 			move_value->setting_filter_name &&
 					strlen(move_value->setting_filter_name)
 				? move_value->filter
-				: obs_filter_get_parent(move_value->source);
+				: parent;
 		move_values_load_properties(move_value, source, settings);
 	}
 
