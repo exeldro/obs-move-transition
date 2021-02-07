@@ -243,6 +243,7 @@ static bool audio_move_action_changed(obs_properties_t *props,
 				      obs_property_t *property,
 				      obs_data_t *settings)
 {
+	UNUSED_PARAMETER(property);
 	long long action = obs_data_get_int(settings, "value_action");
 	obs_property_t *scene = obs_properties_get(props, "scene");
 	obs_property_t *sceneitem = obs_properties_get(props, "sceneitem");
@@ -308,6 +309,7 @@ static bool audio_move_action_changed(obs_properties_t *props,
 static bool add_sceneitem_to_prop_list(obs_scene_t *scene,
 				       obs_sceneitem_t *item, void *data)
 {
+	UNUSED_PARAMETER(scene);
 	obs_property_t *p = (obs_property_t *)data;
 	const obs_source_t *source = obs_sceneitem_get_source(item);
 	const char *name = obs_source_get_name(source);
@@ -320,7 +322,8 @@ static bool audio_move_scene_changed(void *data, obs_properties_t *props,
 				     obs_property_t *property,
 				     obs_data_t *settings)
 {
-	struct audio_move_info *audio_move = data;
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
 	const char *scene_name = obs_data_get_string(settings, "scene");
 	obs_property_t *sceneitem = obs_properties_get(props, "sceneitem");
 	obs_property_list_clear(sceneitem);
@@ -336,9 +339,10 @@ static bool audio_move_scene_changed(void *data, obs_properties_t *props,
 static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child,
 				    void *data)
 {
+	UNUSED_PARAMETER(parent);
 	obs_property_t *p = (obs_property_t *)data;
 	const char *name = obs_source_get_name(child);
-    const char *src_id = obs_source_get_id(child);
+	const char *src_id = obs_source_get_id(child);
 
 	if (name && strlen(name) && strcmp(src_id, AUDIO_MOVE_FILTER_ID) != 0)
 		obs_property_list_add_string(p, name, name);
@@ -370,7 +374,8 @@ static bool audio_move_source_changed(void *data, obs_properties_t *props,
 				      obs_property_t *property,
 				      obs_data_t *settings)
 {
-	struct audio_move_info *audio_move = data;
+	UNUSED_PARAMETER(property);
+	UNUSED_PARAMETER(data);
 	const char *source_name = obs_data_get_string(settings, "source");
 	const char *filter_name = obs_data_get_string(settings, "filter");
 	obs_property_t *filter = obs_properties_get(props, "filter");
@@ -400,7 +405,7 @@ static bool audio_move_source_changed(void *data, obs_properties_t *props,
 
 static obs_properties_t *audio_move_properties(void *data)
 {
-	struct audio_move_info *audio_move = data;
+	UNUSED_PARAMETER(data);
 	obs_properties_t *ppts = obs_properties_create();
 
 	obs_property_t *p = obs_properties_add_list(
@@ -536,6 +541,7 @@ void audio_move_defaults(obs_data_t *settings)
 
 void audio_move_tick(void *data, float seconds)
 {
+	UNUSED_PARAMETER(seconds);
 	struct audio_move_info *filter = data;
 	if (!obs_source_enabled(filter->source))
 		return;
