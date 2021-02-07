@@ -338,7 +338,9 @@ static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child,
 {
 	obs_property_t *p = (obs_property_t *)data;
 	const char *name = obs_source_get_name(child);
-	if (name && strlen(name))
+    const char *src_id = obs_source_get_id(child);
+
+	if (name && strlen(name) && strcmp(src_id, AUDIO_MOVE_FILTER_ID) != 0)
 		obs_property_list_add_string(p, name, name);
 }
 
