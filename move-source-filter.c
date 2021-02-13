@@ -563,32 +563,28 @@ void move_source_source_remove(void *data, calldata_t *call_data)
 	UNUSED_PARAMETER(call_data);
 }
 
-void move_source_source_changed(struct move_source_info *move_source, const char *source_name)
+void move_source_source_changed(struct move_source_info *move_source,
+				const char *source_name)
 {
 
 	obs_source_t *source =
-		move_source->source_name &&
-		strlen(move_source->source_name)
-			? obs_get_source_by_name(
-				move_source->source_name)
+		move_source->source_name && strlen(move_source->source_name)
+			? obs_get_source_by_name(move_source->source_name)
 			: NULL;
 	if (source) {
-		signal_handler_t *sh =
-			obs_source_get_signal_handler(source);
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
-			signal_handler_disconnect(
-				sh, "activate",
+			signal_handler_disconnect(sh, "activate",
 						  move_source_source_activate,
 						  move_source);
-			signal_handler_disconnect(
-				sh, "deactivate",
+			signal_handler_disconnect(sh, "deactivate",
 						  move_source_source_deactivate,
 						  move_source);
-			signal_handler_disconnect(
-				sh, "show", move_source_source_show,
+			signal_handler_disconnect(sh, "show",
+						  move_source_source_show,
 						  move_source);
-			signal_handler_disconnect(
-				sh, "hide", move_source_source_hide,
+			signal_handler_disconnect(sh, "hide",
+						  move_source_source_hide,
 						  move_source);
 			signal_handler_disconnect(
 				sh, "media_started",
@@ -596,8 +592,8 @@ void move_source_source_changed(struct move_source_info *move_source, const char
 			signal_handler_disconnect(
 				sh, "media_ended",
 				move_source_source_media_ended, move_source);
-			signal_handler_disconnect(
-				sh, "remove", move_source_source_remove,
+			signal_handler_disconnect(sh, "remove",
+						  move_source_source_remove,
 						  move_source);
 		}
 		obs_source_release(source);
@@ -608,33 +604,28 @@ void move_source_source_changed(struct move_source_info *move_source, const char
 
 	source = obs_get_source_by_name(source_name);
 	if (source) {
-		signal_handler_t *sh =
-			obs_source_get_signal_handler(source);
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
-			signal_handler_connect(
-				sh, "activate",
+			signal_handler_connect(sh, "activate",
 					       move_source_source_activate,
 					       move_source);
-			signal_handler_connect(
-				sh, "deactivate",
+			signal_handler_connect(sh, "deactivate",
 					       move_source_source_deactivate,
 					       move_source);
 			signal_handler_connect(sh, "show",
-			                       move_source_source_show,
+					       move_source_source_show,
 					       move_source);
 			signal_handler_connect(sh, "hide",
-			                       move_source_source_hide,
+					       move_source_source_hide,
 					       move_source);
-			signal_handler_connect(
-				sh, "media_started",
+			signal_handler_connect(sh, "media_started",
 					       move_source_source_media_started,
 					       move_source);
-			signal_handler_connect(
-				sh, "media_ended",
+			signal_handler_connect(sh, "media_ended",
 					       move_source_source_media_ended,
 					       move_source);
-			signal_handler_connect(
-				sh, "remove", move_source_source_remove,
+			signal_handler_connect(sh, "remove",
+					       move_source_source_remove,
 					       move_source);
 
 			move_source->source_name = bstrdup(source_name);
@@ -644,12 +635,11 @@ void move_source_source_changed(struct move_source_info *move_source, const char
 	move_source->scene_item = NULL;
 	obs_source_t *parent = obs_filter_get_parent(move_source->source);
 	if (parent) {
-		signal_handler_t *sh =
-			obs_source_get_signal_handler(parent);
+		signal_handler_t *sh = obs_source_get_signal_handler(parent);
 		if (sh)
-			signal_handler_disconnect(
-				sh, "item_remove",
-				move_source_item_remove, move_source);
+			signal_handler_disconnect(sh, "item_remove",
+						  move_source_item_remove,
+						  move_source);
 	}
 	obs_scene_t *scene = obs_scene_from_source(parent);
 	if (move_source->source_name && scene)
@@ -1023,7 +1013,7 @@ bool move_source_changed(void *data, obs_properties_t *props,
 				source, prop_list_add_move_source_filter, p);
 	}
 
-	obs_source_t *source = obs_get_source_by_name(move_source->source_name);
+	obs_source_t *source = obs_get_source_by_name(source_name);
 	if (source) {
 		uint32_t flags = obs_source_get_output_flags(source);
 		const bool media = flags & OBS_SOURCE_CONTROLLABLE_MEDIA;
