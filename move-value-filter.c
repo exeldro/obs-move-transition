@@ -174,38 +174,32 @@ void move_value_start(struct move_value_info *move_value)
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		move_value->int_from =
 			obs_data_get_int(ss, move_value->setting_name);
-		if (move_value->int_from != move_value->int_to) {
-			move_value->running_duration = 0.0f;
-			move_value->moving = true;
-		}
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
+
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		move_value->double_from =
 			obs_data_get_double(ss, move_value->setting_name);
-		if (move_value->double_from != move_value->double_to) {
-			move_value->running_duration = 0.0f;
-			move_value->moving = true;
-		}
+
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
+
 	} else if (move_value->value_type == MOVE_VALUE_COLOR) {
 		vec4_from_rgba(&move_value->color_from,
 			       (uint32_t)obs_data_get_int(
 				       ss, move_value->setting_name));
-		if (move_value->color_from.x != move_value->color_to.x ||
-		    move_value->color_from.y != move_value->color_to.y ||
-		    move_value->color_from.z != move_value->color_to.z ||
-		    move_value->color_from.w != move_value->color_to.w) {
-			move_value->running_duration = 0.0f;
-			move_value->moving = true;
-		}
+
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
+
 	} else {
 		move_value->int_from =
 			obs_data_get_int(ss, move_value->setting_name);
 		move_value->double_from =
 			obs_data_get_double(ss, move_value->setting_name);
-		if (move_value->int_from != move_value->int_to ||
-		    move_value->double_from != move_value->double_to) {
-			move_value->running_duration = 0.0f;
-			move_value->moving = true;
-		}
+
+		move_value->running_duration = 0.0f;
+		move_value->moving = true;
 	}
 	if (move_value->enabled_match_moving &&
 	    obs_source_enabled(move_value->source) != move_value->moving) {
