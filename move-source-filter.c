@@ -185,6 +185,8 @@ void move_source_start(struct move_source_info *move_source)
 			obs_filter_get_parent(move_source->source);
 		if (parent) {
 			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (!scene)
+				scene = obs_group_from_source(parent);
 			if (scene)
 				obs_scene_enum_items(scene, find_sceneitem,
 						     move_source);
@@ -642,6 +644,8 @@ void move_source_source_changed(struct move_source_info *move_source,
 						  move_source);
 	}
 	obs_scene_t *scene = obs_scene_from_source(parent);
+	if (!scene)
+		scene = obs_group_from_source(parent);
 	if (move_source->source_name && scene)
 		obs_scene_enum_items(scene, find_sceneitem, move_source);
 }
@@ -898,6 +902,8 @@ bool move_source_get_transform(obs_properties_t *props,
 			obs_filter_get_parent(move_source->source);
 		if (parent) {
 			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (!scene)
+				scene = obs_group_from_source(parent);
 			if (scene)
 				obs_scene_enum_items(scene, find_sceneitem,
 						     data);
@@ -1090,6 +1096,8 @@ bool move_source_transform_relative_changed(void *data, obs_properties_t *props,
 			obs_filter_get_parent(move_source->source);
 		if (parent) {
 			obs_scene_t *scene = obs_scene_from_source(parent);
+			if (!scene)
+				scene = obs_group_from_source(parent);
 			if (scene)
 				obs_scene_enum_items(scene, find_sceneitem,
 						     data);
