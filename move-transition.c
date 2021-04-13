@@ -65,6 +65,8 @@ struct move_item {
 	bool move_scene;
 	int start_percentage;
 	int end_percentage;
+	obs_scene_t *release_scene_a;
+	obs_scene_t *release_scene_b;
 };
 
 static const char *move_get_name(void *type_data)
@@ -105,8 +107,12 @@ static void clear_items(struct move_info *move, bool in_graphics)
 
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
+		obs_scene_release(item->release_scene_a);
+		item->release_scene_a = NULL;
 		obs_sceneitem_release(item->item_a);
 		item->item_a = NULL;
+		obs_scene_release(item->release_scene_b);
+		item->release_scene_b = NULL;
 		obs_sceneitem_release(item->item_b);
 		item->item_b = NULL;
 
@@ -1653,13 +1659,52 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		move->matched_scene_a = false;
 		move->matched_scene_b = false;
 		move->item_pos = 0;
-		obs_scene_enum_items(
-			obs_scene_from_source(move->scene_source_a), add_item,
-			data);
+		obs_scene_t *scene_a =
+			obs_scene_from_source(move->scene_source_a);
+		if (scene_a) {
+			obs_scene_enum_items(scene_a, add_item, data);
+		} else if (move->scene_source_a) {
+
+			scene_a = obs_scene_create_private(
+				obs_source_get_name(move->scene_source_a));
+			obs_sceneitem_t *scene_item =
+				obs_scene_add(scene_a, move->scene_source_a);
+			struct move_item *item = create_move_item();
+			da_push_back(move->items_a, &item);
+			item->item_a = scene_item;
+			item->release_scene_a = scene_a;
+		}
 		move->item_pos = 0;
-		obs_scene_enum_items(
-			obs_scene_from_source(move->scene_source_b), match_item,
-			data);
+		obs_scene_t *scene_b =
+			obs_scene_from_source(move->scene_source_b);
+		if (scene_b) {
+			obs_scene_enum_items(scene_b, match_item, data);
+		} else if (move->scene_source_b) {
+			scene_b = obs_scene_create_private(
+				obs_source_get_name(move->scene_source_b));
+			obs_sceneitem_t *scene_item =
+				obs_scene_add(scene_b, move->scene_source_b);
+			size_t old_pos;
+			struct move_item *item =
+				match_item2(move, scene_item, false, &old_pos);
+			if (!item && (move->part_match || move->number_match ||
+				      move->last_word_match)) {
+				item = match_item2(move, scene_item, true,
+						   &old_pos);
+			}
+			if (item) {
+				move->matched_items++;
+				if (old_pos >= move->item_pos)
+					move->item_pos = old_pos + 1;
+			} else {
+				item = create_move_item();
+				da_insert(move->items_a, move->item_pos, &item);
+				move->item_pos++;
+			}
+			item->item_b = scene_item;
+			item->release_scene_b = scene_b;
+			da_push_back(move->items_b, &item);
+		}
 		if (!move->matched_items &&
 		    (move->matched_scene_a || move->matched_scene_b)) {
 			size_t i = 0;
