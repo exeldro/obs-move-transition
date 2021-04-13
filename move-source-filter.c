@@ -55,8 +55,9 @@ char obs_data_get_char(obs_data_t *data, const char *name)
 
 void obs_data_set_char(obs_data_t *data, const char *name, char val)
 {
-	char *s = " ";
+	char s[2];
 	s[0] = val;
+	s[1] = 0;
 	obs_data_set_string(data, name, s);
 }
 
@@ -81,7 +82,7 @@ void calc_relative_to(struct move_source_info *move_source)
 	obs_data_t *settings = obs_source_get_settings(move_source->source);
 
 	move_source->rot_to = calc_sign(
-		obs_data_get_char(settings, "sign_rot"), move_source->rot_from,
+		obs_data_get_char(settings, "rot_sign"), move_source->rot_from,
 		(float)obs_data_get_double(settings, S_ROT));
 
 	obs_data_t *pos = obs_data_get_obj(settings, S_POS);
@@ -116,20 +117,20 @@ void calc_relative_to(struct move_source_info *move_source)
 
 	obs_data_t *crop = obs_data_get_obj(settings, S_CROP);
 	move_source->crop_to.left =
-		calc_sign(obs_data_get_char(bounds, "left_sign"),
+		calc_sign(obs_data_get_char(crop, "left_sign"),
 			  move_source->crop_from.left,
-			  obs_data_get_int(settings, "left"));
+			  obs_data_get_int(crop, "left"));
 	move_source->crop_to.top = calc_sign(
-		obs_data_get_char(bounds, "top_sign"),
-		move_source->crop_from.top, obs_data_get_int(settings, "top"));
+		obs_data_get_char(crop, "top_sign"),
+		move_source->crop_from.top, obs_data_get_int(crop, "top"));
 	move_source->crop_to.right =
-		calc_sign(obs_data_get_char(bounds, "right_sign"),
+		calc_sign(obs_data_get_char(crop, "right_sign"),
 			  move_source->crop_from.right,
-			  obs_data_get_int(settings, "right"));
+			  obs_data_get_int(crop, "right"));
 	move_source->crop_to.bottom =
-		calc_sign(obs_data_get_char(bounds, "bottom_sign"),
+		calc_sign(obs_data_get_char(crop, "bottom_sign"),
 			  move_source->crop_from.bottom,
-			  obs_data_get_int(settings, "bottom"));
+			  obs_data_get_int(crop, "bottom"));
 	obs_data_release(crop);
 	obs_data_release(settings);
 }
@@ -761,6 +762,29 @@ void move_source_update(void *data, obs_data_t *settings)
 	move_source->easing_function =
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
 	move_source->transform = obs_data_get_bool(settings, S_TRANSFORM);
+	if (obs_data_has_user_value(settings, "crop_left") ||
+	    obs_data_has_user_value(settings, "crop_top") ||
+	    obs_data_has_user_value(settings, "crop_right") ||
+	    obs_data_has_user_value(settings, "crop_bottom")) {
+		obs_data_t *obj = obs_data_get_obj(settings, S_CROP);
+		if (!obj) {
+			obj = obs_data_create();
+			obs_data_set_obj(settings, S_CROP, obj);
+		}
+		obs_data_set_int(obj, "left",
+				 obs_data_get_int(settings, "crop_left"));
+		obs_data_set_int(obj, "top",
+				 obs_data_get_int(settings, "crop_top"));
+		obs_data_set_int(obj, "right",
+				 obs_data_get_int(settings, "crop_right"));
+		obs_data_set_int(obj, "bottom",
+				 obs_data_get_int(settings, "crop_bottom"));
+		obs_data_release(obj);
+		obs_data_unset_user_value(settings, "crop_left");
+		obs_data_unset_user_value(settings, "crop_top");
+		obs_data_unset_user_value(settings, "crop_right");
+		obs_data_unset_user_value(settings, "crop_bottom");
+	}
 	if (obs_data_has_user_value(settings, S_TRANSFORM_RELATIVE)) {
 		if (obs_data_get_bool(settings, S_TRANSFORM_RELATIVE)) {
 			obs_data_set_sign(settings, S_POS, "+");
@@ -841,7 +865,7 @@ void update_transform_text(struct move_source_info *move_source,
 		    OBS_BOUNDS_NONE) {
 			snprintf(
 				transform_text, 500,
-				"pos: x%c%.0f y%c%.0f rot:%c%.1f scale: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
+				"pos: x%c%.1f y%c%.1f rot:%c%.1f scale: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 				obs_data_get_char(pos, "x_sign"),
 				obs_data_get_double(pos, "x"),
 				obs_data_get_char(pos, "y_sign"),
@@ -852,10 +876,6 @@ void update_transform_text(struct move_source_info *move_source,
 				obs_data_get_double(scale, "x"),
 				obs_data_get_char(scale, "y_sign"),
 				obs_data_get_double(scale, "y"),
-				obs_data_get_char(bounds, "x_sign"),
-				obs_data_get_double(bounds, "x"),
-				obs_data_get_char(bounds, "y_sign"),
-				obs_data_get_double(bounds, "y"),
 				obs_data_get_char(crop, "left_sign"),
 				(int)obs_data_get_int(crop, "left"),
 				obs_data_get_char(crop, "top_sign"),
@@ -867,7 +887,7 @@ void update_transform_text(struct move_source_info *move_source,
 		} else {
 			snprintf(
 				transform_text, 500,
-				"pos: x%c%.0f y%c%.0f rot:%c%.1f bounds: x%c%.0f y%c%.0f crop: l%c%d t%c%d r%c%d b%c%d",
+				"pos: x%c%.1f y%c%.1f rot:%c%.1f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 				obs_data_get_char(pos, "x_sign"),
 				obs_data_get_double(pos, "x"),
 				obs_data_get_char(pos, "y_sign"),
@@ -890,7 +910,7 @@ void update_transform_text(struct move_source_info *move_source,
 	} else {
 		snprintf(
 			transform_text, 500,
-			"pos: x%c%.0f y%c%.0f rot:%c%.1f scale: x%c%.3f y%c%.3f bounds: x%c%.0f y%c%.0f crop: l%c%d t%c%d r%c%d b%c%d",
+			"pos: x%c%.1f y%c%.1f rot:%c%.1f scale: x%c%.3f y%c%.3f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 			obs_data_get_char(pos, "x_sign"),
 			obs_data_get_double(pos, "x"),
 			obs_data_get_char(pos, "y_sign"),
@@ -1132,8 +1152,8 @@ bool move_source_relative(obs_properties_t *props, obs_property_t *property,
 	obs_data_set_vec2_sign(settings, S_SCALE, &scale, '*', '*');
 	obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds, '*', '*');
 	obs_data_set_crop_sign(settings, S_CROP, &crop, '+', '+', '+', '+');
-	move_source_update(data, settings);
 	update_transform_text(move_source, settings);
+	move_source_update(data, settings);
 	obs_data_release(settings);
 
 	return settings_changed;
@@ -1247,20 +1267,19 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 				   "pos: x%c%f y%c%f rot:%c%f scale: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
 				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
 				   &rot_sign, &rot, &scale_x_sign, &scale.x,
-				   &scale_y_sign, &scale.y, &bounds_x_sign,
-				   &bounds.x, &bounds_y_sign, &bounds.y,
-				   &crop_left_sign, &crop.left, &crop_top_sign,
+				   &scale_y_sign, &scale.y, &crop_left_sign, &crop.left, &crop_top_sign,
 				   &crop.top, &crop_right_sign, &crop.right,
 				   &crop_bottom_sign, &crop.bottom) != 18) {
 				update_transform_text(move_source, settings);
 				return true;
 			}
+			obs_data_set_vec2_sign(settings, S_SCALE, &scale,
+					       scale_x_sign, scale_y_sign);
 		} else {
 			if (sscanf(transform_text,
 				   "pos: x%c%f y%c%f rot:%c%f bounds: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
 				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
-				   &rot_sign, &rot, &scale_x_sign, &scale.x,
-				   &scale_y_sign, &scale.y, &bounds_x_sign,
+				   &rot_sign, &rot, &bounds_x_sign,
 				   &bounds.x, &bounds_y_sign, &bounds.y,
 				   &crop_left_sign, &crop.left, &crop_top_sign,
 				   &crop.top, &crop_right_sign, &crop.right,
@@ -1268,6 +1287,8 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 				update_transform_text(move_source, settings);
 				return true;
 			}
+			obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds,
+					       bounds_x_sign, bounds_y_sign);
 		}
 	} else {
 		if (sscanf(transform_text,
@@ -1282,12 +1303,12 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 			update_transform_text(move_source, settings);
 			return true;
 		}
+		obs_data_set_vec2_sign(settings, S_SCALE, &scale, scale_x_sign,
+				       scale_y_sign);
+		obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds,
+				       bounds_x_sign, bounds_y_sign);
 	}
 	obs_data_set_vec2_sign(settings, S_POS, &pos, pos_x_sign, pos_y_sign);
-	obs_data_set_vec2_sign(settings, S_SCALE, &scale, scale_x_sign,
-			       scale_y_sign);
-	obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds, bounds_x_sign,
-			       bounds_y_sign);
 
 	obs_data_set_double(settings, S_ROT, rot);
 	obs_data_set_char(settings, "rot_sign", rot_sign);
