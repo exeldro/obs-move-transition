@@ -58,10 +58,7 @@
 #define S_POS "pos"
 #define S_SCALE "scale"
 #define S_BOUNDS "bounds"
-#define S_CROP_LEFT "crop_left"
-#define S_CROP_TOP "crop_top"
-#define S_CROP_RIGHT "crop_right"
-#define S_CROP_BOTTOM "crop_bottom"
+#define S_CROP "crop"
 #define S_TRANSFORM_TEXT "transform_text"
 #define S_SWITCH_PERCENTAGE "switch_percentage"
 #define S_CACHE_TRANSITIONS "cache_transitions"
@@ -269,7 +266,7 @@ struct move_source_info {
 	bool enabled;
 	char *simultaneous_move_name;
 	char *next_move_name;
-	bool relative;
+
 	DARRAY(obs_source_t *) filters_done;
 
 	long long next_move_on;

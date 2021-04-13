@@ -242,11 +242,11 @@ void audio_move_update(void *data, obs_data_t *settings)
 					       audio_move_item_remove,
 					       audio_move);
 			signal_handler_connect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
+					       audio_move_source_remove,
+					       audio_move);
 			signal_handler_connect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+					       audio_move_source_destroy,
+					       audio_move);
 		}
 		obs_source_t *item_source =
 			obs_sceneitem_get_source(audio_move->sceneitem);
@@ -308,19 +308,17 @@ void audio_move_update(void *data, obs_data_t *settings)
 			} else {
 				target_source = source;
 			}
-
 		}
 	}
-	if (target_source &&
-	    obs_source_removed(target_source)) {
+	if (target_source && obs_source_removed(target_source)) {
 		target_source = NULL;
 	}
 	if (target_source) {
 		audio_move->target_source =
 			obs_source_get_weak_source(target_source);
 
-		signal_handler_t *sh = obs_source_get_signal_handler(
-			target_source);
+		signal_handler_t *sh =
+			obs_source_get_signal_handler(target_source);
 		signal_handler_connect(sh, "remove", audio_move_source_remove,
 				       audio_move);
 		signal_handler_connect(sh, "destroy", audio_move_source_destroy,
@@ -361,7 +359,8 @@ static void audio_move_destroy(void *data)
 	obs_volmeter_destroy(audio_move->volmeter);
 	audio_move->volmeter = NULL;
 	if (audio_move->target_source) {
-		obs_source_t * source = obs_weak_source_get_source(audio_move->target_source);
+		obs_source_t *source =
+			obs_weak_source_get_source(audio_move->target_source);
 		if (source) {
 			signal_handler_t *sh =
 				obs_source_get_signal_handler(source);
@@ -862,10 +861,11 @@ void audio_move_tick(void *data, float seconds)
 		}
 		if (!filter->target_source)
 			return;
-		obs_source_t * source = obs_weak_source_get_source(filter->target_source);
+		obs_source_t *source =
+			obs_weak_source_get_source(filter->target_source);
 		if (!source)
 			return;
-		
+
 		if ((filter->threshold_action == THRESHOLD_ENABLE_OVER ||
 		     filter->threshold_action ==
 			     THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
@@ -909,8 +909,7 @@ void audio_move_tick(void *data, float seconds)
 			obs_weak_source_get_source(filter->target_source);
 		if (!source)
 			return;
-		obs_data_t *settings =
-			obs_source_get_settings(source);
+		obs_data_t *settings = obs_source_get_settings(source);
 		const double val = filter->factor * filter->audio_value +
 				   filter->base_value;
 		obs_data_item_t *setting =

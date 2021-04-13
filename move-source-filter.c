@@ -47,33 +47,90 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	return true;
 }
 
-void calc_relative_to(struct move_source_info *move_source, float f)
+char obs_data_get_char(obs_data_t *data, const char *name)
 {
+	const char *s = obs_data_get_string(data, name);
+	return (s && strlen(s)) ? s[0] : ' ';
+}
+
+void obs_data_set_char(obs_data_t *data, const char *name, char val)
+{
+	char *s = " ";
+	s[0] = val;
+	obs_data_set_string(data, name, s);
+}
+
+float calc_sign(char sign, float from, float to)
+{
+	if (sign == '+') {
+		return from + to;
+	} else if (sign == '-') {
+		return from - to;
+	} else if (sign == '*') {
+		return from * to;
+	} else if (sign == '/') {
+		return to == 0.0f ? from : from / to;
+	} else {
+		return to;
+	}
+}
+
+void calc_relative_to(struct move_source_info *move_source)
+{
+
 	obs_data_t *settings = obs_source_get_settings(move_source->source);
-	move_source->rot_to = move_source->rot_from +
-			      (float)obs_data_get_double(settings, S_ROT) * f;
-	struct vec2 vec2;
-	obs_data_get_vec2(settings, S_POS, &vec2);
-	move_source->pos_to.x = move_source->pos_from.x + vec2.x * f;
-	move_source->pos_to.y = move_source->pos_from.y + vec2.y * f;
-	obs_data_get_vec2(settings, S_SCALE, &vec2);
-	move_source->scale_to.x = move_source->scale_from.x + vec2.x * f;
-	move_source->scale_to.y = move_source->scale_from.y + vec2.y * f;
-	obs_data_get_vec2(settings, S_BOUNDS, &vec2);
-	move_source->bounds_to.x = move_source->bounds_from.x + vec2.x * f;
-	move_source->bounds_to.y = move_source->bounds_from.y + vec2.y * f;
+
+	move_source->rot_to = calc_sign(
+		obs_data_get_char(settings, "sign_rot"), move_source->rot_from,
+		(float)obs_data_get_double(settings, S_ROT));
+
+	obs_data_t *pos = obs_data_get_obj(settings, S_POS);
+	move_source->pos_to.x = calc_sign(obs_data_get_char(pos, "x_sign"),
+					  move_source->pos_from.x,
+					  (float)obs_data_get_double(pos, "x"));
+
+	move_source->pos_to.y = calc_sign(obs_data_get_char(pos, "y_sign"),
+					  move_source->pos_from.y,
+					  (float)obs_data_get_double(pos, "y"));
+	obs_data_release(pos);
+
+	obs_data_t *scale = obs_data_get_obj(settings, S_SCALE);
+	move_source->scale_to.x = calc_sign(
+		obs_data_get_char(scale, "x_sign"), move_source->scale_from.x,
+		(float)obs_data_get_double(scale, "x"));
+
+	move_source->scale_to.y = calc_sign(
+		obs_data_get_char(scale, "y_sign"), move_source->scale_from.y,
+		(float)obs_data_get_double(scale, "y"));
+	obs_data_release(scale);
+
+	obs_data_t *bounds = obs_data_get_obj(settings, S_BOUNDS);
+	move_source->bounds_to.x = calc_sign(
+		obs_data_get_char(bounds, "x_sign"), move_source->bounds_from.x,
+		(float)obs_data_get_double(bounds, "x"));
+
+	move_source->bounds_to.y = calc_sign(
+		obs_data_get_char(bounds, "y_sign"), move_source->bounds_from.y,
+		(float)obs_data_get_double(bounds, "y"));
+	obs_data_release(bounds);
+
+	obs_data_t *crop = obs_data_get_obj(settings, S_CROP);
 	move_source->crop_to.left =
-		move_source->crop_from.left +
-		(int)obs_data_get_int(settings, S_CROP_LEFT) * (int)f;
-	move_source->crop_to.top =
-		move_source->crop_from.top +
-		(int)obs_data_get_int(settings, S_CROP_TOP) * (int)f;
+		calc_sign(obs_data_get_char(bounds, "left_sign"),
+			  move_source->crop_from.left,
+			  obs_data_get_int(settings, "left"));
+	move_source->crop_to.top = calc_sign(
+		obs_data_get_char(bounds, "top_sign"),
+		move_source->crop_from.top, obs_data_get_int(settings, "top"));
 	move_source->crop_to.right =
-		move_source->crop_from.right +
-		(int)obs_data_get_int(settings, S_CROP_RIGHT) * (int)f;
+		calc_sign(obs_data_get_char(bounds, "right_sign"),
+			  move_source->crop_from.right,
+			  obs_data_get_int(settings, "right"));
 	move_source->crop_to.bottom =
-		move_source->crop_from.bottom +
-		(int)obs_data_get_int(settings, S_CROP_BOTTOM) * (int)f;
+		calc_sign(obs_data_get_char(bounds, "bottom_sign"),
+			  move_source->crop_from.bottom,
+			  obs_data_get_int(settings, "bottom"));
+	obs_data_release(crop);
 	obs_data_release(settings);
 }
 
@@ -292,13 +349,10 @@ void move_source_start(struct move_source_info *move_source)
 		move_source->canvas_height =
 			obs_source_get_height(scene_source);
 
-		if (move_source->relative) {
-			calc_relative_to(move_source, 1.0f);
-		}
+		calc_relative_to(move_source);
+
 		move_source->audio_fade_from = obs_source_get_volume(
 			obs_sceneitem_get_source(move_source->scene_item));
-	} else if (move_source->relative) {
-		calc_relative_to(move_source, -1.0f);
 	}
 	move_source->moving = true;
 	if (move_source->enabled_match_moving &&
@@ -650,6 +704,17 @@ void move_source_source_changed(struct move_source_info *move_source,
 		obs_scene_enum_items(scene, find_sceneitem, move_source);
 }
 
+static void obs_data_set_sign(obs_data_t *settings, const char *name,
+			      const char *val)
+{
+	obs_data_t *obj = obs_data_get_obj(settings, name);
+	if (obj) {
+		obs_data_set_string(obj, "x_sign", val);
+		obs_data_set_string(obj, "y_sign", val);
+		obs_data_release(obj);
+	}
+}
+
 void move_source_update(void *data, obs_data_t *settings)
 {
 	struct move_source_info *move_source = data;
@@ -696,23 +761,25 @@ void move_source_update(void *data, obs_data_t *settings)
 	move_source->easing_function =
 		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
 	move_source->transform = obs_data_get_bool(settings, S_TRANSFORM);
-	move_source->relative =
-		obs_data_get_bool(settings, S_TRANSFORM_RELATIVE);
-	if (!move_source->relative) {
-		move_source->rot_to =
-			(float)obs_data_get_double(settings, S_ROT);
-		obs_data_get_vec2(settings, S_POS, &move_source->pos_to);
-		obs_data_get_vec2(settings, S_SCALE, &move_source->scale_to);
-		obs_data_get_vec2(settings, S_BOUNDS, &move_source->bounds_to);
-		move_source->crop_to.left =
-			(int)obs_data_get_int(settings, S_CROP_LEFT);
-		move_source->crop_to.top =
-			(int)obs_data_get_int(settings, S_CROP_TOP);
-		move_source->crop_to.right =
-			(int)obs_data_get_int(settings, S_CROP_RIGHT);
-		move_source->crop_to.bottom =
-			(int)obs_data_get_int(settings, S_CROP_BOTTOM);
+	if (obs_data_has_user_value(settings, S_TRANSFORM_RELATIVE)) {
+		if (obs_data_get_bool(settings, S_TRANSFORM_RELATIVE)) {
+			obs_data_set_sign(settings, S_POS, "+");
+			obs_data_set_sign(settings, S_SCALE, "+");
+			obs_data_set_sign(settings, S_BOUNDS, "+");
+			obs_data_set_string(settings, "rot_sign", "+");
+			obs_data_t *obj = obs_data_get_obj(settings, S_CROP);
+			if (obj) {
+				obs_data_set_string(obj, "left_sign", "+");
+				obs_data_set_string(obj, "top_sign", "+");
+				obs_data_set_string(obj, "right_sign", "+");
+				obs_data_set_string(obj, "bottom_sign", "+");
+				obs_data_release(obj);
+			}
+		}
+		obs_data_unset_user_value(settings, S_TRANSFORM_RELATIVE);
 	}
+	calc_relative_to(move_source);
+
 	move_source->start_trigger =
 		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
 	move_source->stop_trigger =
@@ -760,33 +827,106 @@ void move_source_update(void *data, obs_data_t *settings)
 	}
 }
 
-void update_transform_text(obs_data_t *settings)
+void update_transform_text(struct move_source_info *move_source,
+			   obs_data_t *settings)
 {
-	struct vec2 pos;
-	obs_data_get_vec2(settings, S_POS, &pos);
-	const double rot = obs_data_get_double(settings, S_ROT);
-	struct vec2 scale;
-	obs_data_get_vec2(settings, S_SCALE, &scale);
-	struct vec2 bounds;
-	obs_data_get_vec2(settings, S_BOUNDS, &bounds);
+	obs_data_t *pos = obs_data_get_obj(settings, S_POS);
+	obs_data_t *scale = obs_data_get_obj(settings, S_SCALE);
+	obs_data_t *bounds = obs_data_get_obj(settings, S_BOUNDS);
+	obs_data_t *crop = obs_data_get_obj(settings, S_CROP);
+
 	char transform_text[500];
-	snprintf(
-		transform_text, 500,
-		"pos: x %.0f y %.0f rot: %.1f scale: x %.3f y %.3f bounds: x %.0f y %.0f crop: l %d t %d r %d b %d",
-		pos.x, pos.y, rot, scale.x, scale.y, bounds.x, bounds.y,
-		(int)obs_data_get_int(settings, S_CROP_LEFT),
-		(int)obs_data_get_int(settings, S_CROP_TOP),
-		(int)obs_data_get_int(settings, S_CROP_RIGHT),
-		(int)obs_data_get_int(settings, S_CROP_BOTTOM));
+	if (move_source->scene_item) {
+		if (obs_sceneitem_get_bounds_type(move_source->scene_item) ==
+		    OBS_BOUNDS_NONE) {
+			snprintf(
+				transform_text, 500,
+				"pos: x%c%.0f y%c%.0f rot:%c%.1f scale: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
+				obs_data_get_char(pos, "x_sign"),
+				obs_data_get_double(pos, "x"),
+				obs_data_get_char(pos, "y_sign"),
+				obs_data_get_double(pos, "y"),
+				obs_data_get_char(settings, "rot_sign"),
+				obs_data_get_double(settings, S_ROT),
+				obs_data_get_char(scale, "x_sign"),
+				obs_data_get_double(scale, "x"),
+				obs_data_get_char(scale, "y_sign"),
+				obs_data_get_double(scale, "y"),
+				obs_data_get_char(bounds, "x_sign"),
+				obs_data_get_double(bounds, "x"),
+				obs_data_get_char(bounds, "y_sign"),
+				obs_data_get_double(bounds, "y"),
+				obs_data_get_char(crop, "left_sign"),
+				(int)obs_data_get_int(crop, "left"),
+				obs_data_get_char(crop, "top_sign"),
+				(int)obs_data_get_int(crop, "top"),
+				obs_data_get_char(crop, "right_sign"),
+				(int)obs_data_get_int(crop, "right"),
+				obs_data_get_char(crop, "bottom_sign"),
+				(int)obs_data_get_int(crop, "bottom"));
+		} else {
+			snprintf(
+				transform_text, 500,
+				"pos: x%c%.0f y%c%.0f rot:%c%.1f bounds: x%c%.0f y%c%.0f crop: l%c%d t%c%d r%c%d b%c%d",
+				obs_data_get_char(pos, "x_sign"),
+				obs_data_get_double(pos, "x"),
+				obs_data_get_char(pos, "y_sign"),
+				obs_data_get_double(pos, "y"),
+				obs_data_get_char(settings, "rot_sign"),
+				obs_data_get_double(settings, S_ROT),
+				obs_data_get_char(bounds, "x_sign"),
+				obs_data_get_double(bounds, "x"),
+				obs_data_get_char(bounds, "y_sign"),
+				obs_data_get_double(bounds, "y"),
+				obs_data_get_char(crop, "left_sign"),
+				(int)obs_data_get_int(crop, "left"),
+				obs_data_get_char(crop, "top_sign"),
+				(int)obs_data_get_int(crop, "top"),
+				obs_data_get_char(crop, "right_sign"),
+				(int)obs_data_get_int(crop, "right"),
+				obs_data_get_char(crop, "bottom_sign"),
+				(int)obs_data_get_int(crop, "bottom"));
+		}
+	} else {
+		snprintf(
+			transform_text, 500,
+			"pos: x%c%.0f y%c%.0f rot:%c%.1f scale: x%c%.3f y%c%.3f bounds: x%c%.0f y%c%.0f crop: l%c%d t%c%d r%c%d b%c%d",
+			obs_data_get_char(pos, "x_sign"),
+			obs_data_get_double(pos, "x"),
+			obs_data_get_char(pos, "y_sign"),
+			obs_data_get_double(pos, "y"),
+			obs_data_get_char(settings, "rot_sign"),
+			obs_data_get_double(settings, S_ROT),
+			obs_data_get_char(scale, "x_sign"),
+			obs_data_get_double(scale, "x"),
+			obs_data_get_char(scale, "y_sign"),
+			obs_data_get_double(scale, "y"),
+			obs_data_get_char(bounds, "x_sign"),
+			obs_data_get_double(bounds, "x"),
+			obs_data_get_char(bounds, "y_sign"),
+			obs_data_get_double(bounds, "y"),
+			obs_data_get_char(crop, "left_sign"),
+			(int)obs_data_get_int(crop, "left"),
+			obs_data_get_char(crop, "top_sign"),
+			(int)obs_data_get_int(crop, "top"),
+			obs_data_get_char(crop, "right_sign"),
+			(int)obs_data_get_int(crop, "right"),
+			obs_data_get_char(crop, "bottom_sign"),
+			(int)obs_data_get_int(crop, "bottom"));
+	}
 	obs_data_set_string(settings, S_TRANSFORM_TEXT, transform_text);
-	return;
+
+	obs_data_release(pos);
+	obs_data_release(scale);
+	obs_data_release(bounds);
+	obs_data_release(crop);
 }
 
 void move_source_load(void *data, obs_data_t *settings)
 {
 	struct move_source_info *move_source = data;
 	move_source_update(move_source, settings);
-	update_transform_text(settings);
+	update_transform_text(move_source, settings);
 }
 
 void move_source_source_rename(void *data, calldata_t *call_data)
@@ -889,6 +1029,37 @@ static void move_source_destroy(void *data)
 	bfree(move_source);
 }
 
+static void obs_data_set_vec2_sign(obs_data_t *data, const char *name,
+				   const struct vec2 *val, char x_sign,
+				   char y_sign)
+{
+	obs_data_t *obj = obs_data_create();
+	obs_data_set_double(obj, "x", val->x);
+	obs_data_set_char(obj, "x_sign", x_sign);
+	obs_data_set_double(obj, "y", val->y);
+	obs_data_set_char(obj, "y_sign", y_sign);
+	obs_data_set_obj(data, name, obj);
+	obs_data_release(obj);
+}
+
+static void obs_data_set_crop_sign(obs_data_t *settings, const char *name,
+				   struct obs_sceneitem_crop *crop,
+				   char crop_left_sign, char crop_top_sign,
+				   char crop_right_sign, char crop_bottom_sign)
+{
+	obs_data_t *obj = obs_data_create();
+	obs_data_set_double(obj, "left", crop->left);
+	obs_data_set_char(obj, "left_sign", crop_left_sign);
+	obs_data_set_double(obj, "top", crop->top);
+	obs_data_set_char(obj, "top_sign", crop_top_sign);
+	obs_data_set_double(obj, "right", crop->right);
+	obs_data_set_char(obj, "right_sign", crop_right_sign);
+	obs_data_set_double(obj, "bottom", crop->bottom);
+	obs_data_set_char(obj, "bottom_sign", crop_bottom_sign);
+	obs_data_set_obj(settings, name, obj);
+	obs_data_release(obj);
+}
+
 bool move_source_get_transform(obs_properties_t *props,
 			       obs_property_t *property, void *data)
 {
@@ -913,7 +1084,6 @@ bool move_source_get_transform(obs_properties_t *props,
 		return settings_changed;
 	settings_changed = true;
 	obs_data_t *settings = obs_source_get_settings(move_source->source);
-	const float rot = obs_sceneitem_get_rot(move_source->scene_item);
 	struct vec2 pos;
 	obs_sceneitem_get_pos(move_source->scene_item, &pos);
 	struct vec2 scale;
@@ -922,40 +1092,48 @@ bool move_source_get_transform(obs_properties_t *props,
 	obs_sceneitem_get_bounds(move_source->scene_item, &bounds);
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(move_source->scene_item, &crop);
-	if (move_source->relative) {
-		obs_data_set_double(settings, S_ROT, rot - move_source->rot_to);
+	obs_data_set_double(settings, S_ROT,
+			    obs_sceneitem_get_rot(move_source->scene_item));
+	obs_data_set_char(settings, "rot_sign", ' ');
+	obs_data_set_vec2_sign(settings, S_POS, &pos, ' ', ' ');
+	obs_data_set_vec2_sign(settings, S_SCALE, &scale, ' ', ' ');
+	obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds, ' ', ' ');
+	obs_data_set_crop_sign(settings, S_CROP, &crop, ' ', ' ', ' ', ' ');
 
-		pos.x -= move_source->pos_to.x;
-		pos.y -= move_source->pos_to.y;
-		obs_data_set_vec2(settings, S_POS, &pos);
-		scale.x -= move_source->scale_to.x;
-		scale.y -= move_source->scale_to.y;
-		obs_data_set_vec2(settings, S_SCALE, &scale);
-		bounds.x -= move_source->bounds_to.x;
-		bounds.y -= move_source->bounds_to.y;
-		obs_data_set_vec2(settings, S_BOUNDS, &bounds);
-		crop.left -= move_source->crop_to.left;
-		obs_data_set_int(settings, S_CROP_LEFT, crop.left);
-		crop.top -= move_source->crop_to.top;
-		obs_data_set_int(settings, S_CROP_TOP, crop.top);
-		crop.right -= move_source->crop_to.right;
-		obs_data_set_int(settings, S_CROP_RIGHT, crop.right);
-		crop.bottom -= move_source->crop_to.bottom;
-		obs_data_set_int(settings, S_CROP_BOTTOM, crop.bottom);
-	} else {
-		obs_data_set_double(
-			settings, S_ROT,
-			obs_sceneitem_get_rot(move_source->scene_item));
-		obs_data_set_vec2(settings, S_POS, &pos);
-		obs_data_set_vec2(settings, S_SCALE, &scale);
-		obs_data_set_vec2(settings, S_BOUNDS, &bounds);
-		obs_data_set_int(settings, S_CROP_LEFT, crop.left);
-		obs_data_set_int(settings, S_CROP_TOP, crop.top);
-		obs_data_set_int(settings, S_CROP_RIGHT, crop.right);
-		obs_data_set_int(settings, S_CROP_BOTTOM, crop.bottom);
-	}
 	move_source_update(data, settings);
-	update_transform_text(settings);
+	update_transform_text(move_source, settings);
+	obs_data_release(settings);
+
+	return settings_changed;
+}
+
+bool move_source_relative(obs_properties_t *props, obs_property_t *property,
+			  void *data)
+{
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
+	struct move_source_info *move_source = data;
+	bool settings_changed = true;
+	obs_data_t *settings = obs_source_get_settings(move_source->source);
+	struct vec2 pos;
+	pos.x = 0.0f;
+	pos.y = 0.0f;
+	struct vec2 scale;
+	scale.x = 1.0f;
+	scale.y = 1.0f;
+	struct vec2 bounds;
+	bounds.x = 1.0f;
+	bounds.y = 1.0f;
+	struct obs_sceneitem_crop crop = {0, 0, 0, 0};
+
+	obs_data_set_double(settings, S_ROT, 0.0);
+	obs_data_set_char(settings, "rot_sign", '+');
+	obs_data_set_vec2_sign(settings, S_POS, &pos, '+', '+');
+	obs_data_set_vec2_sign(settings, S_SCALE, &scale, '*', '*');
+	obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds, '*', '*');
+	obs_data_set_crop_sign(settings, S_CROP, &crop, '+', '+', '+', '+');
+	move_source_update(data, settings);
+	update_transform_text(move_source, settings);
 	obs_data_release(settings);
 
 	return settings_changed;
@@ -1050,7 +1228,7 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 {
 	UNUSED_PARAMETER(props);
 	UNUSED_PARAMETER(property);
-	UNUSED_PARAMETER(data);
+	struct move_source_info *move_source = data;
 	const char *transform_text =
 		obs_data_get_string(settings, S_TRANSFORM_TEXT);
 	struct vec2 pos;
@@ -1058,126 +1236,67 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 	struct vec2 scale;
 	struct vec2 bounds;
 	struct obs_sceneitem_crop crop;
-	if (sscanf(transform_text,
-		   "pos: x %f y %f rot: %f scale: x %f y %f bounds: x %f y %f crop: l %d t %d r %d b %d",
-		   &pos.x, &pos.y, &rot, &scale.x, &scale.y, &bounds.x,
-		   &bounds.y, &crop.left, &crop.top, &crop.right,
-		   &crop.bottom) != 11) {
-		update_transform_text(settings);
-		return true;
-	}
-	obs_data_set_vec2(settings, S_POS, &pos);
-	obs_data_set_double(settings, S_ROT, rot);
-	obs_data_set_vec2(settings, S_SCALE, &scale);
-	obs_data_set_vec2(settings, S_BOUNDS, &bounds);
-	obs_data_set_int(settings, S_CROP_LEFT, crop.left);
-	obs_data_set_int(settings, S_CROP_TOP, crop.top);
-	obs_data_set_int(settings, S_CROP_RIGHT, crop.right);
-	obs_data_set_int(settings, S_CROP_BOTTOM, crop.bottom);
-	return false;
-}
+	char pos_x_sign, pos_y_sign, rot_sign, scale_x_sign, scale_y_sign,
+		bounds_x_sign, bounds_y_sign, crop_left_sign, crop_top_sign,
+		crop_right_sign, crop_bottom_sign;
 
-bool move_source_transform_relative_changed(void *data, obs_properties_t *props,
-					    obs_property_t *property,
-					    obs_data_t *settings)
-{
-	UNUSED_PARAMETER(props);
-	UNUSED_PARAMETER(property);
-	struct move_source_info *move_source = data;
-	const bool relative = obs_data_get_bool(settings, S_TRANSFORM_RELATIVE);
-	if (relative == move_source->relative)
-		return false;
-
-	move_source->relative = relative;
-
-	if (!move_source->scene_item && move_source->source_name &&
-	    strlen(move_source->source_name)) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_source->source);
-		if (parent) {
-			obs_scene_t *scene = obs_scene_from_source(parent);
-			if (!scene)
-				scene = obs_group_from_source(parent);
-			if (scene)
-				obs_scene_enum_items(scene, find_sceneitem,
-						     data);
+	if (move_source->scene_item) {
+		if (obs_sceneitem_get_bounds_type(move_source->scene_item) ==
+		    OBS_BOUNDS_NONE) {
+			if (sscanf(transform_text,
+				   "pos: x%c%f y%c%f rot:%c%f scale: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
+				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
+				   &rot_sign, &rot, &scale_x_sign, &scale.x,
+				   &scale_y_sign, &scale.y, &bounds_x_sign,
+				   &bounds.x, &bounds_y_sign, &bounds.y,
+				   &crop_left_sign, &crop.left, &crop_top_sign,
+				   &crop.top, &crop_right_sign, &crop.right,
+				   &crop_bottom_sign, &crop.bottom) != 18) {
+				update_transform_text(move_source, settings);
+				return true;
+			}
+		} else {
+			if (sscanf(transform_text,
+				   "pos: x%c%f y%c%f rot:%c%f bounds: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
+				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
+				   &rot_sign, &rot, &scale_x_sign, &scale.x,
+				   &scale_y_sign, &scale.y, &bounds_x_sign,
+				   &bounds.x, &bounds_y_sign, &bounds.y,
+				   &crop_left_sign, &crop.left, &crop_top_sign,
+				   &crop.top, &crop_right_sign, &crop.right,
+				   &crop_bottom_sign, &crop.bottom) != 18) {
+				update_transform_text(move_source, settings);
+				return true;
+			}
+		}
+	} else {
+		if (sscanf(transform_text,
+			   "pos: x%c%f y%c%f rot:%c%f scale: x%c%f y%c%f bounds: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
+			   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y, &rot_sign,
+			   &rot, &scale_x_sign, &scale.x, &scale_y_sign,
+			   &scale.y, &bounds_x_sign, &bounds.x, &bounds_y_sign,
+			   &bounds.y, &crop_left_sign, &crop.left,
+			   &crop_top_sign, &crop.top, &crop_right_sign,
+			   &crop.right, &crop_bottom_sign,
+			   &crop.bottom) != 22) {
+			update_transform_text(move_source, settings);
+			return true;
 		}
 	}
-	struct vec2 pos;
+	obs_data_set_vec2_sign(settings, S_POS, &pos, pos_x_sign, pos_y_sign);
+	obs_data_set_vec2_sign(settings, S_SCALE, &scale, scale_x_sign,
+			       scale_y_sign);
+	obs_data_set_vec2_sign(settings, S_BOUNDS, &bounds, bounds_x_sign,
+			       bounds_y_sign);
 
-	struct vec2 scale;
+	obs_data_set_double(settings, S_ROT, rot);
+	obs_data_set_char(settings, "rot_sign", rot_sign);
 
-	struct vec2 bounds;
-	if (relative) {
-		obs_data_set_double(
-			settings, S_ROT,
-			move_source->rot_to -
-				obs_sceneitem_get_rot(move_source->scene_item));
-		obs_sceneitem_get_pos(move_source->scene_item, &pos);
-		pos.x -= move_source->pos_to.x;
-		pos.y -= move_source->pos_to.y;
-		obs_data_set_vec2(settings, S_POS, &pos);
-		obs_sceneitem_get_scale(move_source->scene_item, &scale);
-		scale.x -= move_source->scale_to.x;
-		scale.y -= move_source->scale_to.y;
-		obs_data_set_vec2(settings, S_SCALE, &scale);
-		obs_sceneitem_get_bounds(move_source->scene_item, &bounds);
-		bounds.x -= move_source->bounds_to.x;
-		bounds.y -= move_source->bounds_to.y;
-		obs_data_set_vec2(settings, S_BOUNDS, &bounds);
-		struct obs_sceneitem_crop crop;
-		obs_sceneitem_get_crop(move_source->scene_item, &crop);
-		obs_data_set_int(settings, S_CROP_LEFT,
-				 crop.left - move_source->crop_to.left);
-		obs_data_set_int(settings, S_CROP_TOP,
-				 crop.top - move_source->crop_to.top);
-		obs_data_set_int(settings, S_CROP_RIGHT,
-				 crop.right - move_source->crop_to.right);
-		obs_data_set_int(settings, S_CROP_BOTTOM,
-				 crop.bottom - move_source->crop_to.bottom);
-	} else {
-		move_source->rot_to +=
-			(float)obs_data_get_double(settings, S_ROT);
-		obs_data_set_double(settings, S_ROT, move_source->rot_to);
-		obs_data_get_vec2(settings, S_POS, &pos);
-		move_source->pos_to.x += pos.x;
-		move_source->pos_to.y += pos.y;
-		obs_data_set_vec2(settings, S_POS, &move_source->pos_to);
-		obs_data_get_vec2(settings, S_SCALE, &scale);
-		move_source->scale_to.x += scale.x;
-		move_source->scale_to.y += scale.y;
-		obs_data_set_vec2(settings, S_SCALE, &move_source->scale_to);
-		obs_data_get_vec2(settings, S_BOUNDS, &bounds);
-		move_source->bounds_to.x += bounds.x;
-		move_source->bounds_to.y += bounds.y;
-		obs_data_set_vec2(settings, S_BOUNDS, &move_source->bounds_to);
-		move_source->crop_to.left +=
-			(int)obs_data_get_int(settings, S_CROP_LEFT);
-		if (move_source->crop_to.left < 0)
-			move_source->crop_to.left = 0;
-		obs_data_set_int(settings, S_CROP_LEFT,
-				 move_source->crop_to.left);
-		move_source->crop_to.top +=
-			(int)obs_data_get_int(settings, S_CROP_TOP);
-		if (move_source->crop_to.top < 0)
-			move_source->crop_to.top = 0;
-		obs_data_set_int(settings, S_CROP_TOP,
-				 move_source->crop_to.top);
-		move_source->crop_to.right +=
-			(int)obs_data_get_int(settings, S_CROP_RIGHT);
-		if (move_source->crop_to.right < 0)
-			move_source->crop_to.right = 0;
-		obs_data_set_int(settings, S_CROP_RIGHT,
-				 move_source->crop_to.right);
-		move_source->crop_to.bottom +=
-			(int)obs_data_get_int(settings, S_CROP_BOTTOM);
-		if (move_source->crop_to.bottom < 0)
-			move_source->crop_to.bottom = 0;
-		obs_data_set_int(settings, S_CROP_BOTTOM,
-				 move_source->crop_to.bottom);
-	}
-	update_transform_text(settings);
-	return true;
+	obs_data_set_crop_sign(settings, S_CROP, &crop, crop_left_sign,
+			       crop_top_sign, crop_right_sign,
+			       crop_bottom_sign);
+
+	return false;
 }
 
 static void prop_list_add_media_actions(obs_property_t *p)
@@ -1260,11 +1379,6 @@ static obs_properties_t *move_source_properties(void *data)
 
 	group = obs_properties_create();
 
-	p = obs_properties_add_bool(group, S_TRANSFORM_RELATIVE,
-				    obs_module_text("TransformRelative"));
-	obs_property_set_modified_callback2(
-		p, move_source_transform_relative_changed, data);
-
 	p = obs_properties_add_text(group, S_TRANSFORM_TEXT,
 				    obs_module_text("Transform"),
 				    OBS_TEXT_DEFAULT);
@@ -1273,6 +1387,9 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_properties_add_button(group, "transform_get",
 				  obs_module_text("GetTransform"),
 				  move_source_get_transform);
+	obs_properties_add_button(group, "switch_to_relative",
+				  obs_module_text("TransformRelative"),
+				  move_source_relative);
 
 	obs_properties_add_float_slider(group, S_CURVE_MATCH,
 					obs_module_text("Curve"), -2.0, 2.0,
@@ -1708,24 +1825,7 @@ void move_source_tick(void *data, float seconds)
 	    (move_source->reverse ? move_source->end_delay
 				  : move_source->start_delay)) {
 		if (!move_source->reverse) {
-			move_source->rot_from =
-				obs_sceneitem_get_rot(move_source->scene_item);
-			obs_sceneitem_get_pos(move_source->scene_item,
-					      &move_source->pos_from);
-			obs_sceneitem_get_scale(move_source->scene_item,
-						&move_source->scale_from);
-			obs_sceneitem_get_bounds(move_source->scene_item,
-						 &move_source->bounds_from);
-			obs_sceneitem_get_crop(move_source->scene_item,
-					       &move_source->crop_from);
-			if (move_source->relative) {
-				calc_relative_to(move_source, 1.0f);
-			}
-			move_source->audio_fade_from =
-				obs_source_get_volume(obs_sceneitem_get_source(
-					move_source->scene_item));
-		} else if (move_source->relative) {
-			calc_relative_to(move_source, -1.0f);
+			calc_relative_to(move_source);
 		}
 		return;
 	}
