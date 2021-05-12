@@ -383,9 +383,7 @@ void move_source_start(struct move_source_info *move_source)
 					   MOVE_SOURCE_FILTER_ID) == 0) {
 					struct move_source_info *filter_data =
 						obs_obj_get_data(filter);
-					if (!filter_data->moving) {
-						move_source_start(filter_data);
-					}
+					move_source_start(filter_data);
 				} else if (strcmp(obs_source_get_unversioned_id(
 							  filter),
 						  MOVE_VALUE_FILTER_ID) == 0 ||
@@ -395,9 +393,8 @@ void move_source_start(struct move_source_info *move_source)
 						   0) {
 					struct move_value_info *filter_data =
 						obs_obj_get_data(filter);
-					if (!filter_data->moving) {
-						move_value_start(filter_data);
-					}
+
+					move_value_start(filter_data);
 				}
 				obs_source_release(filter);
 			}
