@@ -1833,6 +1833,14 @@ void move_source_tick(void *data, float seconds)
 
 		move_source->enabled = enabled;
 	}
+	if (move_source->enabled_match_moving &&
+	    enabled != move_source->moving) {
+		if (enabled) {
+			move_source_start(move_source);
+		} else {
+			move_source_stop(move_source);
+		}
+	}
 	if (!move_source->moving || !enabled)
 		return;
 
