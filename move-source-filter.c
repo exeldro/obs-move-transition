@@ -7,22 +7,26 @@
 void move_source_item_remove(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
-	obs_scene_t *scene = NULL;
-	calldata_get_ptr(call_data, "scene", &scene);
-	obs_sceneitem_t *item = NULL;
-	calldata_get_ptr(call_data, "item", &item);
-	if (item == move_source->scene_item) {
-		move_source->scene_item = NULL;
-		obs_source_t *parent = obs_scene_get_source(scene);
-		if (parent) {
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(parent);
-			if (sh)
-				signal_handler_disconnect(
-					sh, "item_remove",
-					move_source_item_remove, move_source);
-		}
-	}
+	if (!move_source)
+		return;
+	if (!call_data)
+		return;
+	obs_sceneitem_t *item = calldata_ptr(call_data, "item");
+	if (!item || item != move_source->scene_item)
+		return;
+	move_source->scene_item = NULL;
+	obs_scene_t *scene = calldata_ptr(call_data, "scene");
+	if (!scene)
+		return;
+
+	obs_source_t *parent = obs_scene_get_source(scene);
+	if (!parent)
+		return;
+	signal_handler_t *sh = obs_source_get_signal_handler(parent);
+	if (!sh)
+		return;
+	signal_handler_disconnect(sh, "item_remove", move_source_item_remove,
+				  move_source);
 }
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -31,20 +35,19 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	struct move_source_info *move_source = data;
 	const char *name =
 		obs_source_get_name(obs_sceneitem_get_source(scene_item));
-	if (name && strcmp(name, move_source->source_name) == 0) {
-		move_source->scene_item = scene_item;
-		obs_source_t *parent = obs_scene_get_source(scene);
-		if (parent) {
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(parent);
-			if (sh)
-				signal_handler_connect(sh, "item_remove",
-						       move_source_item_remove,
-						       move_source);
-		}
+	if (!name || strcmp(name, move_source->source_name) != 0)
+		return true;
+	move_source->scene_item = scene_item;
+	obs_source_t *parent = obs_scene_get_source(scene);
+	if (!parent)
 		return false;
-	}
-	return true;
+
+	signal_handler_t *sh = obs_source_get_signal_handler(parent);
+	if (sh)
+		signal_handler_connect(sh, "item_remove",
+				       move_source_item_remove, move_source);
+
+	return false;
 }
 
 char obs_data_get_char(obs_data_t *data, const char *name)
@@ -116,17 +119,15 @@ void calc_relative_to(struct move_source_info *move_source)
 	obs_data_release(bounds);
 
 	obs_data_t *crop = obs_data_get_obj(settings, S_CROP);
-	move_source->crop_to.left =
-		calc_sign(obs_data_get_char(crop, "left_sign"),
-			  move_source->crop_from.left,
-			  obs_data_get_int(crop, "left"));
+	move_source->crop_to.left = calc_sign(
+		obs_data_get_char(crop, "left_sign"),
+		move_source->crop_from.left, obs_data_get_int(crop, "left"));
 	move_source->crop_to.top = calc_sign(
-		obs_data_get_char(crop, "top_sign"),
-		move_source->crop_from.top, obs_data_get_int(crop, "top"));
-	move_source->crop_to.right =
-		calc_sign(obs_data_get_char(crop, "right_sign"),
-			  move_source->crop_from.right,
-			  obs_data_get_int(crop, "right"));
+		obs_data_get_char(crop, "top_sign"), move_source->crop_from.top,
+		obs_data_get_int(crop, "top"));
+	move_source->crop_to.right = calc_sign(
+		obs_data_get_char(crop, "right_sign"),
+		move_source->crop_from.right, obs_data_get_int(crop, "right"));
 	move_source->crop_to.bottom =
 		calc_sign(obs_data_get_char(crop, "bottom_sign"),
 			  move_source->crop_from.bottom,
@@ -1267,8 +1268,9 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 				   "pos: x%c%f y%c%f rot:%c%f scale: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
 				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
 				   &rot_sign, &rot, &scale_x_sign, &scale.x,
-				   &scale_y_sign, &scale.y, &crop_left_sign, &crop.left, &crop_top_sign,
-				   &crop.top, &crop_right_sign, &crop.right,
+				   &scale_y_sign, &scale.y, &crop_left_sign,
+				   &crop.left, &crop_top_sign, &crop.top,
+				   &crop_right_sign, &crop.right,
 				   &crop_bottom_sign, &crop.bottom) != 18) {
 				update_transform_text(move_source, settings);
 				return true;
@@ -1279,10 +1281,10 @@ bool move_source_transform_text_changed(void *data, obs_properties_t *props,
 			if (sscanf(transform_text,
 				   "pos: x%c%f y%c%f rot:%c%f bounds: x%c%f y%c%f crop: l%c%d t%c%d r%c%d b%c%d",
 				   &pos_x_sign, &pos.x, &pos_y_sign, &pos.y,
-				   &rot_sign, &rot, &bounds_x_sign,
-				   &bounds.x, &bounds_y_sign, &bounds.y,
-				   &crop_left_sign, &crop.left, &crop_top_sign,
-				   &crop.top, &crop_right_sign, &crop.right,
+				   &rot_sign, &rot, &bounds_x_sign, &bounds.x,
+				   &bounds_y_sign, &bounds.y, &crop_left_sign,
+				   &crop.left, &crop_top_sign, &crop.top,
+				   &crop_right_sign, &crop.right,
 				   &crop_bottom_sign, &crop.bottom) != 18) {
 				update_transform_text(move_source, settings);
 				return true;
