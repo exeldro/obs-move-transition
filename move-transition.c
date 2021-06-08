@@ -1221,10 +1221,12 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	gs_matrix_push();
 	gs_matrix_mul(&draw_transform);
+	const bool previous = gs_set_linear_srgb(true);
 	if (item->item_render) {
 		//render_item_texture(item);
 		gs_texture_t *tex = gs_texrender_get_texture(item->item_render);
 		if (!tex) {
+			gs_set_linear_srgb(previous);
 			gs_matrix_pop();
 			return true;
 		}
@@ -1306,6 +1308,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			obs_source_video_render(source);
 		}
 	}
+	gs_set_linear_srgb(previous);
 	gs_matrix_pop();
 	return true;
 }

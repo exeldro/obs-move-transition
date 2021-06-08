@@ -8,7 +8,7 @@ on:
 
 env:
   PLUGIN_NAME: move-transition
-  OBS_VERSION: 26.1.1
+  OBS_VERSION: 27.0.0
 
 jobs:
   macos64:
@@ -16,7 +16,7 @@ jobs:
     runs-on: [macos-latest]
     env:
       QT_VERSION: '5.15.2'
-      MACOS_DEPS_VERSION: '2020-12-22'
+      MACOS_DEPS_VERSION: '2021-02-28'
     steps:
       - name: Checkout
         uses: actions/checkout@v2.3.3
@@ -64,7 +64,7 @@ jobs:
           echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
           mkdir ./build
           cd ./build
-          cmake -DDISABLE_PYTHON=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DQTDIR="/tmp/obsdeps" -DSWIGDIR="/tmp/obsdeps" -DDepsPath="/tmp/obsdeps" ..
+          cmake -DDISABLE_PYTHON=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DQTDIR="/tmp/obsdeps" -DSWIGDIR="/tmp/obsdeps" -DDepsPath="/tmp/obsdeps" -DBUILD_BROWSER=OFF -DENABLE_PIPEWIRE=OFF -DBUILD_VST=OFF -DBUILD_VIRTUALCAM=OFF -DENABLE_SCRIPTING=OFF ..
           cd -
       - name: Build
         shell: bash
@@ -163,6 +163,7 @@ jobs:
            pkg-config \
            python3-dev \
            qtbase5-dev \
+           qtbase5-private-dev \
            libqt5svg5-dev \
            swig \
            linux-generic
@@ -171,7 +172,7 @@ jobs:
         run: |
           mkdir ./build
           cd ./build
-          cmake -DUNIX_STRUCTURE=0 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/obs-studio-portable" -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF ..
+          cmake -DUNIX_STRUCTURE=0 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/obs-studio-portable" -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF -DBUILD_VIRTUALCAM=OFF -DBUILD_VST=OFF -DENABLE_PIPEWIRE=OFF -DENABLE_SCRIPTING=OFF ..
       - name: 'Build'
         shell: bash
         working-directory: ${{ github.workspace }}/build
@@ -248,11 +249,11 @@ jobs:
           mkdir ./package
           mkdir ./build32
           cd ./build32
-          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"Win32" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win32" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"Win32" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win32" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
           cd ..
           mkdir ./build64
           cd ./build64
-          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"x64" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win64" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019_64" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"x64" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win64" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019_64" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
       - name: 'Build 32'
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\obs-studio.sln
       - name: 'Build 64'
