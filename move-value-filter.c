@@ -68,7 +68,8 @@ static void load_properties(obs_properties_t *props_from,
 			const double from =
 				obs_data_get_double(settings_from, name);
 			obs_data_set_double(setting, S_SETTING_FROM, from);
-		} else if (prop_type == OBS_PROPERTY_COLOR) {
+		} else if (prop_type == OBS_PROPERTY_COLOR ||
+			   prop_type == OBS_PROPERTY_COLOR_ALPHA) {
 			if (!setting) {
 				setting = obs_data_create();
 				obs_data_set_string(setting, S_SETTING_NAME,
@@ -512,7 +513,8 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 			obs_data_get_double(ss, move_value->setting_name);
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		settings_changed = true;
-	} else if (prop_type == OBS_PROPERTY_COLOR) {
+	} else if (prop_type == OBS_PROPERTY_COLOR ||
+		   prop_type == OBS_PROPERTY_COLOR_ALPHA) {
 		const long long color =
 			obs_data_get_int(ss, move_value->setting_name);
 		obs_data_set_int(settings, S_SETTING_COLOR, color);
@@ -640,7 +642,8 @@ void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to,
 								    name));
 			obs_property_float_set_suffix(
 				prop_to, obs_property_float_suffix(prop_from));
-		} else if (prop_type == OBS_PROPERTY_COLOR) {
+		} else if (prop_type == OBS_PROPERTY_COLOR ||
+			   prop_type == OBS_PROPERTY_COLOR_ALPHA) {
 			obs_property_list_add_string(setting_list, description,
 						     name);
 			prop_to = obs_properties_add_color(props_to, name,
@@ -781,7 +784,8 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 					    obs_data_get_double(ss,
 								setting_name));
 		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
-	} else if (prop_type == OBS_PROPERTY_COLOR) {
+	} else if (prop_type == OBS_PROPERTY_COLOR ||
+		   prop_type == OBS_PROPERTY_COLOR_ALPHA) {
 		obs_property_set_visible(prop_color, true);
 		if (refresh)
 			obs_data_set_int(settings, S_SETTING_COLOR,
