@@ -1097,10 +1097,14 @@ void move_value_tick(void *data, float seconds)
 				vec4_from_rgba(&color_from,
 					       (uint32_t)obs_data_get_int(
 						       item, S_SETTING_FROM));
+				gs_float3_srgb_nonlinear_to_linear(
+					color_from.ptr);
 				struct vec4 color_to;
 				vec4_from_rgba(&color_to,
 					       (uint32_t)obs_data_get_int(
 						       item, S_SETTING_TO));
+				gs_float3_srgb_nonlinear_to_linear(
+					color_to.ptr);
 				struct vec4 color;
 				color.w = (1.0f - t) * color_from.w +
 					  t * color_to.w;
@@ -1110,6 +1114,7 @@ void move_value_tick(void *data, float seconds)
 					  t * color_to.y;
 				color.z = (1.0f - t) * color_from.z +
 					  t * color_to.z;
+				gs_float3_srgb_nonlinear_to_linear(color.ptr);
 				const long long value_int =
 					vec4_to_rgba(&color);
 				obs_data_set_int(ss, setting_name, value_int);
