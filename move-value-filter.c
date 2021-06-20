@@ -189,6 +189,7 @@ void move_value_start(struct move_value_info *move_value)
 		vec4_from_rgba(&move_value->color_from,
 			       (uint32_t)obs_data_get_int(
 				       ss, move_value->setting_name));
+		gs_float3_srgb_nonlinear_to_linear(move_value->color_from.ptr);
 
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
@@ -389,6 +390,7 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->double_to = obs_data_get_double(settings, S_SETTING_FLOAT);
 	vec4_from_rgba(&move_value->color_to,
 		       (uint32_t)obs_data_get_int(settings, S_SETTING_COLOR));
+	gs_float3_srgb_nonlinear_to_linear(move_value->color_to.ptr);
 
 	move_value->custom_duration =
 		obs_data_get_bool(settings, S_CUSTOM_DURATION);
@@ -1114,7 +1116,7 @@ void move_value_tick(void *data, float seconds)
 					  t * color_to.y;
 				color.z = (1.0f - t) * color_from.z +
 					  t * color_to.z;
-				gs_float3_srgb_nonlinear_to_linear(color.ptr);
+				gs_float3_srgb_linear_to_nonlinear(color.ptr);
 				const long long value_int =
 					vec4_to_rgba(&color);
 				obs_data_set_int(ss, setting_name, value_int);
@@ -1140,6 +1142,7 @@ void move_value_tick(void *data, float seconds)
 			  t * move_value->color_to.y;
 		color.z = (1.0f - t) * move_value->color_from.z +
 			  t * move_value->color_to.z;
+		gs_float3_srgb_linear_to_nonlinear(color.ptr);
 		const long long value_int = vec4_to_rgba(&color);
 		obs_data_set_int(ss, move_value->setting_name, value_int);
 	} else {
