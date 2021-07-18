@@ -141,7 +141,7 @@ void move_value_start(struct move_value_info *move_value)
 	}
 	if (!move_value->custom_duration)
 		move_value->duration = obs_frontend_get_transition_duration();
-	if (move_value->moving && obs_source_enabled(move_value->source)) {
+	if (move_value->moving && move_value->enabled) {
 		if (move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
 		    move_value->next_move_name &&
 		    strcmp(move_value->next_move_name, NEXT_MOVE_REVERSE) ==
