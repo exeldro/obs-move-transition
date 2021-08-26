@@ -1,4 +1,4 @@
-project(move-transition VERSION 2.4.5)
+project(move-transition VERSION 2.5.0)
 set(PROJECT_FULL_NAME "Move Transition")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
