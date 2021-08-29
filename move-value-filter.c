@@ -804,37 +804,12 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	return refresh;
 }
 
-bool move_value_type_changed(void *data, obs_properties_t *props,
-			     obs_property_t *property, obs_data_t *settings)
-{
-	bool refresh = false;
-	long long move_value_type =
-		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
-
-	obs_property_t *p = obs_properties_get(props, S_SETTING_VALUE);
-	if (obs_property_visible(p) !=
-	    (move_value_type != MOVE_VALUE_TYPE_SETTINGS)) {
-		obs_property_set_visible(p, move_value_type !=
-						    MOVE_VALUE_TYPE_SETTINGS);
-		refresh = true;
-	}
-	p = obs_properties_get(props, S_SETTINGS);
-	if (obs_property_visible(p) !=
-	    (move_value_type == MOVE_VALUE_TYPE_SETTINGS)) {
-		obs_property_set_visible(p, move_value_type ==
-						    MOVE_VALUE_TYPE_SETTINGS);
-		refresh = true;
-	}
-	return refresh;
-}
-
 bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(property);
 	struct move_value_info *move_value = data;
 	bool refresh = false;
-
 	const char *setting_name =
 		obs_data_get_string(settings, S_SETTING_NAME);
 	if (!move_value->setting_name ||
@@ -882,9 +857,9 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	obs_property_set_visible(prop_color, false);
 	obs_property_set_visible(prop_color_min, false);
 	obs_property_set_visible(prop_color_max, false);
-	long long move_value_type =
+	const long long move_value_type =
 		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
-	enum obs_property_type prop_type = obs_property_get_type(sp);
+	const enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INT) {
 		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
 			obs_property_set_visible(prop_int, true);
@@ -1022,14 +997,39 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	}
 	obs_data_release(ss);
 	obs_properties_destroy(sps);
-	return refresh;
+	return true;
+}
+
+bool move_value_type_changed(void *data, obs_properties_t *props,
+			     obs_property_t *property, obs_data_t *settings)
+{
+	bool refresh = false;
+	const long long move_value_type =
+		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
+
+	obs_property_t *p = obs_properties_get(props, S_SETTING_VALUE);
+	if (obs_property_visible(p) !=
+	    (move_value_type != MOVE_VALUE_TYPE_SETTINGS)) {
+		obs_property_set_visible(p, move_value_type !=
+						    MOVE_VALUE_TYPE_SETTINGS);
+		refresh = true;
+	}
+	p = obs_properties_get(props, S_SETTINGS);
+	if (obs_property_visible(p) !=
+	    (move_value_type == MOVE_VALUE_TYPE_SETTINGS)) {
+		obs_property_set_visible(p, move_value_type ==
+						    MOVE_VALUE_TYPE_SETTINGS);
+		refresh = true;
+	}
+	return move_value_setting_changed(data, props, property, settings) ||
+	       refresh;
 }
 
 bool move_value_decimals_changed(void *data, obs_properties_t *props,
 				 obs_property_t *property, obs_data_t *settings)
 {
-	int decimals = (int)obs_data_get_int(settings, S_SETTING_DECIMALS);
-	double step = pow(10.0, -1 * decimals);
+	const int decimals = (int)obs_data_get_int(settings, S_SETTING_DECIMALS);
+	const double step = pow(10.0, -1.0 * (double)decimals);
 	obs_property_t *prop_float = obs_properties_get(props, S_SETTING_FLOAT);
 	obs_property_t *prop_float_min =
 		obs_properties_get(props, S_SETTING_FLOAT_MIN);
@@ -1046,7 +1046,7 @@ bool move_value_decimals_changed(void *data, obs_properties_t *props,
 static obs_properties_t *move_value_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
-	struct move_value_info *move_value = data;
+	const struct move_value_info *move_value = data;
 	obs_source_t *parent = obs_filter_get_parent(move_value->source);
 	obs_property_t *p = obs_properties_add_list(ppts, S_FILTER,
 						    obs_module_text("Filter"),
