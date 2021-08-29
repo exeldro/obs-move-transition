@@ -82,6 +82,7 @@
 #define S_SETTING_FLOAT "setting_float"
 #define S_SETTING_FLOAT_MIN "setting_float_min"
 #define S_SETTING_FLOAT_MAX "setting_float_max"
+#define S_SETTING_DECIMALS "setting_decimals"
 #define S_SETTING_COLOR "setting_color"
 #define S_SETTING_COLOR_MIN "setting_color_min"
 #define S_SETTING_COLOR_MAX "setting_color_max"
@@ -156,6 +157,7 @@
 #define MOVE_VALUE_INT 1
 #define MOVE_VALUE_FLOAT 2
 #define MOVE_VALUE_COLOR 3
+#define MOVE_VALUE_TEXT 4
 
 #define NEXT_MOVE_ON_END 0
 #define NEXT_MOVE_ON_HOTKEY 1
@@ -229,6 +231,7 @@ struct move_value_info {
 	long long int_min;
 	long long int_max;
 
+	int decimals;
 	double double_to;
 	double double_from;
 	double double_min;
