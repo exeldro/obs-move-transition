@@ -83,6 +83,8 @@
 #define S_SETTING_FLOAT_MIN "setting_float_min"
 #define S_SETTING_FLOAT_MAX "setting_float_max"
 #define S_SETTING_DECIMALS "setting_decimals"
+#define S_SETTING_FORMAT_TYPE "setting_format_type"
+#define S_SETTING_FORMAT "setting_format"
 #define S_SETTING_COLOR "setting_color"
 #define S_SETTING_COLOR_MIN "setting_color_min"
 #define S_SETTING_COLOR_MAX "setting_color_max"
@@ -159,6 +161,10 @@
 #define MOVE_VALUE_COLOR 3
 #define MOVE_VALUE_TEXT 4
 
+#define MOVE_VALUE_FORMAT_DECIMALS 0
+#define MOVE_VALUE_FORMAT_FLOAT 1
+#define MOVE_VALUE_FORMAT_TIME 2
+
 #define NEXT_MOVE_ON_END 0
 #define NEXT_MOVE_ON_HOTKEY 1
 #define NEXT_MOVE_REVERSE "Reverse"
@@ -201,6 +207,7 @@
 #define MOVE_VALUE_TYPE_SINGLE_SETTING 0
 #define MOVE_VALUE_TYPE_SETTINGS 1
 #define MOVE_VALUE_TYPE_RANDOM 2
+#define MOVE_VALUE_TYPE_SETTING_ADD 3
 
 struct move_value_info {
 	obs_source_t *source;
@@ -227,30 +234,35 @@ struct move_value_info {
 	long long easing_function;
 
 	long long int_to;
+	long long int_value;
 	long long int_from;
 	long long int_min;
 	long long int_max;
 
 	int decimals;
 	double double_to;
+	double double_value;
 	double double_from;
 	double double_min;
 	double double_max;
 
 	struct vec4 color_to;
+	struct vec4 color_value;
 	struct vec4 color_from;
 	struct vec4 color_min;
 	struct vec4 color_max;
 
 	obs_data_array_t *settings;
 
+	long long move_value_type;
 	long long value_type;
+	long long format_type;
+	char *format;
 	DARRAY(obs_source_t *) filters_done;
 
 	long long next_move_on;
 	bool reverse;
 	bool enabled_match_moving;
-	bool random;
 };
 
 struct move_source_info {

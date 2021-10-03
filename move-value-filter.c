@@ -2,9 +2,11 @@
 #include <obs-module.h>
 #include <float.h>
 #include <stdio.h>
+#include <time.h>
 #include <util/dstr.h>
 #include <../UI/obs-frontend-api/obs-frontend-api.h>
 
+#define TEXT_BUFFER_SIZE 256
 static void load_properties(obs_properties_t *props_from,
 			    obs_data_array_t *array, obs_data_t *settings_to,
 			    obs_data_t *settings_from)
@@ -139,6 +141,49 @@ double rand_between_double(double a, double b)
 		     : b + (a - b) * (double)rand() / (double)RAND_MAX;
 }
 
+double parse_text(long long format_type, const char *format, const char *text)
+{
+	double value = 0.0;
+	if (format_type == MOVE_VALUE_FORMAT_FLOAT) {
+
+		sscanf(text, format, &value);
+	} else if (format_type == MOVE_VALUE_FORMAT_TIME) {
+		char *pos;
+		unsigned int sec = 0;
+		unsigned int min = 0;
+		unsigned int hour = 0;
+		if ((pos = strstr(format, "%X")) ||
+		    (pos = strstr(format, "%H:%M:%S"))) {
+			if ((pos - format) < strlen(text))
+				sscanf(text + (pos - format), "%u:%u:%u", &hour,
+				       &min, &sec);
+		} else if ((pos = strstr(format, "%R")) ||
+			   (pos = strstr(format, "%H:%M"))) {
+			if ((pos - format) < strlen(text))
+				sscanf(text + (pos - format), "%u:%u", &hour,
+				       &min);
+		} else if (pos = strstr(format, "%M:%S")) {
+			if ((pos - format) < strlen(text))
+				sscanf(text + (pos - format), "%u:%u", &min,
+				       &sec);
+		} else {
+			if (pos = strstr(format, "%S")) {
+				sscanf(text + (pos - format), "%u", &sec);
+			}
+			if (pos = strstr(format, "%M")) {
+				sscanf(text + (pos - format), "%u", &min);
+			}
+			if (pos = strstr(format, "%H")) {
+				sscanf(text + (pos - format), "%u", &hour);
+			}
+		}
+		value = hour * 3600 + min * 60 + sec;
+	} else {
+		value = strtod(text, NULL);
+	}
+	return value;
+}
+
 void move_value_start(struct move_value_info *move_value)
 {
 	if (!move_value->filter && move_value->setting_filter_name &&
@@ -193,19 +238,33 @@ void move_value_start(struct move_value_info *move_value)
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		move_value->int_from =
 			obs_data_get_int(ss, move_value->setting_name);
-		if (move_value->random)
+
+		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->int_to = rand_between(move_value->int_min,
 							  move_value->int_max);
+		} else if (move_value->move_value_type ==
+			   MOVE_VALUE_TYPE_SETTING_ADD) {
+			move_value->int_to =
+				move_value->int_from + move_value->int_value;
+		} else {
+			move_value->int_to = move_value->int_value;
+		}
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		move_value->double_from =
 			obs_data_get_double(ss, move_value->setting_name);
-		if (move_value->random)
+		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->double_to = rand_between_double(
 				move_value->double_min, move_value->double_max);
-
+		} else if (move_value->move_value_type ==
+			   MOVE_VALUE_TYPE_SETTING_ADD) {
+			move_value->double_to = move_value->double_from +
+						move_value->double_value;
+		} else {
+			move_value->double_to = move_value->double_value;
+		}
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 
@@ -214,7 +273,7 @@ void move_value_start(struct move_value_info *move_value)
 			       (uint32_t)obs_data_get_int(
 				       ss, move_value->setting_name));
 		gs_float3_srgb_nonlinear_to_linear(move_value->color_from.ptr);
-		if (move_value->random) {
+		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->color_to.w =
 				rand_between_float(move_value->color_min.w,
 						   move_value->color_max.w);
@@ -227,20 +286,40 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->color_to.z =
 				rand_between_float(move_value->color_min.z,
 						   move_value->color_max.z);
-			gs_float3_srgb_nonlinear_to_linear(
-				move_value->color_to.ptr);
+		} else if (move_value->move_value_type ==
+			   MOVE_VALUE_TYPE_SETTING_ADD) {
+			move_value->color_to.w = move_value->color_from.w +
+						 move_value->color_value.w;
+			move_value->color_to.x = move_value->color_from.x +
+						 move_value->color_value.x;
+			move_value->color_to.y = move_value->color_from.y +
+						 move_value->color_value.y;
+			move_value->color_to.z = move_value->color_from.z +
+						 move_value->color_value.z;
+		} else {
+			vec4_copy(&move_value->color_to,
+				  &move_value->color_value);
 		}
+		gs_float3_srgb_nonlinear_to_linear(move_value->color_to.ptr);
 
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 	} else if (move_value->value_type == MOVE_VALUE_TEXT) {
 		const char *text_from =
 			obs_data_get_string(ss, move_value->setting_name);
-		move_value->double_from = strtod(text_from, NULL);
-		if (move_value->random)
+		move_value->double_from = parse_text(
+			move_value->format_type, move_value->format, text_from);
+
+		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->double_to = rand_between_double(
 				move_value->double_min, move_value->double_max);
-
+		} else if (move_value->move_value_type ==
+			   MOVE_VALUE_TYPE_SETTING_ADD) {
+			move_value->double_to = move_value->double_from +
+						move_value->double_value;
+		} else {
+			move_value->double_to = move_value->double_value;
+		}
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 
@@ -249,6 +328,9 @@ void move_value_start(struct move_value_info *move_value)
 			obs_data_get_int(ss, move_value->setting_name);
 		move_value->double_from =
 			obs_data_get_double(ss, move_value->setting_name);
+
+		move_value->int_to = move_value->int_value;
+		move_value->double_to = move_value->double_value;
 
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
@@ -445,21 +527,39 @@ void move_value_update(void *data, obs_data_t *settings)
 		move_values_load_properties(move_value, source, settings);
 	}
 
-	move_value->random = (obs_data_get_int(settings, S_MOVE_VALUE_TYPE) ==
-			      MOVE_VALUE_TYPE_RANDOM);
+	move_value->move_value_type =
+		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
 	move_value->value_type = obs_data_get_int(settings, S_VALUE_TYPE);
+	move_value->format_type =
+		obs_data_get_int(settings, S_SETTING_FORMAT_TYPE);
+	char *format = obs_data_get_string(settings, S_SETTING_FORMAT);
+	if (move_value->format_type == MOVE_VALUE_FORMAT_FLOAT &&
+	    strlen(format) == 0) {
+		format = "%f";
+		obs_data_set_string(settings, S_SETTING_FORMAT, format);
+	}
+	if (move_value->format_type == MOVE_VALUE_FORMAT_TIME &&
+	    strlen(format) == 0) {
+		format = "%X";
+		obs_data_set_string(settings, S_SETTING_FORMAT, format);
+	}
+	if (!move_value->format || strcmp(move_value->format, format) != 0) {
+		bfree(move_value->format);
+
+		move_value->format = bstrdup(format);
+	}
 	move_value->decimals = obs_data_get_int(settings, S_SETTING_DECIMALS);
-	move_value->int_to = obs_data_get_int(settings, S_SETTING_INT);
+	move_value->int_value = obs_data_get_int(settings, S_SETTING_INT);
 	move_value->int_min = obs_data_get_int(settings, S_SETTING_INT_MIN);
 	move_value->int_max = obs_data_get_int(settings, S_SETTING_INT_MAX);
-	move_value->double_to = obs_data_get_double(settings, S_SETTING_FLOAT);
+	move_value->double_value =
+		obs_data_get_double(settings, S_SETTING_FLOAT);
 	move_value->double_min =
 		obs_data_get_double(settings, S_SETTING_FLOAT_MIN);
 	move_value->double_max =
 		obs_data_get_double(settings, S_SETTING_FLOAT_MAX);
-	vec4_from_rgba(&move_value->color_to,
+	vec4_from_rgba(&move_value->color_value,
 		       (uint32_t)obs_data_get_int(settings, S_SETTING_COLOR));
-	gs_float3_srgb_nonlinear_to_linear(move_value->color_to.ptr);
 	vec4_from_rgba(&move_value->color_min,
 		       (uint32_t)obs_data_get_int(settings,
 						  S_SETTING_COLOR_MIN));
@@ -605,7 +705,8 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	} else if (prop_type == OBS_PROPERTY_TEXT) {
 		const char *text =
 			obs_data_get_string(ss, move_value->setting_name);
-		const double value = strtod(text, NULL);
+		const double value = parse_text(move_value->format_type,
+						move_value->format, text);
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
@@ -646,7 +747,9 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 			obs_data_set_int(settings, name, color);
 		} else if (value_type == MOVE_VALUE_TEXT) {
 			const char *text = obs_data_get_string(ss, name);
-			const double value = obs_data_get_double(ss, name);
+			const double value = parse_text(move_value->format_type,
+							move_value->format,
+							text);
 			obs_data_set_double(settings, name, value);
 		}
 	}
@@ -804,6 +907,28 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	return refresh;
 }
 
+bool move_value_format_type_changed(void *data, obs_properties_t *props,
+				    obs_property_t *property,
+				    obs_data_t *settings)
+{
+	obs_property_t *prop_format =
+		obs_properties_get(props, S_SETTING_FORMAT);
+	obs_property_t *prop_decimals =
+		obs_properties_get(props, S_SETTING_DECIMALS);
+	obs_property_set_visible(prop_format, false);
+	obs_property_set_visible(prop_decimals, false);
+	if (obs_data_get_int(settings, S_VALUE_TYPE) == MOVE_VALUE_TEXT) {
+		const long long format_type =
+			obs_data_get_int(settings, S_SETTING_FORMAT_TYPE);
+		if (format_type == MOVE_VALUE_FORMAT_DECIMALS) {
+			obs_property_set_visible(prop_decimals, true);
+		} else {
+			obs_property_set_visible(prop_format, true);
+		}
+	}
+	return true;
+}
+
 bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_property_t *property, obs_data_t *settings)
 {
@@ -840,8 +965,9 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 		obs_properties_get(props, S_SETTING_FLOAT_MIN);
 	obs_property_t *prop_float_max =
 		obs_properties_get(props, S_SETTING_FLOAT_MAX);
-	obs_property_t *prop_decimals =
-		obs_properties_get(props, S_SETTING_DECIMALS);
+	obs_property_t *prop_format_type =
+		obs_properties_get(props, S_SETTING_FORMAT_TYPE);
+
 	obs_property_t *prop_color = obs_properties_get(props, S_SETTING_COLOR);
 	obs_property_t *prop_color_min =
 		obs_properties_get(props, S_SETTING_COLOR_MIN);
@@ -853,7 +979,7 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	obs_property_set_visible(prop_float, false);
 	obs_property_set_visible(prop_float_min, false);
 	obs_property_set_visible(prop_float_max, false);
-	obs_property_set_visible(prop_decimals, false);
+	obs_property_set_visible(prop_format_type, false);
 	obs_property_set_visible(prop_color, false);
 	obs_property_set_visible(prop_color_min, false);
 	obs_property_set_visible(prop_color_max, false);
@@ -873,6 +999,13 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_data_set_int(
 					settings, S_SETTING_INT,
 					obs_data_get_int(ss, setting_name));
+
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_int, true);
+			obs_property_int_set_limits(prop_int, -1000, 1000,
+						    obs_property_int_step(sp));
+			obs_property_int_set_suffix(
+				prop_int, obs_property_int_suffix(sp));
 		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			obs_property_set_visible(prop_int_min, true);
 			obs_property_set_visible(prop_int_max, true);
@@ -911,6 +1044,13 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_data_set_double(
 					settings, S_SETTING_FLOAT,
 					obs_data_get_double(ss, setting_name));
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(
+				prop_float, -1000.0, 1000.0,
+				obs_property_float_step(sp));
+			obs_property_float_set_suffix(
+				prop_float, obs_property_float_suffix(sp));
 		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			obs_property_set_visible(prop_float_min, true);
 			obs_property_set_visible(prop_float_max, true);
@@ -944,6 +1084,8 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_data_set_int(
 					settings, S_SETTING_COLOR,
 					obs_data_get_int(ss, setting_name));
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_color, true);
 		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			obs_property_set_visible(prop_color_min, true);
 			obs_property_set_visible(prop_color_max, true);
@@ -959,7 +1101,7 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_COLOR);
 	} else if (prop_type == OBS_PROPERTY_TEXT) {
 		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
-			obs_property_set_visible(prop_decimals, true);
+			obs_property_set_visible(prop_format_type, true);
 			obs_property_set_visible(prop_float, true);
 			obs_property_float_set_limits(prop_float, -DBL_MAX,
 						      DBL_MAX, 1.0);
@@ -971,8 +1113,14 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_data_set_double(settings, S_SETTING_FLOAT,
 						    val);
 			}
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_format_type, true);
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(prop_float, -DBL_MAX,
+						      DBL_MAX, 1.0);
+			obs_property_float_set_suffix(prop_float, NULL);
 		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
-			obs_property_set_visible(prop_decimals, true);
+			obs_property_set_visible(prop_format_type, true);
 			obs_property_set_visible(prop_float_min, true);
 			obs_property_set_visible(prop_float_max, true);
 			obs_property_float_set_limits(prop_float_min, -DBL_MAX,
@@ -997,6 +1145,7 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	}
 	obs_data_release(ss);
 	obs_properties_destroy(sps);
+	move_value_format_type_changed(data, props, property, settings);
 	return true;
 }
 
@@ -1028,7 +1177,8 @@ bool move_value_type_changed(void *data, obs_properties_t *props,
 bool move_value_decimals_changed(void *data, obs_properties_t *props,
 				 obs_property_t *property, obs_data_t *settings)
 {
-	const int decimals = (int)obs_data_get_int(settings, S_SETTING_DECIMALS);
+	const int decimals =
+		(int)obs_data_get_int(settings, S_SETTING_DECIMALS);
 	const double step = pow(10.0, -1.0 * (double)decimals);
 	obs_property_t *prop_float = obs_properties_get(props, S_SETTING_FLOAT);
 	obs_property_t *prop_float_min =
@@ -1067,6 +1217,9 @@ static obs_properties_t *move_value_properties(void *data)
 				  MOVE_VALUE_TYPE_SETTINGS);
 	obs_property_list_add_int(p, obs_module_text("MoveValueType.Random"),
 				  MOVE_VALUE_TYPE_RANDOM);
+	obs_property_list_add_int(p,
+				  obs_module_text("MoveValueType.SettingAdd"),
+				  MOVE_VALUE_TYPE_SETTING_ADD);
 
 	obs_property_set_modified_callback2(p, move_value_type_changed, data);
 
@@ -1082,6 +1235,24 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_set_modified_callback2(p, move_value_setting_changed,
 					    data);
 
+	p = obs_properties_add_list(setting_value, S_SETTING_FORMAT_TYPE,
+				    obs_module_text("FormatType"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("FormatType.Decimals"),
+				  MOVE_VALUE_FORMAT_DECIMALS);
+	obs_property_list_add_int(p, obs_module_text("FormatType.Float"),
+				  MOVE_VALUE_FORMAT_FLOAT);
+	obs_property_list_add_int(p, obs_module_text("FormatType.Time"),
+				  MOVE_VALUE_FORMAT_TIME);
+	obs_property_set_visible(p, false);
+
+	obs_property_set_modified_callback2(p, move_value_format_type_changed,
+					    data);
+
+	p = obs_properties_add_text(setting_value, S_SETTING_FORMAT,
+				    obs_module_text("Format"),
+				    OBS_TEXT_DEFAULT);
+	obs_property_set_visible(p, false);
 	p = obs_properties_add_int(setting_value, S_SETTING_DECIMALS,
 				   obs_module_text("Decimals"), -10, 10, 1);
 	obs_property_set_visible(p, false);
@@ -1138,7 +1309,7 @@ static obs_properties_t *move_value_properties(void *data)
 
 	obs_properties_t *duration = obs_properties_create();
 
-	p = obs_properties_add_int(duration, S_DURATION, "", 10, 100000, 100);
+	p = obs_properties_add_int(duration, S_DURATION, "", 10, 10000000, 100);
 	obs_property_int_set_suffix(p, "ms");
 
 	p = obs_properties_add_group(ppts, S_CUSTOM_DURATION,
@@ -1421,16 +1592,34 @@ void move_value_tick(void *data, float seconds)
 	} else if (move_value->value_type == MOVE_VALUE_TEXT) {
 		double value_double = (1.0 - t) * move_value->double_from +
 				      t * move_value->double_to;
-		char text[64];
-		if (move_value->decimals >= 0) {
-			char format[10];
-			snprintf(format, 10, "%%.%df", move_value->decimals);
-			snprintf(text, 64, format, value_double);
+		char text[TEXT_BUFFER_SIZE];
+		if (move_value->format_type == MOVE_VALUE_FORMAT_FLOAT) {
+			if (snprintf(text, TEXT_BUFFER_SIZE, move_value->format,
+				     value_double) == 0)
+				text[0] = '\0';
+
+		} else if (move_value->format_type == MOVE_VALUE_FORMAT_TIME) {
+			long long t = value_double;
+			struct tm *tm_info = gmtime(&t);
+			if (strftime(text, TEXT_BUFFER_SIZE, move_value->format,
+				     tm_info) == 0)
+				text[0] = '\0';
 		} else {
-			double factor =
-				pow(10, -1.0 * (double)move_value->decimals);
-			value_double = floor(value_double / factor) * factor;
-			snprintf(text, 64, "%.0f", value_double);
+			if (move_value->decimals >= 0) {
+				char format[10];
+				snprintf(format, 10, "%%.%df",
+					 move_value->decimals);
+				snprintf(text, TEXT_BUFFER_SIZE, format,
+					 value_double);
+			} else {
+				double factor = pow(
+					10,
+					-1.0 * (double)move_value->decimals);
+				value_double =
+					floor(value_double / factor) * factor;
+				snprintf(text, TEXT_BUFFER_SIZE, "%.0f",
+					 value_double);
+			}
 		}
 		obs_data_set_string(ss, move_value->setting_name, text);
 	} else {

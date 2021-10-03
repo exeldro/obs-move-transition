@@ -1,7 +1,6 @@
 #include "move-transition.h"
 #include <obs-module.h>
 #include <../UI/obs-frontend-api/obs-frontend-api.h>
-#include "../obs-transitions/easings.h"
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
 #include "easing.h"
@@ -2146,13 +2145,13 @@ static void move_video_render(void *data, gs_effect_t *effect)
 static float mix_a(void *data, float t)
 {
 	UNUSED_PARAMETER(data);
-	return 1.0f - cubic_ease_in_out(t);
+	return 1.0f - CubicEaseInOut(t);
 }
 
 static float mix_b(void *data, float t)
 {
 	UNUSED_PARAMETER(data);
-	return cubic_ease_in_out(t);
+	return CubicEaseInOut(t);
 }
 
 static bool move_audio_render(void *data, uint64_t *ts_out,
