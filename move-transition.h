@@ -88,6 +88,7 @@
 #define S_SETTING_COLOR "setting_color"
 #define S_SETTING_COLOR_MIN "setting_color_min"
 #define S_SETTING_COLOR_MAX "setting_color_max"
+#define S_SETTING_TEXT "setting_text"
 #define S_SETTINGS "settings"
 #define S_SETTING_FROM "setting_from"
 #define S_SETTING_TO "setting_to"
@@ -208,6 +209,7 @@
 #define MOVE_VALUE_TYPE_SETTINGS 1
 #define MOVE_VALUE_TYPE_RANDOM 2
 #define MOVE_VALUE_TYPE_SETTING_ADD 3
+#define MOVE_VALUE_TYPE_TYPING 4
 
 struct move_value_info {
 	obs_source_t *source;
@@ -251,6 +253,14 @@ struct move_value_info {
 	struct vec4 color_from;
 	struct vec4 color_min;
 	struct vec4 color_max;
+
+	char *text_from;
+	size_t text_from_len;
+	char *text_to;
+	size_t text_to_len;
+	size_t text_same;
+	size_t text_step;
+	size_t text_steps;
 
 	obs_data_array_t *settings;
 
