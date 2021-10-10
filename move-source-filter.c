@@ -1372,7 +1372,7 @@ static obs_properties_t *move_source_properties(void *data)
 				   100);
 	obs_property_int_set_suffix(p, "ms");
 	obs_properties_t *duration = obs_properties_create();
-	p = obs_properties_add_int(duration, S_DURATION, "", 10, 100000, 100);
+	p = obs_properties_add_int(duration, S_DURATION, "", 10, 10000000, 100);
 	obs_property_int_set_suffix(p, "ms");
 	p = obs_properties_add_group(group, S_CUSTOM_DURATION,
 				     obs_module_text("CustomDuration"),

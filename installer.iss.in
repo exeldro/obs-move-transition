@@ -29,6 +29,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir="@ISS_FILES_DIR@"
 OutputBaseFilename=@PROJECT_NAME@-installer
+DirExistsWarning=no
 ; Wizard Information
 WizardStyle=modern
 WizardResizable=yes
