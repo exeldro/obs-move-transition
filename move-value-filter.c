@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <util/dstr.h>
-#include <../UI/obs-frontend-api/obs-frontend-api.h>
+#include <obs-frontend-api.h>
 
 #define TEXT_BUFFER_SIZE 256
 static void load_properties(obs_properties_t *props_from,

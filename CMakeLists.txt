@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.12..4.0)
+
 project(move-transition VERSION 2.5.2)
 set(PROJECT_FULL_NAME "Move Transition")
 
@@ -33,6 +35,10 @@ endif()
 add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
+
+target_include_directories(move-transition PRIVATE 
+    "${CMAKE_SOURCE_DIR}/UI/obs-frontend-api")
+
 target_link_libraries(move-transition
 	obs-frontend-api
 	libobs)

@@ -1,5 +1,5 @@
 #include "move-transition.h"
-#include <../UI/obs-frontend-api/obs-frontend-api.h>
+#include <obs-frontend-api.h>
 #include <obs-module.h>
 #include <stdio.h>
 #include <util/dstr.h>

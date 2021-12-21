@@ -2,7 +2,7 @@
 
 #include <float.h>
 #include <obs-module.h>
-#include <../UI/obs-frontend-api/obs-frontend-api.h>
+#include <obs-frontend-api.h>
 
 #define METER_TYPE_MAGNITUDE 0
 #define METER_TYPE_PEAK_SAMPLE 1

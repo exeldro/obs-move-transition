@@ -1,6 +1,6 @@
 #include "move-transition.h"
 #include <obs-module.h>
-#include <../UI/obs-frontend-api/obs-frontend-api.h>
+#include <obs-frontend-api.h>
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
 #include "easing.h"
