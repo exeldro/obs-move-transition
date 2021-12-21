@@ -32,16 +32,32 @@ if(WIN32)
 		move-transition.rc)
 endif()
 
+if(BUILD_OUT_OF_TREE)
+    find_package(LibObs REQUIRED)
+endif()
+
 add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
-
-target_include_directories(move-transition PRIVATE 
-    "${CMAKE_SOURCE_DIR}/UI/obs-frontend-api")
-
 target_link_libraries(move-transition
 	obs-frontend-api
 	libobs)
 
-set_target_properties(move-transition PROPERTIES FOLDER "plugins/exeldro")
-install_obs_plugin_with_data(move-transition data)
+if(BUILD_OUT_OF_TREE)
+    if(NOT LIB_OUT_DIR)
+        set(LIB_OUT_DIR "/lib/obs-plugins")
+    endif()
+    if(NOT DATA_OUT_DIR)
+        set(DATA_OUT_DIR "/share/obs/obs-plugins/move-transition")
+    endif()
+    set_target_properties(move-transition PROPERTIES PREFIX "")
+    install(TARGETS move-transition
+        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/${LIB_OUT_DIR})
+    install(DIRECTORY data/locale
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/${DATA_OUT_DIR})
+else()
+    target_include_directories(move-transition PRIVATE
+        "${CMAKE_SOURCE_DIR}/UI/obs-frontend-api")
+    set_target_properties(move-transition PROPERTIES FOLDER "plugins/exeldro")
+    install_obs_plugin_with_data(move-transition data)
+endif()
