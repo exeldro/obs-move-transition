@@ -259,8 +259,7 @@ void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b,
 
 static void calculate_bounds_data(struct obs_scene_item *item,
 				  struct vec2 *origin, struct vec2 *scale,
-				  uint32_t *cx, uint32_t *cy,
-				  struct vec2 *bounds)
+				  int32_t *cx, int32_t *cy, struct vec2 *bounds)
 {
 	float width = (float)(*cx) * fabsf(scale->x);
 	float height = (float)(*cy) * fabsf(scale->y);
@@ -377,8 +376,8 @@ void pos_add_center(struct vec2 *pos, uint32_t alignment, uint32_t cx,
 	}
 }
 
-void pos_subtract_center(struct vec2 *pos, uint32_t alignment, uint32_t cx,
-			 uint32_t cy)
+void pos_subtract_center(struct vec2 *pos, uint32_t alignment, int32_t cx,
+			 int32_t cy)
 {
 	if (alignment & OBS_ALIGN_LEFT) {
 		pos->x += cx >> 1;
@@ -394,10 +393,10 @@ void pos_subtract_center(struct vec2 *pos, uint32_t alignment, uint32_t cx,
 
 void calc_edge_position(struct vec2 *pos, long long position,
 			uint32_t canvas_width, uint32_t canvas_height,
-			uint32_t alignment, uint32_t cx, uint32_t cy, bool zoom)
+			uint32_t alignment, int32_t cx, int32_t cy, bool zoom)
 {
-	uint32_t cx2 = cx >> 1;
-	uint32_t cy2 = cy >> 1;
+	int32_t cx2 = abs(cx >> 1);
+	int32_t cy2 = abs(cy >> 1);
 	if (zoom) {
 		cx2 = 0;
 		cy2 = 0;
@@ -462,14 +461,30 @@ void calc_edge_position(struct vec2 *pos, long long position,
 		}
 
 		if (alignment & OBS_ALIGN_LEFT) {
-			pos->x -= cx2;
+			if (cx < 0) {
+				pos->x += cx2;
+			} else {
+				pos->x -= cx2;
+			}
 		} else if (alignment & OBS_ALIGN_RIGHT) {
-			pos->x += cx2;
+			if (cx < 0) {
+				pos->x -= cx2;
+			} else {
+				pos->x += cx2;
+			}
 		}
 		if (alignment & OBS_ALIGN_TOP) {
-			pos->y -= cy2;
+			if (cy < 0) {
+				pos->y += cy2;
+			} else {
+				pos->y -= cy2;
+			}
 		} else if (alignment & OBS_ALIGN_BOTTOM) {
-			pos->y += cy2;
+			if (cy < 0) {
+				pos->y -= cy2;
+			} else {
+				pos->y += cy2;
+			}
 		}
 
 		return;
@@ -949,8 +964,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	}
 	width = cx;
 	height = cy;
-	uint32_t original_cx = cx;
-	uint32_t original_cy = cy;
+	int32_t original_cx = cx;
+	int32_t original_cy = cy;
 
 	struct vec2 base_origin;
 	struct vec2 origin;
@@ -1015,10 +1030,10 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				      &original_cx, &original_cy,
 				      &original_bounds);
 	} else {
-		original_cx = (uint32_t)((float)cx * original_scale.x);
-		original_cy = (uint32_t)((float)cy * original_scale.y);
-		cx = (uint32_t)((float)cx * scale.x);
-		cy = (uint32_t)((float)cy * scale.y);
+		original_cx = (int32_t)((float)cx * original_scale.x);
+		original_cy = (int32_t)((float)cy * original_scale.y);
+		cx = (uint32_t)abs((float)cx * scale.x);
+		cy = (uint32_t)abs((float)cy * scale.y);
 	}
 	if (item->item_a && item->item_b &&
 	    obs_sceneitem_get_alignment(item->item_a) !=
@@ -1172,8 +1187,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	    !item_texture_enabled(item->item_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (!item->item_render && (item_texture_enabled(item->item_a) ||
-					  item_texture_enabled(item->item_b))) {
+	} else if (!item->item_render &&
+		   (item->item_a && item_texture_enabled(item->item_a) ||
+		    item->item_b && item_texture_enabled(item->item_b))) {
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	} else if (item->item_render) {
 		gs_texrender_reset(item->item_render);

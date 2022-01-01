@@ -199,7 +199,7 @@ void audio_move_update(void *data, obs_data_t *settings)
 	const char *sceneitem_name = obs_data_get_string(settings, "sceneitem");
 	obs_source_t *source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
-	if (obs_source_removed(source))
+	if (source && obs_source_removed(source))
 		source = NULL;
 	obs_scene_t *scene = obs_scene_from_source(source);
 	if (audio_move->sceneitem) {
