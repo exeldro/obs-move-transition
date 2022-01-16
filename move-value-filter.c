@@ -7,6 +7,10 @@
 #include <obs-frontend-api.h>
 
 #define TEXT_BUFFER_SIZE 256
+#define VOLUME_SETTING "source_volume"
+#define VOLUME_MIN 0.0
+#define VOLUME_MAX 100.0
+#define VOLUME_STEP 1.0
 static void load_properties(obs_properties_t *props_from,
 			    obs_data_array_t *array, obs_data_t *settings_to,
 			    obs_data_t *settings_from)
@@ -236,8 +240,13 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->running_duration = 0.0f;
 		move_value->moving = true;
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
-		move_value->int_from =
-			obs_data_get_int(ss, move_value->setting_name);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			move_value->int_from =
+				obs_source_get_volume(source) * 100.0f;
+		} else {
+			move_value->int_from =
+				obs_data_get_int(ss, move_value->setting_name);
+		}
 
 		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->int_to = rand_between(move_value->int_min,
@@ -253,8 +262,13 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->moving = true;
 
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
-		move_value->double_from =
-			obs_data_get_double(ss, move_value->setting_name);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			move_value->double_from =
+				obs_source_get_volume(source) * 100.0f;
+		} else {
+			move_value->double_from = obs_data_get_double(
+				ss, move_value->setting_name);
+		}
 		if (move_value->move_value_type == MOVE_VALUE_TYPE_RANDOM) {
 			move_value->double_to = rand_between_double(
 				move_value->double_min, move_value->double_max);
@@ -343,10 +357,17 @@ void move_value_start(struct move_value_info *move_value)
 		move_value->moving = true;
 
 	} else {
-		move_value->int_from =
-			obs_data_get_int(ss, move_value->setting_name);
-		move_value->double_from =
-			obs_data_get_double(ss, move_value->setting_name);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			move_value->int_from =
+				obs_source_get_volume(source) * 100.0f;
+			move_value->double_from =
+				obs_source_get_volume(source) * 100.0;
+		} else {
+			move_value->int_from =
+				obs_data_get_int(ss, move_value->setting_name);
+			move_value->double_from = obs_data_get_double(
+				ss, move_value->setting_name);
+		}
 
 		move_value->int_to = move_value->int_value;
 		move_value->double_to = move_value->double_value;
@@ -702,13 +723,24 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 				   : obs_filter_get_parent(move_value->source);
 	if (source == NULL || source == move_value->source)
 		return settings_changed;
+
+	obs_data_t *settings = obs_source_get_settings(move_value->source);
+	if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+		const double value =
+			(double)obs_source_get_volume(source) * 100.0;
+		obs_data_set_double(settings, S_SETTING_FLOAT, value);
+		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+		obs_data_release(settings);
+		return true;
+	}
 	obs_properties_t *sps = obs_source_properties(source);
 	obs_property_t *sp = obs_properties_get(sps, move_value->setting_name);
 
 	obs_data_t *ss = obs_source_get_settings(source);
 
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
-	obs_data_t *settings = obs_source_get_settings(move_value->source);
+
 	if (prop_type == OBS_PROPERTY_INT) {
 		const long long value =
 			obs_data_get_int(ss, move_value->setting_name);
@@ -935,6 +967,11 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	if (!s || source == move_value->source)
 		return refresh;
 
+	if (obs_source_get_type(source) == OBS_SOURCE_TYPE_INPUT &&
+	    (obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO))
+		obs_property_list_add_string(
+			p, obs_module_text("Setting.Volume"), VOLUME_SETTING);
+
 	obs_properties_t *sps = obs_source_properties(source);
 	copy_properties(sps, g, s, settings, p);
 	obs_properties_destroy(sps);
@@ -988,10 +1025,6 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				   : obs_filter_get_parent(move_value->source);
 	if (source == move_value->source)
 		return refresh;
-	obs_properties_t *sps = obs_source_properties(source);
-	obs_property_t *sp = obs_properties_get(sps, setting_name);
-
-	obs_data_t *ss = obs_source_get_settings(source);
 
 	obs_property_t *prop_int = obs_properties_get(props, S_SETTING_INT);
 	obs_property_t *prop_int_min =
@@ -1025,6 +1058,48 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	obs_property_set_visible(prop_text, false);
 	const long long move_value_type =
 		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
+
+	if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(prop_float, VOLUME_MIN,
+						      VOLUME_MAX, VOLUME_STEP);
+			obs_property_float_set_suffix(prop_float, "%");
+			if (refresh)
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT,
+					obs_source_get_volume(source) * 100.0);
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(prop_float, -VOLUME_MAX,
+						      VOLUME_MAX, VOLUME_STEP);
+			obs_property_float_set_suffix(prop_float, "%");
+		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+			obs_property_set_visible(prop_float_min, true);
+			obs_property_set_visible(prop_float_max, true);
+			obs_property_float_set_limits(prop_float_min,
+						      VOLUME_MIN, VOLUME_MAX,
+						      VOLUME_STEP);
+			obs_property_float_set_limits(prop_float_max,
+						      VOLUME_MIN, VOLUME_MAX,
+						      VOLUME_STEP);
+			obs_property_float_set_suffix(prop_float_min, "%");
+			obs_property_float_set_suffix(prop_float_max, "%");
+			if (refresh) {
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT_MIN,
+					obs_source_get_volume(source) * 100.0);
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT_MAX,
+					obs_source_get_volume(source) * 100.0);
+			}
+		}
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+		return true;
+	}
+	obs_data_t *ss = obs_source_get_settings(source);
+	obs_properties_t *sps = obs_source_properties(source);
+	obs_property_t *sp = obs_properties_get(sps, setting_name);
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INT) {
 		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
@@ -1529,6 +1604,13 @@ void move_value_tick(void *data, float seconds)
 			move_value->filter
 				? move_value->filter
 				: obs_filter_get_parent(move_value->source);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			move_value->int_from =
+				obs_source_get_volume(source) * 100.0;
+			move_value->double_from =
+				obs_source_get_volume(source) * 100.0;
+			return;
+		}
 		obs_data_t *ss = obs_source_get_settings(source);
 		move_value->int_from =
 			obs_data_get_int(ss, move_value->setting_name);
@@ -1619,12 +1701,23 @@ void move_value_tick(void *data, float seconds)
 		const long long value_int =
 			(long long)((1.0 - t) * (double)move_value->int_from +
 				    t * (double)move_value->int_to);
-		obs_data_set_int(ss, move_value->setting_name, value_int);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			obs_source_set_volume(source,
+					      (float)value_int / 100.0f);
+		} else {
+			obs_data_set_int(ss, move_value->setting_name,
+					 value_int);
+		}
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		const double value_double =
 			(1.0 - t) * move_value->double_from +
 			t * move_value->double_to;
-		obs_data_set_double(ss, move_value->setting_name, value_double);
+		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+			obs_source_set_volume(source, value_double / 100.0);
+		} else {
+			obs_data_set_double(ss, move_value->setting_name,
+					    value_double);
+		}
 	} else if (move_value->value_type == MOVE_VALUE_COLOR) {
 		struct vec4 color;
 		color.w = (1.0f - t) * move_value->color_from.w +
@@ -1704,14 +1797,27 @@ void move_value_tick(void *data, float seconds)
 				(long long)((1.0 -
 					     t) * (double)move_value->int_from +
 					    t * (double)move_value->int_to);
-			obs_data_set_int(ss, move_value->setting_name,
-					 value_int);
+			if (strcmp(move_value->setting_name, VOLUME_SETTING) ==
+			    0) {
+				obs_source_set_volume(source, (float)value_int /
+								      100.0f);
+			} else {
+				obs_data_set_int(ss, move_value->setting_name,
+						 value_int);
+			}
 		} else if (item_type == OBS_DATA_NUM_DOUBLE) {
 			const double value_double =
 				(1.0 - t) * move_value->double_from +
 				t * move_value->double_to;
-			obs_data_set_double(ss, move_value->setting_name,
-					    value_double);
+			if (strcmp(move_value->setting_name, VOLUME_SETTING) ==
+			    0) {
+				obs_source_set_volume(source,
+						      value_double / 100.0);
+			} else {
+				obs_data_set_double(ss,
+						    move_value->setting_name,
+						    value_double);
+			}
 		}
 		obs_data_item_release(&item);
 	}
