@@ -963,15 +963,6 @@ void move_source_source_rename(void *data, calldata_t *call_data)
 	obs_data_release(settings);
 }
 
-static void move_source_frontend_event(enum obs_frontend_event event,
-				       void *private_data)
-{
-	if (event == OBS_FRONTEND_EVENT_SCENE_CHANGED) {
-		int i = 0;
-	} else if (event == OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED) {
-		int i = 0;
-	}
-}
 
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
@@ -983,16 +974,12 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 	signal_handler_connect(obs_get_signal_handler(), "source_rename",
 			       move_source_source_rename, move_source);
 
-	obs_frontend_add_event_callback(move_source_frontend_event,
-					move_source);
 	return move_source;
 }
 
 static void move_source_destroy(void *data)
 {
 	struct move_source_info *move_source = data;
-	obs_frontend_remove_event_callback(move_source_frontend_event,
-					   move_source);
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
 				  move_source_source_rename, move_source);
 

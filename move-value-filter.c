@@ -402,6 +402,7 @@ void move_value_start(struct move_value_info *move_value)
 					move_value_start(filter_data);
 				}
 			}
+			obs_source_release(filter);
 		}
 	}
 }
@@ -1639,6 +1640,8 @@ void move_value_tick(void *data, float seconds)
 	obs_source_t *source =
 		move_value->filter ? move_value->filter
 				   : obs_filter_get_parent(move_value->source);
+	if (!source)
+		return;
 	obs_data_t *ss = obs_source_get_settings(source);
 	if (move_value->settings) {
 		const size_t count = obs_data_array_count(move_value->settings);
@@ -1865,6 +1868,7 @@ void move_value_tick(void *data, float seconds)
 									filter);
 						move_value_start(filter_data);
 					}
+					obs_source_release(filter);
 				}
 			}
 		} else if (move_value->next_move_on == NEXT_MOVE_ON_HOTKEY &&
