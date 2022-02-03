@@ -579,8 +579,7 @@ static obs_source_t *obs_frontend_get_transition(const char *name)
 		const char *n =
 			obs_source_get_name(transitions.sources.array[i]);
 		if (n && strcmp(n, name) == 0) {
-			obs_source_t *transition = transitions.sources.array[i];
-			obs_source_addref(transition);
+			obs_source_t *transition = obs_source_get_ref(transitions.sources.array[i]);
 			obs_frontend_source_list_free(&transitions);
 			return transition;
 		}
@@ -709,8 +708,8 @@ obs_source_t *get_transition(const char *transition_name, void *pool_data,
 	DARRAY(obs_source_t *) *transition_pool = pool_data;
 	const size_t i = *index;
 	if (cache && transition_pool->num && *index < transition_pool->num) {
-		obs_source_t *transition = transition_pool->array[i];
-		obs_source_addref(transition);
+		obs_source_t *transition =
+			obs_source_get_ref(transition_pool->array[i]);
 		*index = i + 1;
 		return transition;
 	}
@@ -722,9 +721,9 @@ obs_source_t *get_transition(const char *transition_name, void *pool_data,
 							transition_name, true);
 	obs_source_release(frontend_transition);
 	if (cache) {
+		transition = obs_source_get_ref(transition);
 		darray_push_back(sizeof(obs_source_t *), &transition_pool->da,
 				 &transition);
-		obs_source_addref(transition);
 		*index = i + 1;
 	}
 	return transition;

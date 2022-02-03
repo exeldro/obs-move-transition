@@ -1643,6 +1643,7 @@ void move_value_tick(void *data, float seconds)
 	if (!source)
 		return;
 	obs_data_t *ss = obs_source_get_settings(source);
+	bool update = true;
 	if (move_value->settings) {
 		const size_t count = obs_data_array_count(move_value->settings);
 		for (size_t i = 0; i < count; i++) {
@@ -1707,6 +1708,7 @@ void move_value_tick(void *data, float seconds)
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			obs_source_set_volume(source,
 					      (float)value_int / 100.0f);
+			update = false;
 		} else {
 			obs_data_set_int(ss, move_value->setting_name,
 					 value_int);
@@ -1717,6 +1719,7 @@ void move_value_tick(void *data, float seconds)
 			t * move_value->double_to;
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			obs_source_set_volume(source, value_double / 100.0);
+			update = false;
 		} else {
 			obs_data_set_double(ss, move_value->setting_name,
 					    value_double);
@@ -1804,6 +1807,7 @@ void move_value_tick(void *data, float seconds)
 			    0) {
 				obs_source_set_volume(source, (float)value_int /
 								      100.0f);
+				update = false;
 			} else {
 				obs_data_set_int(ss, move_value->setting_name,
 						 value_int);
@@ -1816,6 +1820,7 @@ void move_value_tick(void *data, float seconds)
 			    0) {
 				obs_source_set_volume(source,
 						      value_double / 100.0);
+				update = false;
 			} else {
 				obs_data_set_double(ss,
 						    move_value->setting_name,
@@ -1825,7 +1830,8 @@ void move_value_tick(void *data, float seconds)
 		obs_data_item_release(&item);
 	}
 	obs_data_release(ss);
-	obs_source_update(source, NULL);
+	if (update)
+		obs_source_update(source, NULL);
 	if (!move_value->moving) {
 		if (move_value->enabled_match_moving &&
 		    (move_value->reverse || !move_value->next_move_name ||
