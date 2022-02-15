@@ -1704,6 +1704,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				obs_scene_add(scene_a, move->scene_source_a);
 			struct move_item *item = create_move_item();
 			da_push_back(move->items_a, &item);
+			obs_sceneitem_addref(scene_item);
 			item->item_a = scene_item;
 			item->release_scene_a = scene_a;
 		}
@@ -1734,6 +1735,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				da_insert(move->items_a, move->item_pos, &item);
 				move->item_pos++;
 			}
+			obs_sceneitem_addref(scene_item);
 			item->item_b = scene_item;
 			item->release_scene_b = scene_b;
 			da_push_back(move->items_b, &item);
