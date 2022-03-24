@@ -8,7 +8,7 @@ on:
 
 env:
   PLUGIN_NAME: move-transition
-  OBS_VERSION: 27.0.0
+  OBS_VERSION: 27.2.3
 
 jobs:
   macos64:
@@ -166,7 +166,8 @@ jobs:
            qtbase5-private-dev \
            libqt5svg5-dev \
            swig \
-           linux-generic
+           linux-generic \
+           libpci-dev
       - name: 'Configure'
         shell: bash
         run: |

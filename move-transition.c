@@ -68,6 +68,73 @@ struct move_item {
 	obs_scene_t *release_scene_b;
 };
 
+static const struct {
+	enum gs_blend_type src_color;
+	enum gs_blend_type src_alpha;
+	enum gs_blend_type dst_color;
+	enum gs_blend_type dst_alpha;
+	enum gs_blend_op_type op;
+} obs_blend_mode_params[] = {
+	/* clang-format off */
+	// OBS_BLEND_NORMAL
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_INVSRCALPHA,
+		GS_BLEND_INVSRCALPHA,
+		GS_BLEND_OP_ADD,
+	},
+	// OBS_BLEND_ADDITIVE
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_OP_ADD,
+	},
+	// OBS_BLEND_SUBTRACT
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_OP_REVERSE_SUBTRACT,
+	},
+	// OBS_BLEND_SCREEN
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_INVSRCCOLOR,
+		GS_BLEND_INVSRCALPHA,
+		GS_BLEND_OP_ADD
+	},
+	// OBS_BLEND_MULTIPLY
+	{
+		GS_BLEND_DSTCOLOR,
+		GS_BLEND_DSTALPHA,
+		GS_BLEND_INVSRCALPHA,
+		GS_BLEND_INVSRCALPHA,
+		GS_BLEND_OP_ADD
+	},
+	// OBS_BLEND_LIGHTEN
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_OP_MAX,
+	},
+	// OBS_BLEND_DARKEN
+	{
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_ONE,
+		GS_BLEND_OP_MIN,
+	},
+	/* clang-format on */
+};
+
 static const char *move_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
@@ -352,6 +419,11 @@ static inline bool crop_enabled(const struct obs_sceneitem_crop *crop)
 	return crop->left || crop->right || crop->top || crop->bottom;
 }
 
+static inline bool default_blending_enabled(struct obs_scene_item *item)
+{
+	return obs_sceneitem_get_blending_mode(item) == OBS_BLEND_NORMAL;
+}
+
 static inline bool item_texture_enabled(struct obs_scene_item *item)
 {
 	if (!item)
@@ -359,6 +431,7 @@ static inline bool item_texture_enabled(struct obs_scene_item *item)
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
 	return crop_enabled(&crop) || scale_filter_enabled(item) ||
+	       !default_blending_enabled(item) ||
 	       (item_is_scene(item) && !obs_sceneitem_is_group(item));
 }
 
@@ -579,7 +652,8 @@ static obs_source_t *obs_frontend_get_transition(const char *name)
 		const char *n =
 			obs_source_get_name(transitions.sources.array[i]);
 		if (n && strcmp(n, name) == 0) {
-			obs_source_t *transition = obs_source_get_ref(transitions.sources.array[i]);
+			obs_source_t *transition = obs_source_get_ref(
+				transitions.sources.array[i]);
 			obs_frontend_source_list_free(&transitions);
 			return transition;
 		}
@@ -1320,7 +1394,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 
 		gs_blend_state_push();
-		gs_blend_function(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
+
+		enum obs_blending_type blend_type =
+			obs_sceneitem_get_blending_mode(scene_item);
+		gs_blend_function_separate(
+			obs_blend_mode_params[blend_type].src_color,
+			obs_blend_mode_params[blend_type].dst_color,
+			obs_blend_mode_params[blend_type].src_alpha,
+			obs_blend_mode_params[blend_type].dst_alpha);
+		gs_blend_op(obs_blend_mode_params[blend_type].op);
 
 		while (gs_effect_loop(effect, tech))
 			obs_source_draw(tex, 0, 0, 0, 0, 0);
