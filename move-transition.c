@@ -1740,13 +1740,9 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 	}
 	if (!filter)
 		return;
-	const char *filter_id = obs_source_get_unversioned_id(filter);
-	if (strcmp(filter_id, MOVE_SOURCE_FILTER_ID) == 0) {
-		move_source_start(obs_obj_get_data(filter));
-	} else if (strcmp(filter_id, MOVE_VALUE_FILTER_ID) == 0 ||
-		   strcmp(filter_id, MOVE_AUDIO_VALUE_FILTER_ID) == 0) {
-		move_value_start(obs_obj_get_data(filter));
-	}
+	
+	if(is_move_filter(obs_source_get_unversioned_id(filter)))
+		move_filter_start(obs_obj_get_data(filter));
 }
 
 static void move_video_render(void *data, gs_effect_t *effect)
@@ -2564,6 +2560,11 @@ extern struct obs_source_info move_source_filter;
 extern struct obs_source_info move_value_filter;
 extern struct obs_source_info move_audio_value_filter;
 extern struct obs_source_info audio_move_filter;
+extern struct obs_source_info move_action_filter;
+extern struct obs_source_info move_audio_action_filter;
+#ifdef WIN32
+void SetMoveDirectShowFilter(struct obs_source_info *obs_source_info);
+#endif
 
 bool obs_module_load(void)
 {
@@ -2574,5 +2575,12 @@ bool obs_module_load(void)
 	obs_register_source(&move_value_filter);
 	obs_register_source(&move_audio_value_filter);
 	obs_register_source(&audio_move_filter);
+	obs_register_source(&move_action_filter);
+	obs_register_source(&move_audio_action_filter);
+#ifdef WIN32
+	struct obs_source_info move_directshow_filter = {0};
+	SetMoveDirectShowFilter(&move_directshow_filter);
+	obs_register_source(&move_directshow_filter);
+#endif
 	return true;
 }

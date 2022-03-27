@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12..4.0)
 
-project(move-transition VERSION 2.5.8)
+project(move-transition VERSION 2.6.0)
 set(PROJECT_FULL_NAME "Move Transition")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
@@ -12,8 +12,10 @@ set(move-transition_HEADERS
 set(move-transition_SOURCES
 	move-transition.c
 	move-transition-override-filter.c
+	move-filter.c
 	move-source-filter.c
 	move-value-filter.c
+	move-action-filter.c
 	audio-move.c
 	easing.c)
 
@@ -29,6 +31,7 @@ if(WIN32)
 		)
 	configure_file(resource.rc.in move-transition.rc)
 	list(APPEND move-transition_SOURCES
+		move-directshow-filter.cpp
 		move-transition.rc)
 endif()
 
@@ -39,9 +42,18 @@ endif()
 add_library(move-transition MODULE
 	${move-transition_HEADERS}
 	${move-transition_SOURCES})
-target_link_libraries(move-transition
-	obs-frontend-api
-	libobs)
+
+if(WIN32)
+	target_link_libraries(move-transition
+		obs-frontend-api
+		libobs
+		strmiids
+		w32-pthreads)
+else()
+	target_link_libraries(move-transition
+		obs-frontend-api
+		libobs)
+endif()
 
 if(BUILD_OUT_OF_TREE)
     if(NOT LIB_OUT_DIR)

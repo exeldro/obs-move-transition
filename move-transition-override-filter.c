@@ -21,7 +21,7 @@ void move_filter_source_rename(void *data, calldata_t *call_data)
 	obs_data_release(settings);
 }
 
-static void *move_filter_create(obs_data_t *settings, obs_source_t *source)
+static void *move_override_filter_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_filter_info *move_filter =
 		bzalloc(sizeof(struct move_filter_info));
@@ -32,7 +32,7 @@ static void *move_filter_create(obs_data_t *settings, obs_source_t *source)
 	return move_filter;
 }
 
-static void move_filter_destroy(void *data)
+static void move_override_filter_destroy(void *data)
 {
 	struct move_filter_info *move_filter = data;
 	signal_handler_disconnect(obs_get_signal_handler(), "source_rename",
@@ -65,7 +65,7 @@ bool prop_list_add_source(void *data, obs_source_t *source)
 	return true;
 }
 
-static obs_properties_t *move_filter_properties(void *data)
+static obs_properties_t *move_override_filter_properties(void *data)
 {
 	struct move_filter_info *move_filter = data;
 	obs_properties_t *ppts = obs_properties_create();
@@ -311,7 +311,7 @@ static obs_properties_t *move_filter_properties(void *data)
 	return ppts;
 }
 
-void move_filter_defaults(obs_data_t *settings)
+void move_override_filter_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_int(settings, S_START_DELAY_MATCH_TO, NO_OVERRIDE);
 	obs_data_set_default_int(settings, S_START_DELAY_MATCH_FROM,
@@ -336,14 +336,14 @@ void move_filter_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, S_TRANSITION_SCALE, NO_OVERRIDE);
 }
 
-void move_filter_video_render(void *data, gs_effect_t *effect)
+void move_override_filter_video_render(void *data, gs_effect_t *effect)
 {
 	UNUSED_PARAMETER(effect);
 	struct move_filter_info *filter = data;
 	obs_source_skip_video_filter(filter->source);
 }
 
-static const char *move_filter_get_name(void *type_data)
+static const char *move_override_filter_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
 	return obs_module_text("MoveTransitionOverrideFilter");
@@ -353,9 +353,9 @@ struct obs_source_info move_transition_override_filter = {
 	.id = "move_transition_override_filter",
 	.type = OBS_SOURCE_TYPE_FILTER,
 	.output_flags = OBS_SOURCE_VIDEO,
-	.get_name = move_filter_get_name,
-	.create = move_filter_create,
-	.destroy = move_filter_destroy,
-	.get_properties = move_filter_properties,
-	.get_defaults = move_filter_defaults,
-	.video_render = move_filter_video_render};
+	.get_name = move_override_filter_get_name,
+	.create = move_override_filter_create,
+	.destroy = move_override_filter_destroy,
+	.get_properties = move_override_filter_properties,
+	.get_defaults = move_override_filter_defaults,
+	.video_render = move_override_filter_video_render};

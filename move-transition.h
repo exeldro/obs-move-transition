@@ -7,6 +7,9 @@
 #define MOVE_VALUE_FILTER_ID "move_value_filter"
 #define MOVE_AUDIO_VALUE_FILTER_ID "move_audio_value_filter"
 #define AUDIO_MOVE_FILTER_ID "audio_move_filter"
+#define MOVE_ACTION_FILTER_ID "move_action_filter"
+#define MOVE_AUDIO_ACTION_FILTER_ID "move_audio_action_filter"
+#define MOVE_DIRECTSHOW_FILTER_ID "move_directshow_filter"
 
 #define S_MATCH "match"
 #define S_MOVE_ALL "move_all"
@@ -211,12 +214,9 @@
 #define MOVE_VALUE_TYPE_SETTING_ADD 3
 #define MOVE_VALUE_TYPE_TYPING 4
 
-struct move_value_info {
+struct move_filter {
 	obs_source_t *source;
 	char *filter_name;
-	obs_source_t *filter;
-	char *setting_filter_name;
-	char *setting_name;
 
 	obs_hotkey_id move_start_hotkey;
 
@@ -235,105 +235,33 @@ struct move_value_info {
 	long long easing;
 	long long easing_function;
 
-	long long int_to;
-	long long int_value;
-	long long int_from;
-	long long int_min;
-	long long int_max;
-
-	int decimals;
-	double double_to;
-	double double_value;
-	double double_from;
-	double double_min;
-	double double_max;
-
-	struct vec4 color_to;
-	struct vec4 color_value;
-	struct vec4 color_from;
-	struct vec4 color_min;
-	struct vec4 color_max;
-
-	char *text_from;
-	size_t text_from_len;
-	char *text_to;
-	size_t text_to_len;
-	size_t text_same;
-	size_t text_step;
-	size_t text_steps;
-
-	obs_data_array_t *settings;
-
-	long long move_value_type;
-	long long value_type;
-	long long format_type;
-	char *format;
 	DARRAY(obs_source_t *) filters_done;
 
 	long long next_move_on;
 	bool reverse;
 	bool enabled_match_moving;
+	void(* move_start)(void * data);
+	obs_source_t *(* get_alternative_source)(void * data);
 };
 
-struct move_source_info {
-	obs_source_t *source;
-	char *source_name;
-	char *filter_name;
-	obs_sceneitem_t *scene_item;
-	obs_hotkey_id move_start_hotkey;
+bool is_move_filter(const char *filter_id);
+void move_filter_init(struct move_filter *move_filter, obs_source_t *source,void (*move_start)(void * data));
+void move_filter_destroy(struct move_filter *move_filter);
+void move_filter_update(struct move_filter *move_filter, obs_data_t *settings);
+void move_filter_start(struct move_filter *move_filter);
+void move_filter_start_hotkey(struct move_filter *move_filter);
+bool move_filter_start_internal(struct move_filter *move_filter);
+void move_filter_stop(struct move_filter *move_filter);
+void move_filter_ended(struct move_filter *move_filter);
+bool move_filter_tick(struct move_filter *move_filter, float seconds, float *t);
+void move_filter_properties(struct move_filter *move_filter, obs_properties_t *ppts);
 
-	long long easing;
-	long long easing_function;
-	float curve;
+void move_filter_activate(void *data);
+void move_filter_deactivate(void *data);
+void move_filter_show(void *data);
+void move_filter_hide(void *data);
 
-	bool transform;
-	struct vec2 pos_from;
-	struct vec2 pos_to;
-	float rot_from;
-	float rot_to;
-	struct vec2 scale_from;
-	struct vec2 scale_to;
-	struct vec2 bounds_from;
-	struct vec2 bounds_to;
-	struct obs_sceneitem_crop crop_from;
-	struct obs_sceneitem_crop crop_to;
-	bool custom_duration;
-	uint64_t duration;
-	uint64_t start_delay;
-	uint64_t end_delay;
-	bool moving;
-	float running_duration;
-	uint32_t canvas_width;
-	uint32_t canvas_height;
-	uint32_t start_trigger;
-	uint32_t stop_trigger;
-	bool enabled;
-	char *simultaneous_move_name;
-	char *next_move_name;
-
-	DARRAY(obs_source_t *) filters_done;
-
-	long long next_move_on;
-	long long change_visibility;
-	bool visibility_toggled;
-	bool reverse;
-
-	long long change_order;
-	long long order_position;
-
-	long long media_action_start;
-	int64_t media_time_start;
-	long long media_action_end;
-	int64_t media_time_end;
-
-	bool audio_fade;
-	float audio_fade_from;
-	float audio_fade_to;
-	long long mute_action;
-	bool enabled_match_moving;
-};
-
-void move_value_start(struct move_value_info *move_value);
-void move_source_start(struct move_source_info *move_source);
+void prop_list_add_easings(obs_property_t *p);
+void prop_list_add_easing_functions(obs_property_t *p);
 void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
 				      void *data);
