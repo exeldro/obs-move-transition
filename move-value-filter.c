@@ -15,7 +15,7 @@
 struct move_value_info {
 	struct move_filter move_filter;
 
-	obs_source_t *filter;
+	obs_weak_source_t *filter;
 	char *setting_filter_name;
 	char *setting_name;
 
@@ -238,8 +238,10 @@ void move_value_start(struct move_value_info *move_value)
 		obs_source_t *parent =
 			obs_filter_get_parent(move_value->move_filter.source);
 		if (parent) {
-			move_value->filter = obs_source_get_filter_by_name(
+			obs_source_t * filter = obs_source_get_filter_by_name(
 				parent, move_value->setting_filter_name);
+			move_value->filter = obs_source_get_weak_source(filter);
+			obs_source_release(filter);
 		} else {
 			return;
 		}
@@ -252,11 +254,15 @@ void move_value_start(struct move_value_info *move_value)
 	}
 	if(move_value->move_filter.reverse)
 		return;
-	obs_source_t *source =
-		move_value->setting_filter_name &&
-				strlen(move_value->setting_filter_name)
-			? move_value->filter
-			: obs_filter_get_parent(move_value->move_filter.source);
+	obs_source_t *source = NULL;
+	if(move_value->setting_filter_name && strlen(move_value->setting_filter_name))
+	{
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = obs_filter_get_parent(move_value->move_filter.source);
+	}
+
 	obs_data_t *ss = obs_source_get_settings(source);
 	if (move_value->settings) {
 		obs_data_t *settings =
@@ -431,14 +437,16 @@ void move_value_update(void *data, obs_data_t *settings)
 		obs_data_get_string(settings, S_FILTER);
 	if (!move_value->setting_filter_name ||
 	    strcmp(move_value->setting_filter_name, setting_filter_name) != 0) {
-		obs_source_release(move_value->filter);
+		obs_weak_source_release(move_value->filter);
 		move_value->filter = NULL;
 		if (parent) {
 			bfree(move_value->setting_filter_name);
 			move_value->setting_filter_name =
 				bstrdup(setting_filter_name);
-			move_value->filter = obs_source_get_filter_by_name(
-				parent, setting_filter_name);
+			obs_source_t * filter = obs_source_get_filter_by_name(
+				parent, move_value->setting_filter_name);
+			move_value->filter = obs_source_get_weak_source(filter);
+			obs_source_release(filter);
 		}
 	}
 
@@ -466,11 +474,13 @@ void move_value_update(void *data, obs_data_t *settings)
 	} else if (parent) {
 		if (!move_value->settings)
 			move_value->settings = obs_data_array_create();
-		obs_source_t *source =
-			move_value->setting_filter_name &&
-					strlen(move_value->setting_filter_name)
-				? move_value->filter
-				: parent;
+		obs_source_t *source = NULL;
+		if(move_value->setting_filter_name && strlen(move_value->setting_filter_name)) {
+			source = obs_weak_source_get_source(move_value->filter);
+			obs_source_release(source);
+		}else {
+			source = parent;
+		}
 		move_values_load_properties(move_value, source, settings);
 	}
 
@@ -538,7 +548,7 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 static void move_value_destroy(void *data)
 {
 	struct move_value_info *move_value = data;
-	obs_source_release(move_value->filter);
+	obs_weak_source_release(move_value->filter);
 	move_filter_destroy(&move_value->move_filter);
 	move_value->filter = NULL;
 
@@ -580,10 +590,13 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	UNUSED_PARAMETER(property);
 	struct move_value_info *move_value = data;
 	bool settings_changed = false;
-	obs_source_t *source =
-		move_value->filter
-			? move_value->filter
-			: obs_filter_get_parent(move_value->move_filter.source);
+	obs_source_t *source;
+	if(move_value->filter) {
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = obs_filter_get_parent(move_value->move_filter.source);
+	}
 	if (source == NULL || source == move_value->move_filter.source)
 		return settings_changed;
 
@@ -653,10 +666,13 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 			   void *data)
 {
 	struct move_value_info *move_value = data;
-	obs_source_t *source =
-		move_value->filter
-			? move_value->filter
-			: obs_filter_get_parent(move_value->move_filter.source);
+	obs_source_t *source;
+	if(move_value->filter) {
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = obs_filter_get_parent(move_value->move_filter.source);
+	}
 	if (source == NULL || source == move_value->move_filter.source)
 		return false;
 
@@ -808,9 +824,10 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	    (!move_value->filter && strlen(filter_name))) {
 		bfree(move_value->setting_filter_name);
 		move_value->setting_filter_name = bstrdup(filter_name);
-		obs_source_release(move_value->filter);
-		move_value->filter =
-			obs_source_get_filter_by_name(parent, filter_name);
+		obs_weak_source_release(move_value->filter);
+		obs_source_t* filter = obs_source_get_filter_by_name(parent, filter_name);
+		move_value->filter = obs_source_get_weak_source(filter);
+		obs_source_release(filter);
 	}
 
 	refresh = true;
@@ -829,7 +846,13 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 		obs_properties_remove_by_name(g, name);
 	}
 
-	obs_source_t *source = move_value->filter ? move_value->filter : parent;
+	obs_source_t *source;
+	if(move_value->filter) {
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = parent;
+	}
 	obs_data_t *s = obs_source_get_settings(source);
 	if (!s || source == move_value->move_filter.source)
 		return refresh;
@@ -887,10 +910,13 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 		move_value->setting_name = bstrdup(setting_name);
 	}
 
-	obs_source_t *source =
-		move_value->filter
-			? move_value->filter
-			: obs_filter_get_parent(move_value->move_filter.source);
+	obs_source_t *source;
+	if(move_value->filter) {
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = obs_filter_get_parent(move_value->move_filter.source);
+	}
 	if (source == move_value->move_filter.source)
 		return refresh;
 
@@ -1353,10 +1379,14 @@ void move_value_tick(void *data, float seconds)
 	float t;
 	if (!move_filter_tick(&move_value->move_filter, seconds, &t))
 		return;
-	obs_source_t *source =
-		move_value->filter
-			? move_value->filter
-			: obs_filter_get_parent(move_value->move_filter.source);
+
+	obs_source_t *source;
+	if(move_value->filter) {
+		source = obs_weak_source_get_source(move_value->filter);
+		obs_source_release(source);
+	}else {
+		source = obs_filter_get_parent(move_value->move_filter.source);
+	}
 	if (!source)
 		return;
 	obs_data_t *ss = obs_source_get_settings(source);
