@@ -27,13 +27,13 @@ LZMAAlgorithm=1
 DefaultDirName={code:GetDirName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputDir="@ISS_FILES_DIR@"
+OutputDir="package"
 OutputBaseFilename=@PROJECT_NAME@-installer
 DirExistsWarning=no
 ; Wizard Information
 WizardStyle=modern
 WizardResizable=yes
-SetupIconFile="@PROJECT_SOURCE_DIR@/media/icon.ico"
+SetupIconFile="media/icon.ico"
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

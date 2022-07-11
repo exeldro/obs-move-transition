@@ -36,15 +36,21 @@ jobs:
         shell: bash
         run: |
           if [ -d /usr/local/opt/openssl@1.0.2t ]; then
-              brew uninstall openssl@1.0.2t
-              brew untap local/openssl
+            brew uninstall openssl@1.0.2t
+            brew untap local/openssl
           fi
 
           if [ -d /usr/local/opt/python@2.7.17 ]; then
-              brew uninstall python@2.7.17
-              brew untap local/python2
+            brew uninstall python@2.7.17
+            brew untap local/python2
           fi
+
+          if [ -d /usr/local/opt/speexdsp ]; then
+            brew unlink speexdsp
+          fi
+          brew uninstall curl php composer
           brew bundle --file ./CI/scripts/macos/Brewfile
+          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
       - name: 'Install prerequisite: Pre-built dependencies'
         if: steps.deps-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -193,9 +199,22 @@ jobs:
         with:
           name: '${{ env.FILE_NAME }}'
           path: '*.tar.gz'
-  windows:
-    name: Windows
+  windows-build:
+    name: 'Windows Build'
     runs-on: [windows-latest]
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [x64, x86]
+        include:
+          - target: x64
+            cmake_build: 'x64'
+            qt_ext: '_64'
+            deps_ext: '64'
+          - target: x86
+            cmake_build: 'Win32'
+            qt_ext: ''
+            deps_ext: '32'
     env:
       QT_VERSION: '5.15.2'
       CMAKE_GENERATOR: "Visual Studio 17 2022"
@@ -248,27 +267,66 @@ jobs:
       - name: Configure
         run: |
           mkdir ./package
-          mkdir ./build32
-          cd ./build32
-          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"Win32" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win32" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
-          cd ..
-          mkdir ./build64
-          cd ./build64
-          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"x64" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win64" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019_64" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
-      - name: 'Build 32'
-        run: msbuild /m /p:Configuration=RelWithDebInfo .\build32\obs-studio.sln
-      - name: 'Build 64'
-        run: msbuild /m /p:Configuration=RelWithDebInfo .\build64\obs-studio.sln
+          mkdir ./installer
+          mkdir ./installer/media
+          mkdir ./build
+          cd ./build
+          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"${{ matrix.cmake_build }}" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win${{ matrix.deps_ext }}" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019${{ matrix.qt_ext }}" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+      - name: 'Build'
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build\obs-studio.sln
       - name: Package
         if: success()
         run: |
+          $env:FILE_NAME="${{ env.PLUGIN_NAME }}-${{ github.sha }}-windows-${{ matrix.target }}"
+          echo "FILE_NAME=${env:FILE_NAME}" >> ${env:GITHUB_ENV}
+          robocopy .\build\rundir\RelWithDebInfo\obs-plugins\${{ matrix.deps_ext }}bit\ .\package\obs-plugins\${{ matrix.deps_ext }}bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore
+          robocopy .\build\rundir\RelWithDebInfo\data\obs-plugins\${{ env.PLUGIN_NAME }}\ .\package\data\obs-plugins\${{ env.PLUGIN_NAME }}\ /E /XF .gitignore
+          copy .\build\plugins\${{ env.PLUGIN_NAME }}\installer.iss .\installer\installer.iss
+          robocopy .\plugins\${{ env.PLUGIN_NAME}}\media\ .\installer\media\ /E /XF .gitignore
+          exit 0
+      - name: Publish zip
+        if: success()
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: '${{ env.FILE_NAME }}'
+          path: package/*
+      - name: Publish Installer Files
+        if: success()
+        uses: actions/upload-artifact@v2.2.0
+        with:
+          name: 'installer-files'
+          path: installer/*
+  windows-package:
+    name: 'Windows Package'
+    runs-on: [windows-latest]
+    needs: [windows-build]
+    steps:
+      - name: Init
+        if: success()
+        run: |
+          mkdir ./package
           $env:FILE_DATE=(Get-Date -UFormat "%F")
           $env:FILE_NAME="${{ env.PLUGIN_NAME }}-${env:FILE_DATE}-${{ github.sha }}-windows"
           echo "FILE_NAME=${env:FILE_NAME}" >> ${env:GITHUB_ENV}
-          robocopy .\build32\rundir\RelWithDebInfo\obs-plugins\32bit\ .\package\obs-plugins\32bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore
-          robocopy .\build64\rundir\RelWithDebInfo\obs-plugins\64bit\ .\package\obs-plugins\64bit ${{ env.PLUGIN_NAME }}.* /E /XF .gitignore
-          robocopy .\build64\rundir\RelWithDebInfo\data\obs-plugins\${{ env.PLUGIN_NAME }}\ .\package\data\obs-plugins\${{ env.PLUGIN_NAME }}\ /E /XF .gitignore
-          exit 0
+          $env:FILE_NAME_X86="${{ env.PLUGIN_NAME }}-${{ github.sha }}-windows-x86"
+          echo "FILE_NAME_X86=${env:FILE_NAME_X86}" >> ${env:GITHUB_ENV}
+          $env:FILE_NAME_X64="${{ env.PLUGIN_NAME }}-${{ github.sha }}-windows-x64"
+          echo "FILE_NAME_X64=${env:FILE_NAME_X64}" >> ${env:GITHUB_ENV}
+      - name: Retrieve x86 build
+        uses: actions/download-artifact@v2
+        with:
+          name: '${{ env.FILE_NAME_X86 }}'
+          path: ./package
+      - name: Retrieve x64 build
+        uses: actions/download-artifact@v2
+        with:
+          name: '${{ env.FILE_NAME_X64 }}'
+          path: ./package
+      - name: Retrieve installer files
+        uses: actions/download-artifact@v2
+        with:
+          name: 'installer-files'
+          path: .
       - name: Create Code Signing Certificate
         if: success() && github.event_name != 'pull_request'
         run: |
@@ -278,11 +336,11 @@ jobs:
       - name: Code Sign 32
         if: success() && github.event_name != 'pull_request'
         run: |
-          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x86/signtool.exe' sign /fd SHA256 /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\obs-plugins\32bit\${{ env.PLUGIN_NAME }}.dll
+          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x86/signtool.exe' sign /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\obs-plugins\32bit\${{ env.PLUGIN_NAME }}.dll
       - name: Code Sign 64
         if: success() && github.event_name != 'pull_request'
         run: |
-          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64/signtool.exe' sign /fd SHA256 /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\obs-plugins\64bit\${{ env.PLUGIN_NAME }}.dll
+          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64/signtool.exe' sign /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\obs-plugins\64bit\${{ env.PLUGIN_NAME }}.dll
       - name: Publish zip
         if: success()
         uses: actions/upload-artifact@v2.2.0
@@ -296,14 +354,18 @@ jobs:
           .\inno.exe /VERYSILENT /SP- /SUPPRESSMSGBOXES /NORESTART
       - name: "Package Installer (Compile)"
         run: |
-          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' /Qp ".\build64\plugins\${{ env.PLUGIN_NAME }}\installer.iss"
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' /Qp ".\installer.iss"
       - name: Code Sign Installer
         if: success() && github.event_name != 'pull_request'
         run: |
-          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64/signtool.exe' sign /fd SHA256 /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\${{ env.PLUGIN_NAME }}-installer.exe
+          & 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64/signtool.exe' sign /f certificate\certificate.pfx /p '${{ secrets.CERTIFICATE_PASS }}' /t http://timestamp.comodoca.com/authenticode .\package\${{ env.PLUGIN_NAME }}-installer.exe
       - name: Publish installer
         if: success()
         uses: actions/upload-artifact@v2.2.0
         with:
           name: '${{ env.FILE_NAME }}-installer'
           path: package/*.exe
+      - name: Remove temp artifacts
+        uses: geekyeggo/delete-artifact@v1
+        with:
+          name: "${{ env.FILE_NAME_X86 }}\n${{ env.FILE_NAME_X64 }}\ninstaller-files"

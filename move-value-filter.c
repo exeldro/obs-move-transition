@@ -425,7 +425,7 @@ void move_value_update(void *data, obs_data_t *settings)
 	obs_source_t *parent =
 		obs_filter_get_parent(move_value->move_filter.source);
 	if (parent && move_value->move_filter.move_start_hotkey ==
-			      OBS_INVALID_HOTKEY_ID) {
+			      OBS_INVALID_HOTKEY_ID && move_value->move_filter.filter_name) {
 		move_value->move_filter.move_start_hotkey =
 			obs_hotkey_register_source(
 				parent, move_value->move_filter.filter_name,
