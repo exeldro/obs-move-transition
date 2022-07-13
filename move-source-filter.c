@@ -855,7 +855,7 @@ static void move_source_destroy(void *data)
 		}
 	}
 	move_source->scene_item = NULL;
-
+	move_filter_destroy(&move_source->move_filter);
 	bfree(move_source->source_name);
 	bfree(move_source);
 }

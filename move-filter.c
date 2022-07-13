@@ -21,6 +21,7 @@ void move_filter_init(struct move_filter *move_filter, obs_source_t *source,
 
 void move_filter_destroy(struct move_filter *move_filter)
 {
+	bfree(move_filter->filter_name);
 	bfree(move_filter->simultaneous_move_name);
 	bfree(move_filter->next_move_name);
 
@@ -34,7 +35,7 @@ void move_filter_update(struct move_filter *move_filter, obs_data_t *settings)
 	if (!move_filter->filter_name ||
 	    strcmp(move_filter->filter_name, filter_name) != 0) {
 		bfree(move_filter->filter_name);
-		move_filter->filter_name = NULL;
+		move_filter->filter_name = bstrdup(filter_name);
 		if (move_filter->move_start_hotkey != OBS_INVALID_HOTKEY_ID) {
 			obs_hotkey_unregister(move_filter->move_start_hotkey);
 			move_filter->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
