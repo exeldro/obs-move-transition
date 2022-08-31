@@ -161,9 +161,10 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 					struct directshow_property p;
 					p.int_from = val;
 					if (settings)
-						p.int_to = obs_data_get_int(
-							settings,
-							prop_id.c_str());
+						p.int_to =
+							(long)obs_data_get_int(
+								settings,
+								prop_id.c_str());
 					else
 						p.int_to = val;
 
@@ -174,7 +175,7 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 						m->second.int_from = val;
 					if (settings)
 						m->second.int_to =
-							obs_data_get_int(
+							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
 				}
@@ -200,21 +201,22 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 					struct directshow_property p;
 					p.int_from = val;
 					if (settings)
-						p.int_to = obs_data_get_int(
-							settings,
-							prop_id.c_str());
+						p.int_to =
+							(long)obs_data_get_int(
+								settings,
+								prop_id.c_str());
 					else
 						p.int_to = val;
 
-					move_directshow->procAmpProps
-						->emplace(i, p);
+					move_directshow->procAmpProps->emplace(
+						i, p);
 
-				} else{
+				} else {
 					if (overwrite)
 						m->second.int_from = val;
 					if (settings)
 						m->second.int_to =
-							obs_data_get_int(
+							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
 				}
@@ -239,11 +241,11 @@ void move_directshow_update(void *data, obs_data_t *settings)
 		LoadDevice(move_directshow);
 	}
 	move_directshow->move_value_type =
-		obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
+		(int)obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
 	if (move_directshow->move_value_type ==
 	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
 		move_directshow->int_to =
-			obs_data_get_int(settings, S_SETTING_INT);
+			(long)obs_data_get_int(settings, S_SETTING_INT);
 		auto single_setting_name =
 			obs_data_get_string(settings, S_SETTING_NAME);
 		if (!move_directshow->single_setting_name ||
@@ -596,8 +598,6 @@ static bool device_modified(void *priv, obs_properties_t *props,
 	return true;
 }
 
-
-
 bool move_directshow_get_value(obs_properties_t *props,
 			       obs_property_t *property, void *data)
 {
@@ -800,9 +800,9 @@ void move_directshow_tick(void *data, float seconds)
 	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
 		if (move_directshow->single_setting_name) {
 			const long value_int =
-				(long long)((1.0 - t) * (double)move_directshow
-								->int_from +
-					    t * (double)move_directshow->int_to);
+				(long long)((1.0f - t) * (float)move_directshow
+								 ->int_from +
+					    t * (float)move_directshow->int_to);
 			long i;
 			if (move_directshow->camControl &&
 			    1 == sscanf(move_directshow->single_setting_name,
@@ -834,10 +834,10 @@ void move_directshow_tick(void *data, float seconds)
 			     prop != move_directshow->camControlProps->end();
 			     ++prop) {
 				const long value_int =
-					(long long)((1.0 -
-						     t) * (double)(prop->second
-									   .int_from) +
-						    t * (double)prop->second
+					(long long)((1.0f -
+						     t) * (float)(prop->second
+									  .int_from) +
+						    t * (float)prop->second
 								    .int_to);
 				long val, flags;
 				HRESULT hr = move_directshow->camControl->Get(
@@ -853,10 +853,10 @@ void move_directshow_tick(void *data, float seconds)
 			     prop != move_directshow->procAmpProps->end();
 			     ++prop) {
 				const long value_int =
-					(long long)((1.0 -
-						     t) * (double)(prop->second
-									   .int_from) +
-						    t * (double)prop->second
+					(long long)((1.0f -
+						     t) * (float)(prop->second
+									  .int_from) +
+						    t * (float)prop->second
 								    .int_to);
 				long val, flags;
 				HRESULT hr = move_directshow->procAmp->Get(

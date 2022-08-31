@@ -130,7 +130,7 @@ static void move_action_destroy(void *data)
 	bfree(move_action->hotkey_name);
 	bfree(move_action);
 }
-static struct hotkey_enum_add_data {
+struct hotkey_enum_add_data {
 	obs_source_t *source;
 	obs_property_t *hotkey_prop;
 };

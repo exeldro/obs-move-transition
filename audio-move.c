@@ -735,86 +735,90 @@ void audio_move_tick(void *data, float seconds)
 		if (filter->transform == TRANSFORM_POS_X) {
 			struct vec2 pos;
 			obs_sceneitem_get_pos(filter->sceneitem, &pos);
-			pos.x = filter->factor * filter->audio_value +
-				filter->base_value;
+			pos.x = (float)(filter->factor * filter->audio_value +
+					filter->base_value);
 			obs_sceneitem_set_pos(filter->sceneitem, &pos);
 		} else if (filter->transform == TRANSFORM_POS_Y) {
 			struct vec2 pos;
 			obs_sceneitem_get_pos(filter->sceneitem, &pos);
-			pos.y = filter->factor * filter->audio_value +
-				filter->base_value;
+			pos.y = (float)(filter->factor * filter->audio_value +
+					filter->base_value);
 			obs_sceneitem_set_pos(filter->sceneitem, &pos);
 		} else if (filter->transform == TRANSFORM_ROT) {
 			obs_sceneitem_set_rot(
 				filter->sceneitem,
-				filter->factor * filter->audio_value +
-					filter->base_value);
+				(float)(filter->factor * filter->audio_value +
+					filter->base_value));
 		} else if (filter->transform == TRANSFORM_SCALE) {
 			struct vec2 scale;
-			scale.x = filter->factor * filter->audio_value +
-				  filter->base_value;
+			scale.x = (float)(filter->factor * filter->audio_value +
+					  filter->base_value);
 			scale.y = scale.x;
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_SCALE_X) {
 			struct vec2 scale;
 			obs_sceneitem_get_scale(filter->sceneitem, &scale);
-			scale.x = filter->factor * filter->audio_value +
-				  filter->base_value;
+			scale.x = (float)(filter->factor * filter->audio_value +
+					  filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_SCALE_Y) {
 			struct vec2 scale;
 			obs_sceneitem_get_scale(filter->sceneitem, &scale);
-			scale.y = filter->factor * filter->audio_value +
-				  filter->base_value;
+			scale.y = (float)(filter->factor * filter->audio_value +
+					  filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_BOUNDS_X) {
 			struct vec2 bounds;
 			obs_sceneitem_get_bounds(filter->sceneitem, &bounds);
-			bounds.x = filter->factor * filter->audio_value +
-				   filter->base_value;
+			bounds.x =
+				(float)(filter->factor * filter->audio_value +
+					filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_BOUNDS_Y) {
 			struct vec2 bounds;
 			obs_sceneitem_get_bounds(filter->sceneitem, &bounds);
-			bounds.y = filter->factor * filter->audio_value +
-				   filter->base_value;
+			bounds.y =
+				(float)(filter->factor * filter->audio_value +
+					filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_CROP_LEFT) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.left = filter->factor * filter->audio_value +
-				    filter->base_value;
+			crop.left = (int)(filter->factor * filter->audio_value +
+					  filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_TOP) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.top = filter->factor * filter->audio_value +
-				   filter->base_value;
+			crop.top = (int)(filter->factor * filter->audio_value +
+					 filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_RIGHT) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.right = filter->factor * filter->audio_value +
-				     filter->base_value;
+			crop.right =
+				(int)(filter->factor * filter->audio_value +
+				      filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_BOTTOM) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.bottom = filter->factor * filter->audio_value +
-				      filter->base_value;
+			crop.bottom =
+				(int)(filter->factor * filter->audio_value +
+				      filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_HORIZONTAL) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.left = filter->factor * filter->audio_value +
-				    filter->base_value;
+			crop.left = (int)(filter->factor * filter->audio_value +
+					  filter->base_value);
 			crop.right = crop.left;
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_VERTICAL) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.top = filter->factor * filter->audio_value +
-				   filter->base_value;
+			crop.top = (int)(filter->factor * filter->audio_value +
+					 filter->base_value);
 			crop.bottom = crop.top;
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		}
@@ -918,7 +922,7 @@ void audio_move_tick(void *data, float seconds)
 			const enum obs_data_number_type num_type =
 				obs_data_item_numtype(setting);
 			if (num_type == OBS_DATA_NUM_INT) {
-				obs_data_item_set_int(&setting, val);
+				obs_data_item_set_int(&setting, (long long)val);
 			} else if (num_type == OBS_DATA_NUM_DOUBLE) {
 				obs_data_item_set_double(&setting, val);
 			}

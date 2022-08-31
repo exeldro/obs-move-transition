@@ -3,6 +3,8 @@
 
 bool is_move_filter(const char *filter_id)
 {
+	if (!filter_id)
+		return false;
 	return strcmp(filter_id, MOVE_SOURCE_FILTER_ID) == 0 ||
 	       strcmp(filter_id, MOVE_VALUE_FILTER_ID) == 0 ||
 	       strcmp(filter_id, MOVE_AUDIO_VALUE_FILTER_ID) == 0 ||
@@ -137,7 +139,8 @@ void move_filter_start_hotkey(struct move_filter *move_filter)
 		}
 
 		if (filter) {
-			if (is_move_filter(
+			if (!obs_source_removed(filter) &&
+			    is_move_filter(
 				    obs_source_get_unversioned_id(filter))) {
 				struct move_filter *filter_data =
 					obs_obj_get_data(filter);
@@ -178,7 +181,8 @@ void move_filter_start_hotkey(struct move_filter *move_filter)
 			return;
 		}
 	}
-	if (is_move_filter(obs_source_get_unversioned_id(filter))) {
+	if (!obs_source_removed(filter) &&
+	    is_move_filter(obs_source_get_unversioned_id(filter))) {
 		move_filter_start(obs_obj_get_data(filter));
 	}
 	da_push_back(move_filter->filters_done, &filter);
@@ -234,7 +238,8 @@ bool move_filter_start_internal(struct move_filter *move_filter)
 			}
 
 			if (filter) {
-				if (is_move_filter(
+				if (!obs_source_removed(filter) &&
+				    is_move_filter(
 					    obs_source_get_unversioned_id(
 						    filter))) {
 					move_filter_start(
@@ -301,7 +306,8 @@ extern void move_filter_ended(struct move_filter *move_filter)
 				}
 
 				if (filter) {
-					if (is_move_filter(
+					if (!obs_source_removed(filter) &&
+					    is_move_filter(
 						    obs_source_get_unversioned_id(
 							    filter))) {
 						move_filter_start(

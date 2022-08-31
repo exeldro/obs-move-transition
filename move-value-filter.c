@@ -201,16 +201,16 @@ double parse_text(long long format_type, const char *format, const char *text)
 		unsigned int hour = 0;
 		if ((pos = strstr(format, "%X")) ||
 		    (pos = strstr(format, "%H:%M:%S"))) {
-			if ((pos - format) < strlen(text))
+			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u:%u", &hour,
 				       &min, &sec);
 		} else if ((pos = strstr(format, "%R")) ||
 			   (pos = strstr(format, "%H:%M"))) {
-			if ((pos - format) < strlen(text))
+			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u", &hour,
 				       &min);
 		} else if (pos = strstr(format, "%M:%S")) {
-			if ((pos - format) < strlen(text))
+			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u", &min,
 				       &sec);
 		} else {
@@ -238,7 +238,7 @@ void move_value_start(struct move_value_info *move_value)
 		obs_source_t *parent =
 			obs_filter_get_parent(move_value->move_filter.source);
 		if (parent) {
-			obs_source_t * filter = obs_source_get_filter_by_name(
+			obs_source_t *filter = obs_source_get_filter_by_name(
 				parent, move_value->setting_filter_name);
 			move_value->filter = obs_source_get_weak_source(filter);
 			obs_source_release(filter);
@@ -252,14 +252,14 @@ void move_value_start(struct move_value_info *move_value)
 	if (!move_value->setting_filter_name) {
 		obs_source_update(move_value->move_filter.source, NULL);
 	}
-	if(move_value->move_filter.reverse)
+	if (move_value->move_filter.reverse)
 		return;
 	obs_source_t *source = NULL;
-	if(move_value->setting_filter_name && strlen(move_value->setting_filter_name))
-	{
+	if (move_value->setting_filter_name &&
+	    strlen(move_value->setting_filter_name)) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
 
@@ -272,7 +272,8 @@ void move_value_start(struct move_value_info *move_value)
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			move_value->int_from =
-				obs_source_get_volume(source) * 100.0f;
+				(long long)(obs_source_get_volume(source) *
+					    100.0f);
 		} else {
 			move_value->int_from =
 				obs_data_get_int(ss, move_value->setting_name);
@@ -378,9 +379,10 @@ void move_value_start(struct move_value_info *move_value)
 	} else {
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			move_value->int_from =
-				obs_source_get_volume(source) * 100.0f;
+				(long long)(obs_source_get_volume(source) *
+					    100.0f);
 			move_value->double_from =
-				obs_source_get_volume(source) * 100.0;
+				(double)obs_source_get_volume(source) * 100.0;
 		} else {
 			move_value->int_from =
 				obs_data_get_int(ss, move_value->setting_name);
@@ -424,8 +426,10 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_filter_update(&move_value->move_filter, settings);
 	obs_source_t *parent =
 		obs_filter_get_parent(move_value->move_filter.source);
-	if (parent && move_value->move_filter.move_start_hotkey ==
-			      OBS_INVALID_HOTKEY_ID && move_value->move_filter.filter_name) {
+	if (parent &&
+	    move_value->move_filter.move_start_hotkey ==
+		    OBS_INVALID_HOTKEY_ID &&
+	    move_value->move_filter.filter_name) {
 		move_value->move_filter.move_start_hotkey =
 			obs_hotkey_register_source(
 				parent, move_value->move_filter.filter_name,
@@ -443,7 +447,7 @@ void move_value_update(void *data, obs_data_t *settings)
 			bfree(move_value->setting_filter_name);
 			move_value->setting_filter_name =
 				bstrdup(setting_filter_name);
-			obs_source_t * filter = obs_source_get_filter_by_name(
+			obs_source_t *filter = obs_source_get_filter_by_name(
 				parent, move_value->setting_filter_name);
 			move_value->filter = obs_source_get_weak_source(filter);
 			obs_source_release(filter);
@@ -475,10 +479,11 @@ void move_value_update(void *data, obs_data_t *settings)
 		if (!move_value->settings)
 			move_value->settings = obs_data_array_create();
 		obs_source_t *source = NULL;
-		if(move_value->setting_filter_name && strlen(move_value->setting_filter_name)) {
+		if (move_value->setting_filter_name &&
+		    strlen(move_value->setting_filter_name)) {
 			source = obs_weak_source_get_source(move_value->filter);
 			obs_source_release(source);
-		}else {
+		} else {
 			source = parent;
 		}
 		move_values_load_properties(move_value, source, settings);
@@ -489,7 +494,7 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_value->value_type = obs_data_get_int(settings, S_VALUE_TYPE);
 	move_value->format_type =
 		obs_data_get_int(settings, S_SETTING_FORMAT_TYPE);
-	char *format = obs_data_get_string(settings, S_SETTING_FORMAT);
+	char *format = (char *)obs_data_get_string(settings, S_SETTING_FORMAT);
 	if (move_value->format_type == MOVE_VALUE_FORMAT_FLOAT &&
 	    strlen(format) == 0) {
 		format = "%f";
@@ -505,7 +510,8 @@ void move_value_update(void *data, obs_data_t *settings)
 
 		move_value->format = bstrdup(format);
 	}
-	move_value->decimals = obs_data_get_int(settings, S_SETTING_DECIMALS);
+	move_value->decimals =
+		(int)obs_data_get_int(settings, S_SETTING_DECIMALS);
 	move_value->int_value = obs_data_get_int(settings, S_SETTING_INT);
 	move_value->int_min = obs_data_get_int(settings, S_SETTING_INT_MIN);
 	move_value->int_max = obs_data_get_int(settings, S_SETTING_INT_MAX);
@@ -591,10 +597,10 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	struct move_value_info *move_value = data;
 	bool settings_changed = false;
 	obs_source_t *source;
-	if(move_value->filter) {
+	if (move_value->filter) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
 	if (source == NULL || source == move_value->move_filter.source)
@@ -667,10 +673,10 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 {
 	struct move_value_info *move_value = data;
 	obs_source_t *source;
-	if(move_value->filter) {
+	if (move_value->filter) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
 	if (source == NULL || source == move_value->move_filter.source)
@@ -825,7 +831,8 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 		bfree(move_value->setting_filter_name);
 		move_value->setting_filter_name = bstrdup(filter_name);
 		obs_weak_source_release(move_value->filter);
-		obs_source_t* filter = obs_source_get_filter_by_name(parent, filter_name);
+		obs_source_t *filter =
+			obs_source_get_filter_by_name(parent, filter_name);
 		move_value->filter = obs_source_get_weak_source(filter);
 		obs_source_release(filter);
 	}
@@ -847,10 +854,10 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 	}
 
 	obs_source_t *source;
-	if(move_value->filter) {
+	if (move_value->filter) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = parent;
 	}
 	obs_data_t *s = obs_source_get_settings(source);
@@ -911,10 +918,10 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 	}
 
 	obs_source_t *source;
-	if(move_value->filter) {
+	if (move_value->filter) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
 	if (source == move_value->move_filter.source)
@@ -1321,7 +1328,6 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_properties_add_group(ppts, S_SETTINGS, obs_module_text("Settings"),
 				 OBS_GROUP_NORMAL, settings);
 
-
 	move_filter_properties(&move_value->move_filter, ppts);
 
 	return ppts;
@@ -1381,10 +1387,10 @@ void move_value_tick(void *data, float seconds)
 		return;
 
 	obs_source_t *source;
-	if(move_value->filter) {
+	if (move_value->filter) {
 		source = obs_weak_source_get_source(move_value->filter);
 		obs_source_release(source);
-	}else {
+	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
 	if (!source)
@@ -1465,7 +1471,8 @@ void move_value_tick(void *data, float seconds)
 			(1.0 - t) * move_value->double_from +
 			t * move_value->double_to;
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
-			obs_source_set_volume(source, value_double / 100.0);
+			obs_source_set_volume(source,
+					      (float)(value_double / 100.0));
 			update = false;
 		} else {
 			obs_data_set_double(ss, move_value->setting_name,
@@ -1491,7 +1498,8 @@ void move_value_tick(void *data, float seconds)
 			obs_data_release(ss);
 			return;
 		}
-		move_value->text_step = t * move_value->text_steps;
+		move_value->text_step =
+			(size_t)(t * (float)move_value->text_steps);
 		char *text = NULL;
 		if (move_value->text_step <
 		    move_value->text_from_len - move_value->text_same) {
@@ -1517,7 +1525,7 @@ void move_value_tick(void *data, float seconds)
 				text[0] = '\0';
 
 		} else if (move_value->format_type == MOVE_VALUE_FORMAT_TIME) {
-			long long t = value_double;
+			long long t = (long long)value_double;
 			struct tm *tm_info = gmtime(&t);
 			if (strftime(text, TEXT_BUFFER_SIZE, move_value->format,
 				     tm_info) == 0)
@@ -1565,8 +1573,8 @@ void move_value_tick(void *data, float seconds)
 				t * move_value->double_to;
 			if (strcmp(move_value->setting_name, VOLUME_SETTING) ==
 			    0) {
-				obs_source_set_volume(source,
-						      value_double / 100.0);
+				obs_source_set_volume(
+					source, (float)value_double / 100.0f);
 				update = false;
 			} else {
 				obs_data_set_double(ss,

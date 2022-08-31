@@ -159,19 +159,22 @@ void calc_relative_to(struct move_source_info *move_source)
 	obs_data_release(bounds);
 
 	obs_data_t *crop = obs_data_get_obj(settings, S_CROP);
-	move_source->crop_to.left = calc_sign(
-		obs_data_get_char(crop, "left_sign"),
-		move_source->crop_from.left, obs_data_get_int(crop, "left"));
-	move_source->crop_to.top = calc_sign(
-		obs_data_get_char(crop, "top_sign"), move_source->crop_from.top,
-		obs_data_get_int(crop, "top"));
-	move_source->crop_to.right = calc_sign(
-		obs_data_get_char(crop, "right_sign"),
-		move_source->crop_from.right, obs_data_get_int(crop, "right"));
+	move_source->crop_to.left =
+		(int)calc_sign(obs_data_get_char(crop, "left_sign"),
+			       (float)move_source->crop_from.left,
+			       (float)obs_data_get_int(crop, "left"));
+	move_source->crop_to.top =
+		(int)calc_sign(obs_data_get_char(crop, "top_sign"),
+			       (float)move_source->crop_from.top,
+			       (float)obs_data_get_int(crop, "top"));
+	move_source->crop_to.right =
+		(int)calc_sign(obs_data_get_char(crop, "right_sign"),
+			       (float)move_source->crop_from.right,
+			       (float)obs_data_get_int(crop, "right"));
 	move_source->crop_to.bottom =
-		calc_sign(obs_data_get_char(crop, "bottom_sign"),
-			  move_source->crop_from.bottom,
-			  obs_data_get_int(crop, "bottom"));
+		(int)calc_sign(obs_data_get_char(crop, "bottom_sign"),
+			       (float)move_source->crop_from.bottom,
+			       (float)obs_data_get_int(crop, "bottom"));
 	obs_data_release(crop);
 	obs_data_release(settings);
 }
@@ -317,7 +320,7 @@ void move_source_start(struct move_source_info *move_source)
 			    CHANGE_ORDER_ABSOLUTE) != 0) {
 			obs_sceneitem_set_order_position(
 				move_source->scene_item,
-				move_source->order_position);
+				(int)move_source->order_position);
 		}
 	}
 	if ((move_source->change_visibility == CHANGE_VISIBILITY_SHOW_START ||
@@ -1559,7 +1562,7 @@ void move_source_ended(struct move_source_info *move_source)
 			    CHANGE_ORDER_ABSOLUTE) != 0) {
 			obs_sceneitem_set_order_position(
 				move_source->scene_item,
-				move_source->order_position);
+				(int)move_source->order_position);
 		}
 	}
 }

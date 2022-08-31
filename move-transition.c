@@ -1732,13 +1732,19 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 {
 	obs_scene_t *scene = obs_sceneitem_get_scene(item);
 	obs_source_t *scene_source = obs_scene_get_source(scene);
+	if(obs_source_removed(scene_source))
+		return;
 	obs_source_t *filter =
 		obs_source_get_filter_by_name(scene_source, start_move);
 	if (!filter) {
 		obs_source_t *source = obs_sceneitem_get_source(item);
+		if(obs_source_removed(source))
+			return;
 		filter = obs_source_get_filter_by_name(source, start_move);
 	}
 	if (!filter)
+		return;
+	if(obs_source_removed(filter))
 		return;
 	
 	if(is_move_filter(obs_source_get_unversioned_id(filter)))
