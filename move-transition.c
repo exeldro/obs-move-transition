@@ -849,12 +849,25 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			}
 		}
 	} else if (item->item_a && item->item_b) {
-		if (item->transition_name && !item->transition) {
-			item->transition = get_transition(
-				item->transition_name,
-				&move->transition_pool_move,
-				&move->transition_pool_move_index,
-				move->cache_transitions);
+		if (!item->transition) {
+			if (item->transition_name &&
+			    strlen(item->transition_name) &&
+			    strcmp(item->transition_name, "None") != 0) {
+				item->transition = get_transition(
+					item->transition_name,
+					&move->transition_pool_move,
+					&move->transition_pool_move_index,
+					move->cache_transitions);
+			} else if (obs_source_is_scene(obs_sceneitem_get_source(
+					   item->item_a)) ||
+				   obs_source_is_scene(obs_sceneitem_get_source(
+					   item->item_b))) {
+				item->transition = get_transition(
+					obs_source_get_name(move->source),
+					&move->transition_pool_move,
+					&move->transition_pool_move_index,
+					move->cache_transitions);
+			}
 			if (item->transition) {
 				obs_transition_set_size(item->transition, width,
 							height);
@@ -1732,22 +1745,22 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 {
 	obs_scene_t *scene = obs_sceneitem_get_scene(item);
 	obs_source_t *scene_source = obs_scene_get_source(scene);
-	if(obs_source_removed(scene_source))
+	if (obs_source_removed(scene_source))
 		return;
 	obs_source_t *filter =
 		obs_source_get_filter_by_name(scene_source, start_move);
 	if (!filter) {
 		obs_source_t *source = obs_sceneitem_get_source(item);
-		if(obs_source_removed(source))
+		if (obs_source_removed(source))
 			return;
 		filter = obs_source_get_filter_by_name(source, start_move);
 	}
 	if (!filter)
 		return;
-	if(obs_source_removed(filter))
+	if (obs_source_removed(filter))
 		return;
-	
-	if(is_move_filter(obs_source_get_unversioned_id(filter)))
+
+	if (is_move_filter(obs_source_get_unversioned_id(filter)))
 		move_filter_start(obs_obj_get_data(filter));
 }
 
@@ -2357,10 +2370,6 @@ void prop_list_add_transitions(obs_property_t *p)
 				     "None");
 	obs_frontend_get_transitions(&transitions);
 	for (size_t i = 0; i < transitions.sources.num; i++) {
-		const char *id = obs_source_get_unversioned_id(
-			transitions.sources.array[i]);
-		if (!id || strcmp(id, "move_transition") == 0)
-			continue;
 		const char *name =
 			obs_source_get_name(transitions.sources.array[i]);
 		obs_property_list_add_string(p, name, name);
