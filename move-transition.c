@@ -68,6 +68,11 @@ struct move_item {
 	obs_scene_t *release_scene_b;
 };
 
+struct match_item3 {
+	obs_source_t *check_source;
+	bool matched;
+};
+
 static const struct {
 	enum gs_blend_type src_color;
 	enum gs_blend_type src_alpha;
@@ -850,22 +855,23 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 	} else if (item->item_a && item->item_b) {
 		if (!item->transition) {
-			if (item->transition_name &&
-			    strlen(item->transition_name) &&
-			    strcmp(item->transition_name, "None") != 0) {
+			if (obs_source_is_scene(
+				    obs_sceneitem_get_source(item->item_a)) ||
+			    obs_source_is_scene(
+				    obs_sceneitem_get_source(item->item_b)) ||
+			    obs_source_is_group(
+				    obs_sceneitem_get_source(item->item_a)) ||
+			    obs_source_is_group(
+				    obs_sceneitem_get_source(item->item_b))) {
 				item->transition = get_transition(
-					item->transition_name,
+					obs_source_get_name(move->source),
 					&move->transition_pool_move,
 					&move->transition_pool_move_index,
 					move->cache_transitions);
-			} else if (obs_source_is_scene(obs_sceneitem_get_source(
-					   item->item_a)) ||
-				   obs_source_is_scene(obs_sceneitem_get_source(
-					   item->item_b)) || obs_source_is_group(obs_sceneitem_get_source(
-					   item->item_a)) || obs_source_is_group(obs_sceneitem_get_source(
-					   item->item_b))) {
+			}
+			if (!item->transition) {
 				item->transition = get_transition(
-					obs_source_get_name(move->source),
+					item->transition_name,
 					&move->transition_pool_move,
 					&move->transition_pool_move_index,
 					move->cache_transitions);
@@ -1515,6 +1521,16 @@ bool is_number_match(const char c)
 	return false;
 }
 
+bool match_item3(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem, void *p)
+{
+	struct match_item3 *mi3 = p;
+	if (obs_sceneitem_get_source(sceneitem) == mi3->check_source) {
+		mi3->matched = true;
+		return false;
+	}
+	return true;
+}
+
 struct move_item *match_item2(struct move_info *move,
 			      obs_sceneitem_t *scene_item, bool part_match,
 			      size_t *found_pos)
@@ -1682,6 +1698,58 @@ struct move_item *match_item2(struct move_info *move,
 				obs_data_release(settings);
 			}
 		}
+		if (part_match) {
+			if (obs_source_is_scene(source)) {
+				obs_scene_t *scene =
+					obs_scene_from_source(source);
+				struct match_item3 mi3;
+				mi3.check_source = check_source;
+				mi3.matched = false;
+				obs_scene_enum_items(scene, match_item3, &mi3);
+				if (mi3.matched) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
+			} else if (obs_source_is_group(source)) {
+				obs_scene_t *scene =
+					obs_group_from_source(source);
+				struct match_item3 mi3;
+				mi3.check_source = check_source;
+				mi3.matched = false;
+				obs_scene_enum_items(scene, match_item3, &mi3);
+				if (mi3.matched) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
+			}
+			if (obs_source_is_scene(check_source)) {
+				obs_scene_t *scene =
+					obs_scene_from_source(check_source);
+				struct match_item3 mi3;
+				mi3.check_source = source;
+				mi3.matched = false;
+				obs_scene_enum_items(scene, match_item3, &mi3);
+				if (mi3.matched) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
+			} else if (obs_source_is_group(check_source)) {
+				obs_scene_t *scene =
+					obs_group_from_source(check_source);
+				struct match_item3 mi3;
+				mi3.check_source = source;
+				mi3.matched = false;
+				obs_scene_enum_items(scene, match_item3, &mi3);
+				if (mi3.matched) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
+			}
+		}
 	}
 	return item;
 }
@@ -1720,8 +1788,7 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	struct move_info *move = data;
 	size_t old_pos;
 	struct move_item *item = match_item2(move, scene_item, false, &old_pos);
-	if (!item &&
-	    (move->part_match || move->number_match || move->last_word_match)) {
+	if (!item) {
 		item = match_item2(move, scene_item, true, &old_pos);
 	}
 	if (item) {
@@ -1793,6 +1860,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		move->item_pos = 0;
 		obs_scene_t *scene_a =
 			obs_scene_from_source(move->scene_source_a);
+		if (!scene_a)
+			scene_a = obs_group_from_source(move->scene_source_a);
 		if (scene_a) {
 			obs_scene_enum_items(scene_a, add_item, data);
 		} else if (move->scene_source_a) {
@@ -1810,6 +1879,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		move->item_pos = 0;
 		obs_scene_t *scene_b =
 			obs_scene_from_source(move->scene_source_b);
+		if (!scene_b)
+			scene_b = obs_group_from_source(move->scene_source_b);
 		if (scene_b) {
 			obs_scene_enum_items(scene_b, match_item, data);
 		} else if (move->scene_source_b) {
@@ -1820,8 +1891,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			size_t old_pos;
 			struct move_item *item =
 				match_item2(move, scene_item, false, &old_pos);
-			if (!item && (move->part_match || move->number_match ||
-				      move->last_word_match)) {
+			if (!item) {
 				item = match_item2(move, scene_item, true,
 						   &old_pos);
 			}
