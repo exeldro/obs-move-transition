@@ -861,6 +861,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			} else if (obs_source_is_scene(obs_sceneitem_get_source(
 					   item->item_a)) ||
 				   obs_source_is_scene(obs_sceneitem_get_source(
+					   item->item_b)) || obs_source_is_group(obs_sceneitem_get_source(
+					   item->item_a)) || obs_source_is_group(obs_sceneitem_get_source(
 					   item->item_b))) {
 				item->transition = get_transition(
 					obs_source_get_name(move->source),
