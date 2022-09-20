@@ -127,6 +127,13 @@ void move_filter_start_hotkey(struct move_filter *move_filter)
 		}
 		if (next_move_on != NEXT_MOVE_ON_HOTKEY) {
 			da_push_back(move_filter->filters_done, &filter);
+		} else if (strcmp(next_move_name, NEXT_MOVE_REVERSE) == 0 &&
+			   !obs_source_removed(filter) &&
+			   is_move_filter(
+				   obs_source_get_unversioned_id(filter))) {
+			move_filter_start(obs_obj_get_data(filter));
+			move_filter->filters_done.num = 0;
+			return;
 		}
 		filter = obs_source_get_filter_by_name(parent, next_move_name);
 		if (!filter && move_filter->get_alternative_source) {
