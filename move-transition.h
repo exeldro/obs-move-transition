@@ -2,6 +2,7 @@
 
 #include <obs-module.h>
 #include <util/darray.h>
+#include "version.h"
 
 #define MOVE_SOURCE_FILTER_ID "move_source_filter"
 #define MOVE_VALUE_FILTER_ID "move_value_filter"
@@ -10,6 +11,10 @@
 #define MOVE_ACTION_FILTER_ID "move_action_filter"
 #define MOVE_AUDIO_ACTION_FILTER_ID "move_audio_action_filter"
 #define MOVE_DIRECTSHOW_FILTER_ID "move_directshow_filter"
+
+#define PLUGIN_INFO                                                                                                     \
+	"<a href=\"https://obsproject.com/forum/resources/move-transition.913/\">Move Transition</a> (" PROJECT_VERSION \
+	") by <a href=\"https://www.exeldro.com\">Exeldro</a>"
 
 #define S_MATCH "match"
 #define S_MOVE_ALL "move_all"
@@ -240,12 +245,13 @@ struct move_filter {
 	long long next_move_on;
 	bool reverse;
 	bool enabled_match_moving;
-	void(* move_start)(void * data);
-	obs_source_t *(* get_alternative_source)(void * data);
+	void (*move_start)(void *data);
+	obs_source_t *(*get_alternative_source)(void *data);
 };
 
 bool is_move_filter(const char *filter_id);
-void move_filter_init(struct move_filter *move_filter, obs_source_t *source,void (*move_start)(void * data));
+void move_filter_init(struct move_filter *move_filter, obs_source_t *source,
+		      void (*move_start)(void *data));
 void move_filter_destroy(struct move_filter *move_filter);
 void move_filter_update(struct move_filter *move_filter, obs_data_t *settings);
 void move_filter_start(struct move_filter *move_filter);
@@ -254,7 +260,8 @@ bool move_filter_start_internal(struct move_filter *move_filter);
 void move_filter_stop(struct move_filter *move_filter);
 void move_filter_ended(struct move_filter *move_filter);
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *t);
-void move_filter_properties(struct move_filter *move_filter, obs_properties_t *ppts);
+void move_filter_properties(struct move_filter *move_filter,
+			    obs_properties_t *ppts);
 
 void move_filter_activate(void *data);
 void move_filter_deactivate(void *data);

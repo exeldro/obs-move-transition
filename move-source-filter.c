@@ -801,7 +801,8 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_source_info *move_source =
 		bzalloc(sizeof(struct move_source_info));
-	move_filter_init(&move_source->move_filter, source, (void (*)(void *))move_source_start);
+	move_filter_init(&move_source->move_filter, source,
+			 (void (*)(void *))move_source_start);
 	move_source->move_filter.get_alternative_source =
 		move_source_get_source;
 	move_source_update(move_source, settings);
@@ -1168,9 +1169,12 @@ static obs_properties_t *move_source_properties(void *data)
 	if (!scene)
 		scene = obs_group_from_source(parent);
 	if (!scene) {
-		obs_properties_add_button(ppts, "warning",
-					  obs_module_text("ScenesOnlyFilter"),
-					  NULL);
+		obs_property_t *w = obs_properties_add_text(
+			ppts, "warning", obs_module_text("ScenesOnlyFilter"),
+			OBS_TEXT_INFO);
+		obs_property_text_set_info_type(w, OBS_TEXT_INFO_WARNING);
+		obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+					OBS_TEXT_INFO);
 		return ppts;
 	}
 	if (!move_source->scene_item && move_source->source_name &&
@@ -1470,6 +1474,8 @@ static obs_properties_t *move_source_properties(void *data)
 	p = obs_properties_add_group(ppts, S_ACTIONS,
 				     obs_module_text("Actions"),
 				     OBS_GROUP_NORMAL, group);
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 	return ppts;
 }
 

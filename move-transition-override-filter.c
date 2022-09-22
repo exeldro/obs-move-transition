@@ -21,7 +21,8 @@ void move_filter_source_rename(void *data, calldata_t *call_data)
 	obs_data_release(settings);
 }
 
-static void *move_override_filter_create(obs_data_t *settings, obs_source_t *source)
+static void *move_override_filter_create(obs_data_t *settings,
+					 obs_source_t *source)
 {
 	struct move_filter_info *move_filter =
 		bzalloc(sizeof(struct move_filter_info));
@@ -307,7 +308,8 @@ static obs_properties_t *move_override_filter_properties(void *data)
 
 	obs_properties_add_group(ppts, S_MOVE_OUT, obs_module_text("MoveOut"),
 				 OBS_GROUP_NORMAL, group);
-
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 	return ppts;
 }
 

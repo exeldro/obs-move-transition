@@ -4,7 +4,6 @@
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
 #include "easing.h"
-#include "version.h"
 
 struct move_info {
 	obs_source_t *source;
@@ -2580,7 +2579,8 @@ static obs_properties_t *move_properties(void *data)
 
 	obs_properties_add_group(ppts, S_MOVE_OUT, obs_module_text("MoveOut"),
 				 OBS_GROUP_NORMAL, group);
-
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 	UNUSED_PARAMETER(data);
 	return ppts;
 }

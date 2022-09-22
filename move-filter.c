@@ -517,6 +517,8 @@ void move_filter_properties(struct move_filter *move_filter,
 	obs_properties_add_button(ppts, "move_filter_start",
 				  obs_module_text("Start"),
 				  move_filter_start_button);
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 }
 
 void move_filter_activate(void *data)

@@ -711,6 +711,8 @@ static obs_properties_t *audio_move_properties(void *data)
 	p = obs_properties_add_float_slider(ppts, "threshold",
 					    obs_module_text("Threshold"), 0.0,
 					    100.0, 0.01);
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 	return ppts;
 }
 

@@ -244,7 +244,6 @@ static obs_properties_t *move_action_properties(void *data)
 	//obs_frontend_open_properties
 
 	move_filter_properties(data, ppts);
-
 	return ppts;
 }
 
