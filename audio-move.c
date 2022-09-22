@@ -87,6 +87,7 @@ void audio_move_volmeter_updated(void *data,
 
 void audio_move_source_destroy(void *data, calldata_t *call_data)
 {
+	UNUSED_PARAMETER(call_data);
 	struct audio_move_info *audio_move = data;
 	audio_move->target_source = NULL;
 	audio_move->sceneitem = NULL;
@@ -96,6 +97,7 @@ void audio_move_item_remove(void *data, calldata_t *call_data);
 
 void audio_move_source_remove(void *data, calldata_t *call_data)
 {
+	UNUSED_PARAMETER(call_data);
 	struct audio_move_info *audio_move = data;
 	if (audio_move->target_source) {
 		obs_source_t *source =

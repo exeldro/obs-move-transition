@@ -1294,8 +1294,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
 	} else if (!item->item_render &&
-		   (item->item_a && item_texture_enabled(item->item_a) ||
-		    item->item_b && item_texture_enabled(item->item_b))) {
+		   ((item->item_a && item_texture_enabled(item->item_a)) ||
+		    (item->item_b && item_texture_enabled(item->item_b)))) {
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	} else if (item->item_render) {
 		gs_texrender_reset(item->item_render);
@@ -1394,9 +1394,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				scale_param = gs_effect_get_param_by_name(
 					effect, "base_dimension");
 				if (scale_param) {
-					struct vec2 base_res = {(float)cx,
-								(float)cy};
-
+					struct vec2 base_res;
+					base_res.x = (float)cx;
+					base_res.y = (float)cy;
 					gs_effect_set_vec2(scale_param,
 							   &base_res);
 				}
@@ -1404,9 +1404,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				scale_i_param = gs_effect_get_param_by_name(
 					effect, "base_dimension_i");
 				if (scale_i_param) {
-					struct vec2 base_res_i = {
-						1.0f / (float)cx,
-						1.0f / (float)cy};
+					struct vec2 base_res_i;
+					base_res_i.x = 1.0f / (float)cx;
+					base_res_i.y = 1.0f / (float)cy;
 
 					gs_effect_set_vec2(scale_i_param,
 							   &base_res_i);
@@ -1523,6 +1523,7 @@ bool is_number_match(const char c)
 
 bool match_item3(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem, void *p)
 {
+	UNUSED_PARAMETER(obs_scene);
 	struct match_item3 *mi3 = p;
 	if (obs_sceneitem_get_source(sceneitem) == mi3->check_source) {
 		mi3->matched = true;

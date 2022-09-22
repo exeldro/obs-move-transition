@@ -199,28 +199,28 @@ double parse_text(long long format_type, const char *format, const char *text)
 		unsigned int sec = 0;
 		unsigned int min = 0;
 		unsigned int hour = 0;
-		if ((pos = strstr(format, "%X")) ||
-		    (pos = strstr(format, "%H:%M:%S"))) {
+		if (((pos = strstr(format, "%X"))) ||
+		    ((pos = strstr(format, "%H:%M:%S")))) {
 			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u:%u", &hour,
 				       &min, &sec);
-		} else if ((pos = strstr(format, "%R")) ||
-			   (pos = strstr(format, "%H:%M"))) {
+		} else if (((pos = strstr(format, "%R"))) ||
+			   ((pos = strstr(format, "%H:%M")))) {
 			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u", &hour,
 				       &min);
-		} else if (pos = strstr(format, "%M:%S")) {
+		} else if ((pos = strstr(format, "%M:%S"))) {
 			if ((size_t)(pos - format) < strlen(text))
 				sscanf(text + (pos - format), "%u:%u", &min,
 				       &sec);
 		} else {
-			if (pos = strstr(format, "%S")) {
+			if ((pos = strstr(format, "%S"))) {
 				sscanf(text + (pos - format), "%u", &sec);
 			}
-			if (pos = strstr(format, "%M")) {
+			if ((pos = strstr(format, "%M"))) {
 				sscanf(text + (pos - format), "%u", &min);
 			}
-			if (pos = strstr(format, "%H")) {
+			if ((pos = strstr(format, "%H"))) {
 				sscanf(text + (pos - format), "%u", &hour);
 			}
 		}
@@ -546,7 +546,8 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_value_info *move_value =
 		bzalloc(sizeof(struct move_value_info));
-	move_filter_init(&move_value->move_filter, source, move_value_start);
+	move_filter_init(&move_value->move_filter, source,
+			 (void (*)(void *))move_value_start);
 	move_value_update(move_value, settings);
 	return move_value;
 }
@@ -671,6 +672,8 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 bool move_value_get_values(obs_properties_t *props, obs_property_t *property,
 			   void *data)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
 	struct move_value_info *move_value = data;
 	obs_source_t *source;
 	if (move_value->filter) {
@@ -881,6 +884,8 @@ bool move_value_format_type_changed(void *data, obs_properties_t *props,
 				    obs_property_t *property,
 				    obs_data_t *settings)
 {
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
 	obs_property_t *prop_format =
 		obs_properties_get(props, S_SETTING_FORMAT);
 	obs_property_t *prop_decimals =
@@ -1195,6 +1200,8 @@ bool move_value_type_changed(void *data, obs_properties_t *props,
 bool move_value_decimals_changed(void *data, obs_properties_t *props,
 				 obs_property_t *property, obs_data_t *settings)
 {
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
 	const int decimals =
 		(int)obs_data_get_int(settings, S_SETTING_DECIMALS);
 	const double step = pow(10.0, -1.0 * (double)decimals);
@@ -1526,7 +1533,7 @@ void move_value_tick(void *data, float seconds)
 
 		} else if (move_value->format_type == MOVE_VALUE_FORMAT_TIME) {
 			long long t = (long long)value_double;
-			struct tm *tm_info = gmtime(&t);
+			struct tm *tm_info = gmtime((const time_t *)&t);
 			if (strftime(text, TEXT_BUFFER_SIZE, move_value->format,
 				     tm_info) == 0)
 				text[0] = '\0';

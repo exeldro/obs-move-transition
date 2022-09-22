@@ -8,114 +8,150 @@ on:
 
 env:
   PLUGIN_NAME: move-transition
-  OBS_VERSION: 27.2.3
-
+  OBS_VERSION: 28.0.0-rc1
 jobs:
-  macos64:
-    name: "macOS 64-bit"
-    runs-on: [macos-latest]
+  macos:
+    name: macOS
+    runs-on: macos-12
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, universal]
+    outputs:
+      commitHash: ${{ steps.setup.outputs.commitHash }}
     env:
-      QT_VERSION: '5.15.2'
-      MACOS_DEPS_VERSION: '2021-02-28'
+      CODESIGN_IDENT: '-'
+      CODESIGN_IDENT_INSTALLER: ''
+      MACOSX_DEPLOYMENT_TARGET: '10.15'  
+    defaults:
+      run:
+        shell: zsh {0}
     steps:
       - name: Checkout
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v3
+        with:
+          path: plugin
+          submodules: recursive
+
+      - name: Checkout obs-studio
+        uses: actions/checkout@v3
+        with:
+          repository: 'obsproject/obs-studio'
+          path: obs-studio
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Environment
+        id: setup
+        working-directory: ${{ github.workspace }}/plugin
+        run: |
+          ## SETUP ENVIRONMENT SCRIPT
+          print '::group::Clean Homebrew Environment'
+          typeset -a to_remove=()
+
+          for formula (speexdsp curl php) {
+            if [[ -d ${HOMEBREW_PREFIX}/opt/${formula} ]] to_remove+=(${formula})
+          }
+
+          if (( #to_remove > 0 )) brew uninstall --ignore-dependencies ${to_remove}
+          print '::endgroup::'
+
+          print '::group::Set up code signing'
+          if [[ '${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}' != '' && \
+                '${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}' != '' && \
+                '${{ secrets.MACOS_SIGNING_CERT }}' != '' ]] {
+            print '::set-output name=haveCodesignIdent::true'
+          } else {
+            print '::set-output name=haveCodesignIdent::false'
+          }
+
+          if [[ '${{ secrets.MACOS_NOTARIZATION_USERNAME }}' != '' && \
+                '${{ secrets.MACOS_NOTARIZATION_PASSWORD }}' != '' ]] {
+            print '::set-output name=haveNotarizationUser::true'
+          } else {
+            print '::set-output name=haveNotarizationUser::false'
+          }
+          print '::endgroup::'
+
+          print "::set-output name=ccacheDate::$(date +"%Y-%m-%d")"
+          print "::set-output name=commitHash::${"$(git rev-parse HEAD)"[0,9]}"
+
+      - name: Restore Compilation Cache
+        id: ccache-cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: macos-${{ matrix.arch }}-ccache-plugin-${{ steps.setup.outputs.ccacheDate }}
+          restore-keys: |
+            macos-${{ matrix.arch }}-ccache-plugin-
+
+      - name: Check for GitHub Labels
+        id: seekingTesters
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          if [[ -n "$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -s "${{ github.event.pull_request.url }}" | jq -e '.labels[] | select(.name == "Seeking Testers")')" ]] {
+            print '::set-output name=found::true'
+          } else {
+            print '::set-output name=found::false'
+          }
+
+      - name: Install Apple Developer Certificate
+        if: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        uses: apple-actions/import-codesign-certs@253ddeeac23f2bdad1646faac5c8c2832e800071
+        with:
+          keychain-password: ${{ github.run_id }}
+          p12-file-base64: ${{ secrets.MACOS_SIGNING_CERT }}
+          p12-password: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+
+      - name: Set Signing Identity
+        if: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        run: |
+          print "CODESIGN_IDENT=${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}" >> $GITHUB_ENV
+          print "CODESIGN_IDENT_INSTALLER=${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}" >> $GITHUB_ENV
+
+      - name: Build Plugin
+        uses: ./plugin/.github/actions/build-plugin
+        with:
+          workingDirectory: ${{ github.workspace }}/plugin
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+          codesign: 'true'
+          codesignIdent: ${{ env.CODESIGN_IDENT }}
+
+      - name: Package Plugin
+        uses: ./plugin/.github/actions/package-plugin
+        with:
+          workingDirectory: ${{ github.workspace }}/plugin
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+          codesign: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+          notarize: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' && steps.setup.outputs.haveNotarizationUser == 'true' }}
+          codesignIdent: ${{ env.CODESIGN_IDENT }}
+          installerIdent: ${{ env.CODESIGN_IDENT_INSTALLER }}
+          codesignUser: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          codesignPass: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PLUGIN_NAME }}-macos-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}
+          path: ${{ github.workspace }}/plugin/release/${{ env.PLUGIN_NAME }}-*-macos-${{ matrix.arch }}.pkg
+  linux-in-tree:
+    name: 'Linux'
+    runs-on: ${{ matrix.ubuntu }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ['ubuntu-20.04', 'ubuntu-22.04']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           repository: obsproject/obs-studio
           ref: ${{ env.OBS_VERSION }}
           submodules: 'recursive'
       - name: "Checkout plugin"
-        uses: actions/checkout@v2.3.3
-        with:
-          path: plugins/${{ env.PLUGIN_NAME }}
-      - name: Fetch Git Tags
-        run: |
-          cd plugins/${{ env.PLUGIN_NAME }}
-          git fetch --prune --tags --unshallow
-      - name: 'Install prerequisites (Homebrew)'
-        shell: bash
-        run: |
-          if [ -d /usr/local/opt/openssl@1.0.2t ]; then
-            brew uninstall openssl@1.0.2t
-            brew untap local/openssl
-          fi
-
-          if [ -d /usr/local/opt/python@2.7.17 ]; then
-            brew uninstall python@2.7.17
-            brew untap local/python2
-          fi
-
-          if [ -d /usr/local/opt/speexdsp ]; then
-            brew unlink speexdsp
-          fi
-          brew uninstall curl php composer
-          brew bundle --file ./CI/scripts/macos/Brewfile
-          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-      - name: 'Install prerequisite: Pre-built dependencies'
-        if: steps.deps-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.MACOS_DEPS_VERSION }}/macos-deps-${{ env.MACOS_DEPS_VERSION }}.tar.gz
-          tar -xf ./macos-deps-${{ env.MACOS_DEPS_VERSION }}.tar.gz -C "/tmp"
-      - name: 'Install prerequisite: Pre-built dependency Qt'
-        if: steps.deps-qt-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.MACOS_DEPS_VERSION }}/macos-qt-${{ env.QT_VERSION }}-${{ env.MACOS_DEPS_VERSION }}.tar.gz
-          tar -xf ./macos-qt-${{ env.QT_VERSION }}-${{ env.MACOS_DEPS_VERSION }}.tar.gz -C "/tmp"
-          xattr -r -d com.apple.quarantine /tmp/obsdeps
-      - name: Configure
-        shell: bash
-        run: |
-          echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
-          mkdir ./build
-          cd ./build
-          cmake -DDISABLE_PYTHON=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DQTDIR="/tmp/obsdeps" -DSWIGDIR="/tmp/obsdeps" -DDepsPath="/tmp/obsdeps" -DBUILD_BROWSER=OFF -DENABLE_PIPEWIRE=OFF -DBUILD_VST=OFF -DBUILD_VIRTUALCAM=OFF -DENABLE_SCRIPTING=OFF ..
-          cd -
-      - name: Build
-        shell: bash
-        run: |
-          set -e
-          cd ./build
-          make -j4
-          cd -
-      - name: 'Install prerequisite: Packages app'
-        if: success()
-        shell: bash
-        run: |
-          curl -L -O http://s.sudre.free.fr/Software/files/Packages.dmg
-          sudo hdiutil attach ./Packages.dmg
-          sudo installer -pkg /Volumes/Packages\ 1.2.10/Install\ Packages.pkg -target /
-      - name: Package
-        if: success()
-        shell: bash
-        run: |
-          cd plugins/${{ env.PLUGIN_NAME }}
-          FILE_DATE=$(date +%Y-%m-%d)
-          FILE_NAME=${{ env.PLUGIN_NAME }}-$FILE_DATE-${{ github.sha }}-macos.pkg
-          echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
-          packagesbuild ./CI/macos/${{ env.PLUGIN_NAME }}.pkgproj
-          cd -
-          mkdir ./nightly
-          mv plugins/${{ env.PLUGIN_NAME }}/${{ env.PLUGIN_NAME }}.pkg ./nightly/${FILE_NAME}
-      - name: Publish
-        if: success()
-        uses: actions/upload-artifact@v2.2.0
-        with:
-          name: '${{ env.FILE_NAME }}'
-          path: ./nightly/*.pkg
-  ubuntu64:
-    name: 'Linux/Ubuntu 64-bit'
-    runs-on: [ubuntu-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2.3.3
-        with:
-          repository: obsproject/obs-studio
-          ref: ${{ env.OBS_VERSION }}
-          submodules: 'recursive'
-      - name: "Checkout plugin"
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v3
         with:
           path: plugins/${{ env.PLUGIN_NAME }}
       - name: Add plugin to obs cmake
@@ -123,72 +159,22 @@ jobs:
         run: echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
-      - name: Install prerequisites (Apt)
-        shell: bash
-        run: |
-          sudo dpkg --add-architecture amd64
-          sudo apt-get -qq update
-          sudo apt-get install -y \
-           build-essential \
-           checkinstall \
-           cmake \
-           libasound2-dev \
-           libavcodec-dev \
-           libavdevice-dev \
-           libavfilter-dev \
-           libavformat-dev \
-           libavutil-dev \
-           libcurl4-openssl-dev \
-           libfdk-aac-dev \
-           libfontconfig-dev \
-           libfreetype6-dev \
-           libgl1-mesa-dev \
-           libjack-jackd2-dev \
-           libjansson-dev \
-           libluajit-5.1-dev \
-           libpulse-dev \
-           libqt5x11extras5-dev \
-           libsndio-dev \
-           libspeexdsp-dev \
-           libswresample-dev \
-           libswscale-dev \
-           libudev-dev \
-           libv4l-dev \
-           libva-dev \
-           libvlc-dev \
-           libx11-dev \
-           libx11-xcb-dev \
-           libx264-dev \
-           libxcb-randr0-dev \
-           libxcb-shm0-dev \
-           libxcb-xfixes0-dev \
-           libxcb-xinerama0-dev \
-           libxcomposite-dev \
-           libxinerama-dev \
-           libmbedtls-dev \
-           pkg-config \
-           python3-dev \
-           qtbase5-dev \
-           qtbase5-private-dev \
-           libqt5svg5-dev \
-           swig \
-           linux-generic \
-           libpci-dev
+      - name: 'Install dependencies'
+        run: CI/linux/01_install_dependencies.sh --disable-pipewire
       - name: 'Configure'
         shell: bash
         run: |
           mkdir ./build
-          cd ./build
-          cmake -DUNIX_STRUCTURE=0 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/obs-studio-portable" -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF -DBUILD_VIRTUALCAM=OFF -DBUILD_VST=OFF -DENABLE_PIPEWIRE=OFF -DENABLE_SCRIPTING=OFF ..
+          cmake -S . -B "./build" -G Ninja -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DLINUX_PORTABLE=OFF -DENABLE_AJA=OFF -DENABLE_NEW_MPEGTS_OUTPUT=OFF -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF -DBUILD_VIRTUALCAM=OFF -DBUILD_VST=OFF -DENABLE_PIPEWIRE=OFF -DENABLE_SCRIPTING=OFF
       - name: 'Build'
         shell: bash
-        working-directory: ${{ github.workspace }}/build
-        run: make -j4
+        run: |
+          cmake --build "./build"
       - name: 'Package'
         shell: bash
         run: |
           FILE_DATE=$(date +%Y-%m-%d)
-          FILE_NAME=${{ env.PLUGIN_NAME }}-$FILE_DATE-${{ github.sha }}-linux64.tar.gz
+          FILE_NAME=${{ env.PLUGIN_NAME }}-$FILE_DATE-${{ github.sha }}-${{ matrix.ubuntu }}.tar.gz
           echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
           mkdir -p ./${{ env.PLUGIN_NAME }}/bin/64bit/
           mv ./build/plugins/${{ env.PLUGIN_NAME }}/${{ env.PLUGIN_NAME }}.so ./${{ env.PLUGIN_NAME }}/bin/64bit/${{ env.PLUGIN_NAME }}.so
@@ -209,28 +195,26 @@ jobs:
         include:
           - target: x64
             cmake_build: 'x64'
-            qt_ext: '_64'
             deps_ext: '64'
           - target: x86
             cmake_build: 'Win32'
-            qt_ext: ''
             deps_ext: '32'
     env:
-      QT_VERSION: '5.15.2'
+      QT_VERSION: '6.3.1'
       CMAKE_GENERATOR: "Visual Studio 17 2022"
       CMAKE_SYSTEM_VERSION: "10.0.18363.657"
-      WINDOWS_DEPS_VERSION: '2019'
+      WINDOWS_DEPS_VERSION: '2022-08-02'
     steps:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
       - name: Checkout obs
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v3
         with:
           repository: obsproject/obs-studio
           ref: ${{ env.OBS_VERSION }}
           submodules: 'recursive'
       - name: Checkout plugin
-        uses: actions/checkout@v2.3.3
+        uses: actions/checkout@v3
         with:
           path: plugins/${{ env.PLUGIN_NAME}}
       - name: Add plugin to obs cmake
@@ -238,40 +222,21 @@ jobs:
         run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) >> plugins/CMakeLists.txt
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
-      - name: 'Restore QT dependency from cache'
-        id: qt-cache
-        uses: actions/cache@v2.1.2
-        env:
-          CACHE_NAME: 'qt-cache'
-        with:
-          path: ${{ github.workspace }}/cmbuild/QT
-          key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.QT_VERSION }}
-      - name: 'Restore pre-built dependencies from cache'
-        id: deps-cache
-        uses: actions/cache@v2.1.2
-        env:
-          CACHE_NAME: 'deps-cache'
-        with:
-          path: ${{ github.workspace }}/cmbuild/deps
-          key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.WINDOWS_DEPS_VERSION }}
       - name: 'Install prerequisite: QT'
-        if: steps.qt-cache.outputs.cache-hit != 'true'
         run: |
-          curl -kLO https://cdn-fastly.obsproject.com/downloads/Qt_${{ env.QT_VERSION }}.7z -f --retry 5 -C -
-          7z x Qt_${{ env.QT_VERSION }}.7z -o"${{ github.workspace }}/cmbuild/QT"
+          curl -kLO https://github.com/obsproject/obs-deps/releases/download/${{ env.WINDOWS_DEPS_VERSION }}/windows-deps-qt6-${{ env.WINDOWS_DEPS_VERSION }}-${{ matrix.target }}.zip -f --retry 5 -C -
+          7z x windows-deps-qt6-${{ env.WINDOWS_DEPS_VERSION }}-${{ matrix.target }}.zip -o"${{ github.workspace }}/cmbuild/deps"
       - name: 'Install prerequisite: Pre-built dependencies'
-        if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
-          curl -kLO https://cdn-fastly.obsproject.com/downloads/dependencies${{ env.WINDOWS_DEPS_VERSION }}.zip -f --retry 5 -C -
-          7z x dependencies${{ env.WINDOWS_DEPS_VERSION }}.zip -o"${{ github.workspace }}/cmbuild/deps"
+          curl -kLO https://github.com/obsproject/obs-deps/releases/download/${{ env.WINDOWS_DEPS_VERSION }}/windows-deps-${{ env.WINDOWS_DEPS_VERSION }}-${{ matrix.target }}.zip -f --retry 5 -C -
+          7z x windows-deps-${{ env.WINDOWS_DEPS_VERSION }}-${{ matrix.target }}.zip -o"${{ github.workspace }}/cmbuild/deps"
       - name: Configure
         run: |
           mkdir ./package
           mkdir ./installer
           mkdir ./installer/media
           mkdir ./build
-          cd ./build
-          cmake -G"${{ env.CMAKE_GENERATOR }}" -A"${{ matrix.cmake_build }}" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps/win${{ matrix.deps_ext }}" -DQTDIR="${{ github.workspace }}/cmbuild/QT/${{ env.QT_VERSION }}/msvc2019${{ matrix.qt_ext }}" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE ..
+          cmake -S . -B "${{ github.workspace }}/build" -G"${{ env.CMAKE_GENERATOR }}" -DCMAKE_PREFIX_PATH:PATH="${{ github.workspace }}/cmbuild/deps" -A"${{ matrix.cmake_build }}" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps" -DDepsPath${{ matrix.deps_ext }}="${{ github.workspace }}/cmbuild/deps" -DQTDIR="${{ github.workspace }}/cmbuild/deps/qt6" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE -DENABLE_PLUGINS=TRUE -DDISABLE_PLUGINS=FALSE -DENABLE_BROWSER=FALSE -DENABLE_WEBSOCKET=FALSE
       - name: 'Build'
         run: msbuild /m /p:Configuration=RelWithDebInfo .\build\obs-studio.sln
       - name: Package
