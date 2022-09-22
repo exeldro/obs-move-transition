@@ -136,6 +136,7 @@ struct hotkey_enum_add_data {
 };
 static bool add_source_hotkeys(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 {
+	UNUSED_PARAMETER(id);
 	struct hotkey_enum_add_data *hd = data;
 	obs_hotkey_registerer_t type = obs_hotkey_get_registerer_type(key);
 	/*if (type == OBS_HOTKEY_REGISTERER_FRONTEND && !hd->source) {
@@ -159,6 +160,7 @@ static bool move_action_source_changed(void *data, obs_properties_t *props,
 				       obs_property_t *property,
 				       obs_data_t *settings)
 {
+	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(property);
 	const char *source_name = obs_data_get_string(settings, "source");
 	obs_property_t *hotkey = obs_properties_get(props, "hotkey");
