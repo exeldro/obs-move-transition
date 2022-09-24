@@ -1539,8 +1539,8 @@ void move_value_tick(void *data, float seconds)
 				text[0] = '\0';
 		} else {
 			if (move_value->decimals >= 0) {
-				char format[10];
-				snprintf(format, 10, "%%.%df",
+				char format[20];
+				snprintf(format, 20, "%%.%df",
 					 move_value->decimals);
 				snprintf(text, TEXT_BUFFER_SIZE, format,
 					 value_double);
