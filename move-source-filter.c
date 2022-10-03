@@ -980,12 +980,7 @@ void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
 				      void *data)
 {
 	UNUSED_PARAMETER(parent);
-	if (strcmp(obs_source_get_unversioned_id(child),
-		   MOVE_SOURCE_FILTER_ID) != 0 &&
-	    strcmp(obs_source_get_unversioned_id(child),
-		   MOVE_VALUE_FILTER_ID) != 0 &&
-	    strcmp(obs_source_get_unversioned_id(child),
-		   MOVE_AUDIO_VALUE_FILTER_ID) != 0)
+	if (!is_move_filter(obs_source_get_unversioned_id(child)))
 		return;
 	obs_property_t *p = data;
 	const char *name = obs_source_get_name(child);
