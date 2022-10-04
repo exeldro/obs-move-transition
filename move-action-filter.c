@@ -56,7 +56,11 @@ void move_action_update(void *data, obs_data_t *settings)
 	}
 	if (changed) {
 		move_action->hotkey_id = OBS_INVALID_HOTKEY_ID;
-		obs_enum_hotkeys(load_hotkey, move_action);
+		if (move_action->hotkey_name &&
+		    strlen(move_action->hotkey_name) &&
+		    move_action->source_name &&
+		    strlen(move_action->source_name))
+			obs_enum_hotkeys(load_hotkey, move_action);
 	}
 
 	move_action->frontend_action =
@@ -76,6 +80,11 @@ void move_action_start(void *data)
 	if (!move_filter_start_internal(&move_action->move_filter))
 		return;
 
+	if (move_action->hotkey_id == OBS_INVALID_HOTKEY_ID &&
+	    move_action->hotkey_name && strlen(move_action->hotkey_name) &&
+	    move_action->source_name && strlen(move_action->source_name)) {
+		obs_enum_hotkeys(load_hotkey, move_action);
+	}
 	if (move_action->hotkey_id != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_trigger_routed_callback(
 			move_action->hotkey_id,
