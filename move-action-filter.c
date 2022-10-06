@@ -41,7 +41,7 @@ void move_action_update(void *data, obs_data_t *settings)
 	bool changed = false;
 	const char *source_name = obs_data_get_string(settings, "source");
 	if (!move_action->source_name ||
-	    strcmp(source_name, move_action->source_name) != 0) {
+	    !strcmp(source_name, move_action->source_name)) {
 		bfree(move_action->source_name);
 		move_action->source_name = bstrdup(source_name);
 		changed = true;
@@ -49,7 +49,7 @@ void move_action_update(void *data, obs_data_t *settings)
 
 	const char *hotkey_name = obs_data_get_string(settings, "hotkey");
 	if (!move_action->hotkey_name ||
-	    strcmp(hotkey_name, move_action->hotkey_name) != 0) {
+	    !strcmp(hotkey_name, move_action->hotkey_name)) {
 		bfree(move_action->hotkey_name);
 		move_action->hotkey_name = bstrdup(hotkey_name);
 		changed = true;
