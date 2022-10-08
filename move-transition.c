@@ -854,14 +854,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 	} else if (item->item_a && item->item_b) {
 		if (!item->transition) {
-			if (obs_source_is_scene(
-				    obs_sceneitem_get_source(item->item_a)) ||
-			    obs_source_is_scene(
-				    obs_sceneitem_get_source(item->item_b)) ||
-			    obs_source_is_group(
-				    obs_sceneitem_get_source(item->item_a)) ||
-			    obs_source_is_group(
-				    obs_sceneitem_get_source(item->item_b))) {
+			obs_source_t *source_a =
+				obs_sceneitem_get_source(item->item_a);
+			obs_source_t *source_b =
+				obs_sceneitem_get_source(item->item_b);
+			if (source_a != source_b &&
+			    (obs_source_is_scene(source_a) ||
+			     obs_source_is_scene(source_b) ||
+			     obs_source_is_group(source_a) ||
+			     obs_source_is_group(source_b))) {
 				item->transition = get_transition(
 					obs_source_get_name(move->source),
 					&move->transition_pool_move,
@@ -883,16 +884,14 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set_scale_type(
 					item->transition,
 					item->transition_scale);
-				obs_transition_set(
-					item->transition,
-					obs_sceneitem_get_source(item->item_a));
+				obs_transition_set(item->transition, source_a);
 				obs_transition_start(
 					item->transition,
 					obs_transition_fixed(item->transition)
 						? OBS_TRANSITION_MODE_AUTO
 						: OBS_TRANSITION_MODE_MANUAL,
 					obs_frontend_get_transition_duration(),
-					obs_sceneitem_get_source(item->item_b));
+					source_b);
 			}
 		}
 	} else if (move_out && item->transition_name && !item->transition) {
