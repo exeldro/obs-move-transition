@@ -825,7 +825,42 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	uint32_t width = obs_source_get_width(source);
 	uint32_t height = obs_source_get_height(source);
 	bool move_out = item->item_a == scene_item;
-	if (item->move_scene) {
+	if (item->item_a && item->item_b) {
+		if (!item->transition) {
+			if (item->move_scene) {
+				item->transition = get_transition(
+					obs_source_get_name(move->source),
+					&move->transition_pool_move,
+					&move->transition_pool_move_index,
+					move->cache_transitions);
+			} else {
+				item->transition = get_transition(
+					item->transition_name,
+					&move->transition_pool_move,
+					&move->transition_pool_move_index,
+					move->cache_transitions);
+			}
+			if (item->transition) {
+				obs_transition_set_size(item->transition, width,
+							height);
+				obs_transition_set_alignment(item->transition,
+							     OBS_ALIGN_CENTER);
+				obs_transition_set_scale_type(
+					item->transition,
+					item->transition_scale);
+				obs_transition_set(
+					item->transition,
+					obs_sceneitem_get_source(item->item_a));
+				obs_transition_start(
+					item->transition,
+					obs_transition_fixed(item->transition)
+						? OBS_TRANSITION_MODE_AUTO
+						: OBS_TRANSITION_MODE_MANUAL,
+					obs_frontend_get_transition_duration(),
+					obs_sceneitem_get_source(item->item_b));
+			}
+		}
+	} else if (item->move_scene) {
 		if (item->transition_name && !item->transition) {
 			item->transition = get_transition(
 				item->transition_name,
@@ -850,48 +885,6 @@ bool render2_item(struct move_info *move, struct move_item *item)
 						: OBS_TRANSITION_MODE_MANUAL,
 					obs_frontend_get_transition_duration(),
 					obs_sceneitem_get_source(scene_item));
-			}
-		}
-	} else if (item->item_a && item->item_b) {
-		if (!item->transition) {
-			obs_source_t *source_a =
-				obs_sceneitem_get_source(item->item_a);
-			obs_source_t *source_b =
-				obs_sceneitem_get_source(item->item_b);
-			if (source_a != source_b &&
-			    (obs_source_is_scene(source_a) ||
-			     obs_source_is_scene(source_b) ||
-			     obs_source_is_group(source_a) ||
-			     obs_source_is_group(source_b))) {
-				item->transition = get_transition(
-					obs_source_get_name(move->source),
-					&move->transition_pool_move,
-					&move->transition_pool_move_index,
-					move->cache_transitions);
-			}
-			if (!item->transition) {
-				item->transition = get_transition(
-					item->transition_name,
-					&move->transition_pool_move,
-					&move->transition_pool_move_index,
-					move->cache_transitions);
-			}
-			if (item->transition) {
-				obs_transition_set_size(item->transition, width,
-							height);
-				obs_transition_set_alignment(item->transition,
-							     OBS_ALIGN_CENTER);
-				obs_transition_set_scale_type(
-					item->transition,
-					item->transition_scale);
-				obs_transition_set(item->transition, source_a);
-				obs_transition_start(
-					item->transition,
-					obs_transition_fixed(item->transition)
-						? OBS_TRANSITION_MODE_AUTO
-						: OBS_TRANSITION_MODE_MANUAL,
-					obs_frontend_get_transition_duration(),
-					source_b);
 			}
 		}
 	} else if (move_out && item->transition_name && !item->transition) {
@@ -991,7 +984,23 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	uint32_t original_width = width;
 	uint32_t original_height = height;
 	struct obs_sceneitem_crop crop;
-	if (item->move_scene) {
+	if (item->item_a && item->item_b) {
+		struct obs_sceneitem_crop crop_a;
+		obs_sceneitem_get_crop(item->item_a, &crop_a);
+		struct obs_sceneitem_crop crop_b;
+		obs_sceneitem_get_crop(item->item_b, &crop_b);
+		crop.left =
+			(int)roundf((float)(1.0f - ot) * (float)crop_a.left +
+				    ot * (float)crop_b.left);
+		crop.top = (int)roundf((float)(1.0f - ot) * (float)crop_a.top +
+				       ot * (float)crop_b.top);
+		crop.right =
+			(int)roundf((float)(1.0f - ot) * (float)crop_a.right +
+				    ot * (float)crop_b.right);
+		crop.bottom =
+			(int)roundf((float)(1.0f - ot) * (float)crop_a.bottom +
+				    ot * (float)crop_b.bottom);
+	} else if (item->move_scene) {
 		obs_sceneitem_get_crop(scene_item, &crop);
 		if (item->item_a) {
 			crop.left = (int)roundf((float)(1.0f - ot) *
@@ -1009,22 +1018,6 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			crop.bottom =
 				(int)roundf((float)ot * (float)crop.bottom);
 		}
-	} else if (item->item_a && item->item_b) {
-		struct obs_sceneitem_crop crop_a;
-		obs_sceneitem_get_crop(item->item_a, &crop_a);
-		struct obs_sceneitem_crop crop_b;
-		obs_sceneitem_get_crop(item->item_b, &crop_b);
-		crop.left =
-			(int)roundf((float)(1.0f - ot) * (float)crop_a.left +
-				    ot * (float)crop_b.left);
-		crop.top = (int)roundf((float)(1.0f - ot) * (float)crop_a.top +
-				       ot * (float)crop_b.top);
-		crop.right =
-			(int)roundf((float)(1.0f - ot) * (float)crop_a.right +
-				    ot * (float)crop_b.right);
-		crop.bottom =
-			(int)roundf((float)(1.0f - ot) * (float)crop_a.bottom +
-				    ot * (float)crop_b.bottom);
 	} else {
 		obs_sceneitem_get_crop(scene_item, &crop);
 	}
@@ -1083,7 +1076,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	if (obs_sceneitem_get_bounds_type(scene_item) != OBS_BOUNDS_NONE) {
 		struct vec2 bounds;
-		if (item->move_scene) {
+		if (item->item_a && item->item_b) {
+			struct vec2 bounds_a;
+			obs_sceneitem_get_bounds(item->item_a, &bounds_a);
+			struct vec2 bounds_b;
+			obs_sceneitem_get_bounds(item->item_b, &bounds_b);
+			vec2_set(&bounds,
+				 (1.0f - t) * bounds_a.x + t * bounds_b.x,
+				 (1.0f - t) * bounds_a.y + t * bounds_b.y);
+		} else if (item->move_scene) {
 			obs_sceneitem_get_bounds(scene_item, &bounds);
 			if (item->item_a) {
 				vec2_set(&bounds,
@@ -1098,14 +1099,6 @@ bool render2_item(struct move_info *move, struct move_item *item)
 					 (1.0f - t) * canvas_height +
 						 t * bounds.y);
 			}
-		} else if (item->item_a && item->item_b) {
-			struct vec2 bounds_a;
-			obs_sceneitem_get_bounds(item->item_a, &bounds_a);
-			struct vec2 bounds_b;
-			obs_sceneitem_get_bounds(item->item_b, &bounds_b);
-			vec2_set(&bounds,
-				 (1.0f - t) * bounds_a.x + t * bounds_b.x,
-				 (1.0f - t) * bounds_a.y + t * bounds_b.y);
 		} else {
 			obs_sceneitem_get_bounds(scene_item, &bounds);
 			if (!move_out && item->zoom) {
@@ -1158,17 +1151,17 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	matrix4_translate3f(&draw_transform, &draw_transform, -origin.x,
 			    -origin.y, 0.0f);
 	float rot;
-	if (item->move_scene) {
+	if (item->item_a && item->item_b) {
+		float rot_a = obs_sceneitem_get_rot(item->item_a);
+		float rot_b = obs_sceneitem_get_rot(item->item_b);
+		rot = (1.0f - t) * rot_a + t * rot_b;
+	} else if (item->move_scene) {
 		rot = obs_sceneitem_get_rot(scene_item);
 		if (item->item_a) {
 			rot *= (1.0f - t);
 		} else if (item->item_b) {
 			rot *= t;
 		}
-	} else if (item->item_a && item->item_b) {
-		float rot_a = obs_sceneitem_get_rot(item->item_a);
-		float rot_b = obs_sceneitem_get_rot(item->item_b);
-		rot = (1.0f - t) * rot_a + t * rot_b;
 	} else {
 		rot = obs_sceneitem_get_rot(scene_item);
 	}
@@ -1336,6 +1329,44 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 			gs_texrender_end(item->item_render);
 		}
+	}
+	if (item->item_a && item->item_b) {
+		struct matrix4 transform_a;
+		obs_sceneitem_get_draw_transform(item->item_a, &transform_a);
+		struct matrix4 transform_b;
+		obs_sceneitem_get_draw_transform(item->item_b, &transform_b);
+		draw_transform.x.x =
+			(1.0f - t) * transform_a.x.x + t * transform_b.x.x;
+		draw_transform.x.y =
+			(1.0f - t) * transform_a.x.y + t * transform_b.x.y;
+		draw_transform.x.z =
+			(1.0f - t) * transform_a.x.z + t * transform_b.x.z;
+		draw_transform.x.w =
+			(1.0f - t) * transform_a.x.w + t * transform_b.x.w;
+		draw_transform.y.x =
+			(1.0f - t) * transform_a.y.x + t * transform_b.y.x;
+		draw_transform.y.y =
+			(1.0f - t) * transform_a.y.y + t * transform_b.y.y;
+		draw_transform.y.z =
+			(1.0f - t) * transform_a.y.z + t * transform_b.y.z;
+		draw_transform.y.w =
+			(1.0f - t) * transform_a.y.w + t * transform_b.y.w;
+		draw_transform.z.x =
+			(1.0f - t) * transform_a.z.x + t * transform_b.z.x;
+		draw_transform.z.y =
+			(1.0f - t) * transform_a.z.y + t * transform_b.z.y;
+		draw_transform.z.z =
+			(1.0f - t) * transform_a.z.z + t * transform_b.z.z;
+		draw_transform.z.w =
+			(1.0f - t) * transform_a.z.w + t * transform_b.z.w;
+		draw_transform.t.x =
+			(1.0f - t) * transform_a.t.x + t * transform_b.t.x;
+		draw_transform.t.y =
+			(1.0f - t) * transform_a.t.y + t * transform_b.t.y;
+		draw_transform.t.z =
+			(1.0f - t) * transform_a.t.z + t * transform_b.t.z;
+		draw_transform.t.w =
+			(1.0f - t) * transform_a.t.w + t * transform_b.t.w;
 	}
 
 	gs_matrix_push();
@@ -1549,16 +1580,6 @@ struct move_item *match_item2(struct move_info *move,
 		struct move_item *check_item = move->items_a.array[i];
 		if (check_item->item_b)
 			continue;
-		if (obs_sceneitem_get_bounds_type(check_item->item_a) ==
-			    OBS_BOUNDS_NONE &&
-		    obs_sceneitem_get_bounds_type(scene_item) !=
-			    OBS_BOUNDS_NONE)
-			continue;
-		if (obs_sceneitem_get_bounds_type(check_item->item_a) !=
-			    OBS_BOUNDS_NONE &&
-		    obs_sceneitem_get_bounds_type(scene_item) ==
-			    OBS_BOUNDS_NONE)
-			continue;
 
 		obs_source_t *check_source =
 			obs_sceneitem_get_source(check_item->item_a);
@@ -1697,7 +1718,7 @@ struct move_item *match_item2(struct move_info *move,
 				obs_data_release(settings);
 			}
 		}
-		if (part_match) {
+		if (part_match && !check_item->move_scene) {
 			if (obs_source_is_scene(source)) {
 				obs_scene_t *scene =
 					obs_scene_from_source(source);
@@ -1707,6 +1728,7 @@ struct move_item *match_item2(struct move_info *move,
 				obs_scene_enum_items(scene, match_item3, &mi3);
 				if (mi3.matched) {
 					item = check_item;
+					item->move_scene = true;
 					*found_pos = i;
 					break;
 				}
@@ -1719,6 +1741,7 @@ struct move_item *match_item2(struct move_info *move,
 				obs_scene_enum_items(scene, match_item3, &mi3);
 				if (mi3.matched) {
 					item = check_item;
+					item->move_scene = true;
 					*found_pos = i;
 					break;
 				}
@@ -1732,6 +1755,7 @@ struct move_item *match_item2(struct move_info *move,
 				obs_scene_enum_items(scene, match_item3, &mi3);
 				if (mi3.matched) {
 					item = check_item;
+					item->move_scene = true;
 					*found_pos = i;
 					break;
 				}
@@ -1744,6 +1768,7 @@ struct move_item *match_item2(struct move_info *move,
 				obs_scene_enum_items(scene, match_item3, &mi3);
 				if (mi3.matched) {
 					item = check_item;
+					item->move_scene = true;
 					*found_pos = i;
 					break;
 				}
@@ -1786,25 +1811,31 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 	}
 	struct move_info *move = data;
 	size_t old_pos;
-	struct move_item *item = match_item2(move, scene_item, false, &old_pos);
-	if (!item) {
-		item = match_item2(move, scene_item, true, &old_pos);
-	}
-	if (item) {
-		move->matched_items++;
-		if (old_pos >= move->item_pos)
-			move->item_pos = old_pos + 1;
-	} else {
+	struct move_item *item;
+	if (obs_sceneitem_get_source(scene_item) == move->scene_source_a) {
 		item = create_move_item();
 		da_insert(move->items_a, move->item_pos, &item);
 		move->item_pos++;
+		item->move_scene = true;
+		move->matched_scene_a = true;
+	} else {
+		item = match_item2(move, scene_item, false, &old_pos);
+		if (!item) {
+			item = match_item2(move, scene_item, true, &old_pos);
+		}
+		if (item) {
+			move->matched_items++;
+			if (old_pos >= move->item_pos)
+				move->item_pos = old_pos + 1;
+		} else {
+			item = create_move_item();
+			da_insert(move->items_a, move->item_pos, &item);
+			move->item_pos++;
+		}
 	}
 	obs_sceneitem_addref(scene_item);
 	item->item_b = scene_item;
-	item->move_scene = obs_sceneitem_get_source(scene_item) ==
-			   move->scene_source_a;
-	if (item->move_scene)
-		move->matched_scene_a = true;
+
 	da_push_back(move->items_b, &item);
 	return true;
 }
