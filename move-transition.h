@@ -70,6 +70,7 @@
 #define S_TRANSFORM_TEXT "transform_text"
 #define S_SWITCH_PERCENTAGE "switch_percentage"
 #define S_CACHE_TRANSITIONS "cache_transitions"
+#define S_NESTED_SCENES "nested_scenes"
 #define S_START_TRIGGER "start_trigger"
 #define S_STOP_TRIGGER "stop_trigger"
 #define S_START_DELAY "start_delay"

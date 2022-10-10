@@ -39,6 +39,7 @@ struct move_info {
 	bool matched_scene_a;
 	bool matched_scene_b;
 	uint32_t item_order_switch_percentage;
+	bool nested_scenes;
 	bool cache_transitions;
 	DARRAY(obs_source_t *) transition_pool_move;
 	size_t transition_pool_move_index;
@@ -289,6 +290,7 @@ static void move_update(void *data, obs_data_t *settings)
 		(uint32_t)obs_data_get_int(settings, S_SWITCH_PERCENTAGE);
 	move->cache_transitions =
 		obs_data_get_bool(settings, S_CACHE_TRANSITIONS);
+	move->nested_scenes = obs_data_get_bool(settings, S_NESTED_SCENES);
 }
 
 void add_alignment(struct vec2 *v, uint32_t align, int32_t cx, int32_t cy)
@@ -1718,7 +1720,8 @@ struct move_item *match_item2(struct move_info *move,
 				obs_data_release(settings);
 			}
 		}
-		if (part_match && !check_item->move_scene) {
+		if (part_match && !check_item->move_scene &&
+		    move->nested_scenes) {
 			if (obs_source_is_scene(source)) {
 				obs_scene_t *scene =
 					obs_scene_from_source(source);
@@ -2506,6 +2509,8 @@ static obs_properties_t *move_properties(void *data)
 
 	group = obs_properties_create();
 
+	obs_properties_add_bool(group, S_NESTED_SCENES,
+				obs_module_text("NestedScenes"));
 	obs_properties_add_bool(group, S_CACHE_TRANSITIONS,
 				obs_module_text("CacheTransitions"));
 
@@ -2633,6 +2638,7 @@ void move_defaults(obs_data_t *settings)
 	obs_data_set_default_double(settings, S_CURVE_IN, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_OUT, 0.0);
 	obs_data_set_default_int(settings, S_SWITCH_PERCENTAGE, 50);
+	obs_data_set_default_bool(settings, S_NESTED_SCENES, true);
 }
 
 static void move_start(void *data)
