@@ -12,6 +12,11 @@
 #define VOLUME_MAX 100.0
 #define VOLUME_STEP 1.0
 
+#define BALANCE_SETTING "source_balance"
+#define BALANCE_MIN 0.0
+#define BALANCE_MAX 100.0
+#define BALANCE_STEP 1.0
+
 struct move_value_info {
 	struct move_filter move_filter;
 
@@ -274,6 +279,12 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->int_from =
 				(long long)(obs_source_get_volume(source) *
 					    100.0f);
+		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) ==
+			   0) {
+			move_value->int_from =
+				(long long)(obs_source_get_balance_value(
+						    source) *
+					    100.0f);
 		} else {
 			move_value->int_from =
 				obs_data_get_int(ss, move_value->setting_name);
@@ -292,7 +303,12 @@ void move_value_start(struct move_value_info *move_value)
 	} else if (move_value->value_type == MOVE_VALUE_FLOAT) {
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			move_value->double_from =
-				obs_source_get_volume(source) * 100.0f;
+				(double)obs_source_get_volume(source) * 100.0;
+		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) ==
+			   0) {
+			move_value->double_from =
+				(double)obs_source_get_balance_value(source) *
+				100.0;
 		} else {
 			move_value->double_from = obs_data_get_double(
 				ss, move_value->setting_name);
@@ -383,6 +399,15 @@ void move_value_start(struct move_value_info *move_value)
 					    100.0f);
 			move_value->double_from =
 				(double)obs_source_get_volume(source) * 100.0;
+		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) ==
+			   0) {
+			move_value->int_from =
+				(long long)(obs_source_get_balance_value(
+						    source) *
+					    100.0f);
+			move_value->double_from =
+				(double)obs_source_get_balance_value(source) *
+				100.0;
 		} else {
 			move_value->int_from =
 				obs_data_get_int(ss, move_value->setting_name);
@@ -612,6 +637,15 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property,
 	if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 		const double value =
 			(double)obs_source_get_volume(source) * 100.0;
+		obs_data_set_double(settings, S_SETTING_FLOAT, value);
+		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+		obs_data_release(settings);
+		return true;
+	}
+	if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
+		const double value =
+			(double)obs_source_get_balance_value(source) * 100.0;
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
@@ -868,9 +902,12 @@ bool move_value_filter_changed(void *data, obs_properties_t *props,
 		return refresh;
 
 	if (obs_source_get_type(source) == OBS_SOURCE_TYPE_INPUT &&
-	    (obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO))
+	    (obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO)) {
 		obs_property_list_add_string(
 			p, obs_module_text("Setting.Volume"), VOLUME_SETTING);
+		obs_property_list_add_string(
+			p, obs_module_text("Setting.Balance"), BALANCE_SETTING);
+	}
 
 	obs_properties_t *sps = obs_source_properties(source);
 	copy_properties(sps, g, s, settings, p);
@@ -998,6 +1035,52 @@ bool move_value_setting_changed(void *data, obs_properties_t *props,
 				obs_data_set_double(
 					settings, S_SETTING_FLOAT_MAX,
 					obs_source_get_volume(source) * 100.0);
+			}
+		}
+		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+		return true;
+	}
+	if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
+		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(prop_float, BALANCE_MIN,
+						      BALANCE_MAX,
+						      BALANCE_STEP);
+			obs_property_float_set_suffix(prop_float, "%");
+			if (refresh)
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT,
+					(double)obs_source_get_balance_value(
+						source) *
+						100.0);
+		} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			obs_property_set_visible(prop_float, true);
+			obs_property_float_set_limits(prop_float, -BALANCE_MAX,
+						      BALANCE_MAX,
+						      BALANCE_STEP);
+			obs_property_float_set_suffix(prop_float, "%");
+		} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+			obs_property_set_visible(prop_float_min, true);
+			obs_property_set_visible(prop_float_max, true);
+			obs_property_float_set_limits(prop_float_min,
+						      BALANCE_MIN, BALANCE_MAX,
+						      BALANCE_STEP);
+			obs_property_float_set_limits(prop_float_max,
+						      BALANCE_MIN, BALANCE_MAX,
+						      BALANCE_STEP);
+			obs_property_float_set_suffix(prop_float_min, "%");
+			obs_property_float_set_suffix(prop_float_max, "%");
+			if (refresh) {
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT_MIN,
+					(double)obs_source_get_balance_value(
+						source) *
+						100.0);
+				obs_data_set_double(
+					settings, S_SETTING_FLOAT_MAX,
+					(double)obs_source_get_balance_value(
+						source) *
+						100.0);
 			}
 		}
 		obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
@@ -1469,6 +1552,11 @@ void move_value_tick(void *data, float seconds)
 			obs_source_set_volume(source,
 					      (float)value_int / 100.0f);
 			update = false;
+		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) ==
+			   0) {
+			obs_source_set_balance_value(source,
+						     (float)value_int / 100.0f);
+			update = false;
 		} else {
 			obs_data_set_int(ss, move_value->setting_name,
 					 value_int);
@@ -1480,6 +1568,11 @@ void move_value_tick(void *data, float seconds)
 		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			obs_source_set_volume(source,
 					      (float)(value_double / 100.0));
+			update = false;
+		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) ==
+			   0) {
+			obs_source_set_balance_value(
+				source, (float)(value_double / 100.0));
 			update = false;
 		} else {
 			obs_data_set_double(ss, move_value->setting_name,
@@ -1570,6 +1663,11 @@ void move_value_tick(void *data, float seconds)
 				obs_source_set_volume(source, (float)value_int /
 								      100.0f);
 				update = false;
+			} else if (strcmp(move_value->setting_name,
+					  BALANCE_SETTING) == 0) {
+				obs_source_set_balance_value(
+					source, (float)value_int / 100.0f);
+				update = false;
 			} else {
 				obs_data_set_int(ss, move_value->setting_name,
 						 value_int);
@@ -1581,6 +1679,11 @@ void move_value_tick(void *data, float seconds)
 			if (strcmp(move_value->setting_name, VOLUME_SETTING) ==
 			    0) {
 				obs_source_set_volume(
+					source, (float)value_double / 100.0f);
+				update = false;
+			} else if (strcmp(move_value->setting_name,
+					  BALANCE_SETTING) == 0) {
+				obs_source_set_balance_value(
 					source, (float)value_double / 100.0f);
 				update = false;
 			} else {
