@@ -14,6 +14,7 @@ struct directshow_property {
 	long int_from;
 	long int_to;
 	long flags;
+	bool move_enabled;
 };
 
 struct move_directshow_info {
@@ -156,28 +157,39 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 				snprintf(number, 4, "%i", i);
 				std::string prop_id = "camera_control_";
 				prop_id += number;
+				std::string prop_enabled = prop_id;
+				prop_enabled += "_enabled";
 				if (m ==
 				    move_directshow->camControlProps->end()) {
 					struct directshow_property p;
 					p.int_from = val;
-					if (settings)
+					if (settings) {
 						p.int_to =
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-					else
+						p.move_enabled = obs_data_get_bool(
+							settings,
+							prop_enabled.c_str());
+					} else {
 						p.int_to = val;
-
+					}
 					move_directshow->camControlProps
 						->emplace(i, p);
 				} else {
 					if (overwrite)
 						m->second.int_from = val;
-					if (settings)
+					if (settings) {
 						m->second.int_to =
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
+						m->second.move_enabled =
+							obs_data_get_bool(
+								settings,
+								prop_enabled
+									.c_str());
+					}
 				}
 			} else if (m !=
 				   move_directshow->camControlProps->end()) {
@@ -196,17 +208,22 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 				snprintf(number, 4, "%i", i);
 				std::string prop_id = "video_proc_amp_";
 				prop_id += number;
-
+				std::string prop_enabled = prop_id;
+				prop_enabled += "_enabled";
 				if (m == move_directshow->procAmpProps->end()) {
 					struct directshow_property p;
 					p.int_from = val;
-					if (settings)
+					if (settings) {
 						p.int_to =
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-					else
+						p.move_enabled = obs_data_get_bool(
+							settings,
+							prop_enabled.c_str());
+					} else {
 						p.int_to = val;
+					}
 
 					move_directshow->procAmpProps->emplace(
 						i, p);
@@ -214,11 +231,17 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 				} else {
 					if (overwrite)
 						m->second.int_from = val;
-					if (settings)
+					if (settings) {
 						m->second.int_to =
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
+						m->second.move_enabled =
+							obs_data_get_bool(
+								settings,
+								prop_enabled
+									.c_str());
+					}
 				}
 			} else if (m != move_directshow->procAmpProps->end()) {
 				move_directshow->procAmpProps->erase(m);
@@ -510,10 +533,19 @@ static bool device_modified(void *priv, obs_properties_t *props,
 							p, min, max, delta);
 					}
 				} else {
+					std::string prop_enabled = prop_id;
+					prop_enabled += "_enabled";
+					obs_properties_t *prop_group =
+						obs_properties_create();
 					obs_properties_add_int_slider(
+						prop_group, prop_id.c_str(),
+						name.c_str(), min, max, delta);
+					obs_properties_add_group(
 						camcontrolGroup,
-						prop_id.c_str(), name.c_str(),
-						min, max, delta);
+						prop_enabled.c_str(),
+						name.c_str(),
+						OBS_GROUP_CHECKABLE,
+						prop_group);
 				}
 			}
 		}
@@ -571,9 +603,20 @@ static bool device_modified(void *priv, obs_properties_t *props,
 							p, min, max, delta);
 					}
 				} else {
+					std::string prop_enabled = prop_id;
+					prop_enabled += "_enabled";
+					obs_properties_t *prop_group =
+						obs_properties_create();
 					obs_properties_add_int_slider(
-						procAmpGroup, prop_id.c_str(),
+						prop_group, prop_id.c_str(),
 						name.c_str(), min, max, delta);
+
+					obs_properties_add_group(
+						procAmpGroup,
+						prop_enabled.c_str(),
+						name.c_str(),
+						OBS_GROUP_CHECKABLE,
+						prop_group);
 				}
 			}
 		}
@@ -833,6 +876,8 @@ void move_directshow_tick(void *data, float seconds)
 				     move_directshow->camControlProps->begin();
 			     prop != move_directshow->camControlProps->end();
 			     ++prop) {
+				if (!prop->second.move_enabled)
+					continue;
 				const long value_int =
 					(long long)((1.0f -
 						     t) * (float)(prop->second
@@ -852,6 +897,8 @@ void move_directshow_tick(void *data, float seconds)
 			for (auto prop = move_directshow->procAmpProps->begin();
 			     prop != move_directshow->procAmpProps->end();
 			     ++prop) {
+				if (!prop->second.move_enabled)
+					continue;
 				const long value_int =
 					(long long)((1.0f -
 						     t) * (float)(prop->second
@@ -877,6 +924,7 @@ void move_directshow_tick(void *data, float seconds)
 void move_directshow_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
+	obs_data_set_default_int(settings, S_DURATION, 300);
 }
 
 extern "C" {

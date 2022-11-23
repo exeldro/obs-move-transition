@@ -259,6 +259,7 @@ static obs_properties_t *move_action_properties(void *data)
 void move_action_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
+	obs_data_set_default_int(settings, S_DURATION, 300);
 }
 
 void move_action_tick(void *data, float seconds)
