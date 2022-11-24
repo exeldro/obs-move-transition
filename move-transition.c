@@ -809,6 +809,16 @@ obs_source_t *get_transition(const char *transition_name, void *pool_data,
 	return transition;
 }
 
+float rot_diff(float rot_a, float rot_b)
+{
+	float diff = rot_b - rot_a;
+	while (diff < -180.0f)
+		diff += 360.0f;
+	while (diff > 180.0f)
+		diff -= 360.0f;
+	return diff;
+}
+
 bool render2_item(struct move_info *move, struct move_item *item)
 {
 	obs_sceneitem_t *scene_item = NULL;
@@ -1153,12 +1163,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	matrix4_translate3f(&draw_transform, &draw_transform, -origin.x,
 			    -origin.y, 0.0f);
 	float rot;
+	float rd = 0.0f;
 	if (item->item_a && item->item_b) {
 		float rot_a = obs_sceneitem_get_rot(item->item_a);
 		float rot_b = obs_sceneitem_get_rot(item->item_b);
-		rot = (1.0f - t) * rot_a + t * rot_b;
+		rd = rot_diff(rot_a, rot_b);
+		rot = rot_a + t * rd;
 	} else if (item->move_scene) {
-		rot = obs_sceneitem_get_rot(scene_item);
+		rd = rot_diff(0.0f, obs_sceneitem_get_rot(scene_item));
+		rot = rd;
 		if (item->item_a) {
 			rot *= (1.0f - t);
 		} else if (item->item_b) {
@@ -1332,7 +1345,12 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			gs_texrender_end(item->item_render);
 		}
 	}
-	if (item->item_a && item->item_b) {
+	if (item->item_a && item->item_b &&
+	    (fabs((double)rd) <= 90.0 ||
+	     (obs_sceneitem_get_bounds_type(item->item_a) == OBS_BOUNDS_NONE &&
+	      obs_sceneitem_get_bounds_type(item->item_b) != OBS_BOUNDS_NONE) ||
+	     (obs_sceneitem_get_bounds_type(item->item_a) != OBS_BOUNDS_NONE &&
+	      obs_sceneitem_get_bounds_type(item->item_b) == OBS_BOUNDS_NONE))) {
 		struct matrix4 transform_a;
 		obs_sceneitem_get_draw_transform(item->item_a, &transform_a);
 		struct matrix4 transform_b;
