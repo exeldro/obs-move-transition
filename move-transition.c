@@ -1640,6 +1640,52 @@ struct move_item *match_item2(struct move_info *move,
 				size_t len_b = strlen(name_b);
 				if (!len_a || !len_b)
 					continue;
+				const char *id_a =
+					obs_source_get_unversioned_id(
+						check_source);
+				const char *id_b =
+					obs_source_get_unversioned_id(source);
+				const char *clone_a = NULL;
+				const char *clone_b = NULL;
+				if (strcmp(id_a, "source-clone") == 0) {
+					obs_data_t *s = obs_source_get_settings(
+						check_source);
+					clone_a =
+						obs_data_get_string(s, "clone");
+					obs_data_release(s);
+				} else if (strcmp(id_a,
+						  "streamfx-source-mirror") ==
+					   0) {
+					obs_data_t *s = obs_source_get_settings(
+						check_source);
+					clone_a = obs_data_get_string(
+						s, "Source.Mirror.Source");
+					obs_data_release(s);
+				}
+
+				if (strcmp(id_b, "source-clone") == 0) {
+					obs_data_t *s =
+						obs_source_get_settings(source);
+					clone_b =
+						obs_data_get_string(s, "clone");
+					obs_data_release(s);
+				} else if (strcmp(id_b,
+						  "streamfx-source-mirror") ==
+					   0) {
+					obs_data_t *s = obs_source_get_settings(
+						check_source);
+					clone_b = obs_data_get_string(
+						s, "Source.Mirror.Source");
+					obs_data_release(s);
+				}
+				if ((clone_a && clone_b &&
+				     strcmp(clone_a, clone_b) == 0) ||
+				    (clone_a && strcmp(clone_a, name_b) == 0) ||
+				    (clone_b && strcmp(clone_b, name_a) == 0)) {
+					item = check_item;
+					*found_pos = i;
+					break;
+				}
 				if (len_a > len_b) {
 					if (move->last_word_match) {
 						char *last_space =
