@@ -296,6 +296,8 @@ static const char *move_directshow_get_name(void *type_data)
 
 long rand_between(long a, long b)
 {
+	if (a == b)
+		return a;
 	return b > a ? a + rand() % (b - a) : b + rand() % (a - b);
 }
 
@@ -322,6 +324,28 @@ void move_directshow_start(void *data)
 								      &flags);
 			if (hr == S_OK) {
 				move_directshow->int_from = val;
+				if (move_directshow->move_value_type ==
+				    MOVE_VALUE_TYPE_SETTING_ADD) {
+					move_directshow->int_to =
+						move_directshow->int_from +
+						move_directshow->int_value;
+					long min, max, delta, default_val, caps;
+					hr = move_directshow->camControl
+						     ->GetRange(i, &min, &max,
+								&delta,
+								&default_val,
+								&caps);
+					if (hr == S_OK) {
+						if (move_directshow->int_to <
+						    min)
+							move_directshow->int_to =
+								min;
+						if (move_directshow->int_to >
+						    max)
+							move_directshow->int_to =
+								max;
+					}
+				}
 			}
 		} else if (move_directshow->procAmp &&
 			   1 == sscanf(move_directshow->single_setting_name,
@@ -331,6 +355,26 @@ void move_directshow_start(void *data)
 				move_directshow->procAmp->Get(i, &val, &flags);
 			if (hr == S_OK) {
 				move_directshow->int_from = val;
+				if (move_directshow->move_value_type ==
+				    MOVE_VALUE_TYPE_SETTING_ADD) {
+					move_directshow->int_to =
+						move_directshow->int_from +
+						move_directshow->int_value;
+					long min, max, delta, default_val, caps;
+					hr = move_directshow->procAmp->GetRange(
+						i, &min, &max, &delta,
+						&default_val, &caps);
+					if (hr == S_OK) {
+						if (move_directshow->int_to <
+						    min)
+							move_directshow->int_to =
+								min;
+						if (move_directshow->int_to >
+						    max)
+							move_directshow->int_to =
+								max;
+					}
+				}
 			}
 		}
 		pthread_mutex_unlock(&move_directshow->mutex);
@@ -339,11 +383,8 @@ void move_directshow_start(void *data)
 			move_directshow->int_to =
 				rand_between(move_directshow->int_min,
 					     move_directshow->int_max);
-		} else if (move_directshow->move_value_type ==
+		} else if (move_directshow->move_value_type !=
 			   MOVE_VALUE_TYPE_SETTING_ADD) {
-			move_directshow->int_to = move_directshow->int_from +
-						  move_directshow->int_value;
-		} else {
 			move_directshow->int_to = move_directshow->int_value;
 		}
 	}
@@ -409,6 +450,9 @@ static bool device_modified(void *priv, obs_properties_t *props,
 	}
 	auto single = obs_properties_get(props, S_SETTING_NAME);
 	auto single_int = obs_properties_get(props, S_SETTING_INT);
+	auto prop_int_min = obs_properties_get(props, S_SETTING_INT_MIN);
+	auto prop_int_max = obs_properties_get(props, S_SETTING_INT_MAX);
+
 	auto move_type = (int)obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
 	if (move_type != move_directshow->move_value_type) {
 		changed = true;
@@ -424,21 +468,43 @@ static bool device_modified(void *priv, obs_properties_t *props,
 			obs_property_set_visible(single_int, false);
 			changed = true;
 		}
+		if (obs_property_visible(prop_int_min)) {
+			obs_property_set_visible(prop_int_min, false);
+			changed = true;
+		}
+		if (obs_property_visible(prop_int_max)) {
+			obs_property_set_visible(prop_int_max, false);
+			changed = true;
+		}
 	} else {
 		if (!obs_property_visible(single)) {
 			obs_property_set_visible(single, true);
 			changed = true;
 		}
-		if (move_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+		if (move_type == MOVE_VALUE_TYPE_RANDOM) {
+			if (obs_property_visible(single_int)) {
+				obs_property_set_visible(single_int, false);
+				changed = true;
+			}
+			if (!obs_property_visible(prop_int_min)) {
+				obs_property_set_visible(prop_int_min, true);
+				changed = true;
+			}
+			if (!obs_property_visible(prop_int_max)) {
+				obs_property_set_visible(prop_int_max, true);
+				changed = true;
+			}
+		} else {
 			if (!obs_property_visible(single_int)) {
 				obs_property_set_visible(single_int, true);
 				changed = true;
 			}
-		} else if (move_type == MOVE_VALUE_TYPE_RANDOM) {
-
-		} else {
-			if (!obs_property_visible(single_int)) {
-				obs_property_set_visible(single_int, true);
+			if (obs_property_visible(prop_int_min)) {
+				obs_property_set_visible(prop_int_min, false);
+				changed = true;
+			}
+			if (obs_property_visible(prop_int_max)) {
+				obs_property_set_visible(prop_int_max, false);
 				changed = true;
 			}
 		}
@@ -571,6 +637,16 @@ static bool device_modified(void *priv, obs_properties_t *props,
 								p, min, max,
 								delta);
 						}
+						p = obs_properties_get(
+							props,
+							S_SETTING_INT_MIN);
+						obs_property_int_set_limits(
+							p, min, max, delta);
+						p = obs_properties_get(
+							props,
+							S_SETTING_INT_MAX);
+						obs_property_int_set_limits(
+							p, min, max, delta);
 					}
 				} else {
 					std::string prop_enabled = prop_id;
@@ -650,6 +726,16 @@ static bool device_modified(void *priv, obs_properties_t *props,
 								p, min, max,
 								delta);
 						}
+						p = obs_properties_get(
+							props,
+							S_SETTING_INT_MIN);
+						obs_property_int_set_limits(
+							p, min, max, delta);
+						p = obs_properties_get(
+							props,
+							S_SETTING_INT_MAX);
+						obs_property_int_set_limits(
+							p, min, max, delta);
 					}
 				} else {
 					std::string prop_enabled = prop_id;
@@ -714,6 +800,28 @@ bool move_directshow_get_value(obs_properties_t *props,
 					   prop_id.c_str()) == 0) {
 					obs_data_set_int(settings,
 							 S_SETTING_INT, val);
+					if (move_directshow->move_value_type ==
+					    MOVE_VALUE_TYPE_RANDOM) {
+						long min, max, delta,
+							default_val, caps;
+						hr = move_directshow->camControl
+							     ->GetRange(
+								     i, &min,
+								     &max,
+								     &delta,
+								     &default_val,
+								     &caps);
+						if (hr == S_OK) {
+							obs_data_set_int(
+								settings,
+								S_SETTING_INT_MIN,
+								min);
+							obs_data_set_int(
+								settings,
+								S_SETTING_INT_MAX,
+								max);
+						}
+					}
 				}
 				obs_data_set_int(settings, prop_id.c_str(),
 						 val);
@@ -735,6 +843,28 @@ bool move_directshow_get_value(obs_properties_t *props,
 					   prop_id.c_str()) == 0) {
 					obs_data_set_int(settings,
 							 S_SETTING_INT, val);
+					if (move_directshow->move_value_type ==
+					    MOVE_VALUE_TYPE_RANDOM) {
+						long min, max, delta,
+							default_val, caps;
+						hr = move_directshow->procAmp
+							     ->GetRange(
+								     i, &min,
+								     &max,
+								     &delta,
+								     &default_val,
+								     &caps);
+						if (hr == S_OK) {
+							obs_data_set_int(
+								settings,
+								S_SETTING_INT_MIN,
+								min);
+							obs_data_set_int(
+								settings,
+								S_SETTING_INT_MAX,
+								max);
+						}
+					}
 				}
 				obs_data_set_int(settings, prop_id.c_str(),
 						 val);
@@ -742,7 +872,7 @@ bool move_directshow_get_value(obs_properties_t *props,
 		}
 	}
 	pthread_mutex_unlock(&move_directshow->mutex);
-
+	move_directshow_update(data, settings);
 	obs_data_release(settings);
 	return true;
 }
@@ -826,7 +956,8 @@ static obs_properties_t *move_directshow_properties(void *data)
 		MOVE_VALUE_TYPE_SINGLE_SETTING);
 	obs_property_list_add_int(p, obs_module_text("MoveValueType.Settings"),
 				  MOVE_VALUE_TYPE_SETTINGS);
-	//obs_property_list_add_int(p, obs_module_text("MoveValueType.Random"), MOVE_VALUE_TYPE_RANDOM);
+	obs_property_list_add_int(p, obs_module_text("MoveValueType.Random"),
+				  MOVE_VALUE_TYPE_RANDOM);
 	obs_property_list_add_int(p,
 				  obs_module_text("MoveValueType.SettingAdd"),
 				  MOVE_VALUE_TYPE_SETTING_ADD);
@@ -840,8 +971,15 @@ static obs_properties_t *move_directshow_properties(void *data)
 
 	obs_property_set_modified_callback2(p, device_modified, data);
 
-	obs_properties_add_int_slider(ppts, S_SETTING_INT,
-				      obs_module_text("Value"), 0, 0, 1);
+	p = obs_properties_add_int_slider(ppts, S_SETTING_INT,
+					  obs_module_text("Value"), 0, 0, 1);
+	obs_property_set_visible(p, false);
+	p = obs_properties_add_int_slider(ppts, S_SETTING_INT_MIN,
+					  obs_module_text("MinValue"), 0, 0, 1);
+	obs_property_set_visible(p, false);
+	p = obs_properties_add_int_slider(ppts, S_SETTING_INT_MAX,
+					  obs_module_text("MaxValue"), 0, 0, 1);
+	obs_property_set_visible(p, false);
 
 	obs_properties_add_group(ppts, "camcontrol_group",
 				 obs_module_text("CameraControl"),

@@ -179,6 +179,8 @@ void move_values_load_properties(struct move_value_info *move_value,
 
 long long rand_between(long long a, long long b)
 {
+	if(a == b)
+		return a;
 	return b > a ? a + rand() % (b - a) : b + rand() % (a - b);
 }
 
