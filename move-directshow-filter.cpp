@@ -30,6 +30,8 @@ struct move_directshow_info {
 	long int_to;
 	long int_value;
 	long int_from;
+	long int_min;
+	long int_max;
 
 	std::map<long, struct directshow_property> *camControlProps;
 	std::map<long, struct directshow_property> *procAmpProps;
@@ -265,10 +267,15 @@ void move_directshow_update(void *data, obs_data_t *settings)
 	}
 	move_directshow->move_value_type =
 		(int)obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
-	if (move_directshow->move_value_type ==
-	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
-		move_directshow->int_to =
+	if (move_directshow->move_value_type == MOVE_VALUE_TYPE_SETTINGS) {
+		LoadProperties(move_directshow, settings, false);
+	} else {
+		move_directshow->int_value =
 			(long)obs_data_get_int(settings, S_SETTING_INT);
+		move_directshow->int_min =
+			(long)obs_data_get_int(settings, S_SETTING_INT_MIN);
+		move_directshow->int_max =
+			(long)obs_data_get_int(settings, S_SETTING_INT_MAX);
 		auto single_setting_name =
 			obs_data_get_string(settings, S_SETTING_NAME);
 		if (!move_directshow->single_setting_name ||
@@ -278,8 +285,6 @@ void move_directshow_update(void *data, obs_data_t *settings)
 			move_directshow->single_setting_name =
 				bstrdup(single_setting_name);
 		}
-	} else {
-		LoadProperties(move_directshow, settings, false);
 	}
 }
 
@@ -287,6 +292,11 @@ static const char *move_directshow_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
 	return obs_module_text("MoveDirectshowFilter");
+}
+
+long rand_between(long a, long b)
+{
+	return b > a ? a + rand() % (b - a) : b + rand() % (a - b);
 }
 
 void move_directshow_start(void *data)
@@ -299,35 +309,43 @@ void move_directshow_start(void *data)
 	if (move_directshow->move_filter.reverse)
 		return;
 
-	if (move_directshow->move_value_type ==
-	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
-		if (move_directshow->single_setting_name) {
-			long i;
-			pthread_mutex_lock(&move_directshow->mutex);
-			if (move_directshow->camControl &&
-			    1 == sscanf(move_directshow->single_setting_name,
-					"camera_control_%i", &i)) {
-				long val, flags;
-				HRESULT hr = move_directshow->camControl->Get(
-					i, &val, &flags);
-				if (hr == S_OK) {
-					move_directshow->int_from = val;
-				}
-			} else if (move_directshow->procAmp &&
-				   1 == sscanf(move_directshow
-						       ->single_setting_name,
-					       "video_proc_amp_%i", &i)) {
-				long val, flags;
-				HRESULT hr = move_directshow->procAmp->Get(
-					i, &val, &flags);
-				if (hr == S_OK) {
-					move_directshow->int_from = val;
-				}
-			}
-			pthread_mutex_unlock(&move_directshow->mutex);
-		}
-	} else {
+	if (move_directshow->move_value_type == MOVE_VALUE_TYPE_SETTINGS) {
 		LoadProperties(move_directshow, nullptr, true);
+	} else if (move_directshow->single_setting_name) {
+		long i;
+		pthread_mutex_lock(&move_directshow->mutex);
+		if (move_directshow->camControl &&
+		    1 == sscanf(move_directshow->single_setting_name,
+				"camera_control_%i", &i)) {
+			long val, flags;
+			HRESULT hr = move_directshow->camControl->Get(i, &val,
+								      &flags);
+			if (hr == S_OK) {
+				move_directshow->int_from = val;
+			}
+		} else if (move_directshow->procAmp &&
+			   1 == sscanf(move_directshow->single_setting_name,
+				       "video_proc_amp_%i", &i)) {
+			long val, flags;
+			HRESULT hr =
+				move_directshow->procAmp->Get(i, &val, &flags);
+			if (hr == S_OK) {
+				move_directshow->int_from = val;
+			}
+		}
+		pthread_mutex_unlock(&move_directshow->mutex);
+		if (move_directshow->move_value_type ==
+		    MOVE_VALUE_TYPE_RANDOM) {
+			move_directshow->int_to =
+				rand_between(move_directshow->int_min,
+					     move_directshow->int_max);
+		} else if (move_directshow->move_value_type ==
+			   MOVE_VALUE_TYPE_SETTING_ADD) {
+			move_directshow->int_to = move_directshow->int_from +
+						  move_directshow->int_value;
+		} else {
+			move_directshow->int_to = move_directshow->int_value;
+		}
 	}
 }
 
@@ -391,15 +409,38 @@ static bool device_modified(void *priv, obs_properties_t *props,
 	}
 	auto single = obs_properties_get(props, S_SETTING_NAME);
 	auto single_int = obs_properties_get(props, S_SETTING_INT);
-	if (obs_data_get_int(settings, S_MOVE_VALUE_TYPE) ==
-	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
+	auto move_type = (int)obs_data_get_int(settings, S_MOVE_VALUE_TYPE);
+	if (move_type != move_directshow->move_value_type) {
+		changed = true;
+		move_directshow->move_value_type = move_type;
+	}
+	if (move_type == MOVE_VALUE_TYPE_SETTINGS) {
+		if (obs_property_visible(single)) {
+			obs_property_set_visible(single, false);
+			changed = true;
+		}
+		single = nullptr;
+		if (obs_property_visible(single_int)) {
+			obs_property_set_visible(single_int, false);
+			changed = true;
+		}
+	} else {
 		if (!obs_property_visible(single)) {
 			obs_property_set_visible(single, true);
 			changed = true;
 		}
-		if (!obs_property_visible(single_int)) {
-			obs_property_set_visible(single_int, true);
-			changed = true;
+		if (move_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+			if (!obs_property_visible(single_int)) {
+				obs_property_set_visible(single_int, true);
+				changed = true;
+			}
+		} else if (move_type == MOVE_VALUE_TYPE_RANDOM) {
+
+		} else {
+			if (!obs_property_visible(single_int)) {
+				obs_property_set_visible(single_int, true);
+				changed = true;
+			}
 		}
 		auto p = obs_properties_get(props, "camcontrol_group");
 		if (p && obs_property_visible(p)) {
@@ -409,16 +450,6 @@ static bool device_modified(void *priv, obs_properties_t *props,
 		p = obs_properties_get(props, "procamp_group");
 		if (p && obs_property_visible(p)) {
 			obs_property_set_visible(p, false);
-			changed = true;
-		}
-	} else {
-		if (obs_property_visible(single)) {
-			obs_property_set_visible(single, false);
-			changed = true;
-		}
-		single = nullptr;
-		if (obs_property_visible(single_int)) {
-			obs_property_set_visible(single_int, false);
 			changed = true;
 		}
 	}
@@ -529,8 +560,17 @@ static bool device_modified(void *priv, obs_properties_t *props,
 						   prop_id.c_str()) == 0) {
 						auto p = obs_properties_get(
 							props, S_SETTING_INT);
-						obs_property_int_set_limits(
-							p, min, max, delta);
+						if (move_type ==
+						    MOVE_VALUE_TYPE_SETTING_ADD) {
+							obs_property_int_set_limits(
+								p, -(max - min),
+								max - min,
+								delta);
+						} else {
+							obs_property_int_set_limits(
+								p, min, max,
+								delta);
+						}
 					}
 				} else {
 					std::string prop_enabled = prop_id;
@@ -599,8 +639,17 @@ static bool device_modified(void *priv, obs_properties_t *props,
 						   prop_id.c_str()) == 0) {
 						auto p = obs_properties_get(
 							props, S_SETTING_INT);
-						obs_property_int_set_limits(
-							p, min, max, delta);
+						if (move_type ==
+						    MOVE_VALUE_TYPE_SETTING_ADD) {
+							obs_property_int_set_limits(
+								p, -(max - min),
+								max - min,
+								delta);
+						} else {
+							obs_property_int_set_limits(
+								p, min, max,
+								delta);
+						}
 					}
 				} else {
 					std::string prop_enabled = prop_id;
@@ -777,6 +826,10 @@ static obs_properties_t *move_directshow_properties(void *data)
 		MOVE_VALUE_TYPE_SINGLE_SETTING);
 	obs_property_list_add_int(p, obs_module_text("MoveValueType.Settings"),
 				  MOVE_VALUE_TYPE_SETTINGS);
+	//obs_property_list_add_int(p, obs_module_text("MoveValueType.Random"), MOVE_VALUE_TYPE_RANDOM);
+	obs_property_list_add_int(p,
+				  obs_module_text("MoveValueType.SettingAdd"),
+				  MOVE_VALUE_TYPE_SETTING_ADD);
 
 	obs_property_set_modified_callback2(p, device_modified, data);
 
@@ -839,38 +892,7 @@ void move_directshow_tick(void *data, float seconds)
 		return;
 
 	pthread_mutex_lock(&move_directshow->mutex);
-	if (move_directshow->move_value_type ==
-	    MOVE_VALUE_TYPE_SINGLE_SETTING) {
-		if (move_directshow->single_setting_name) {
-			const long value_int =
-				(long long)((1.0f - t) * (float)move_directshow
-								 ->int_from +
-					    t * (float)move_directshow->int_to);
-			long i;
-			if (move_directshow->camControl &&
-			    1 == sscanf(move_directshow->single_setting_name,
-					"camera_control_%i", &i)) {
-				long val, flags;
-				HRESULT hr = move_directshow->camControl->Get(
-					i, &val, &flags);
-				if (hr == S_OK && val != value_int) {
-					move_directshow->camControl->Set(
-						i, value_int, flags);
-				}
-			} else if (move_directshow->procAmp &&
-				   1 == sscanf(move_directshow
-						       ->single_setting_name,
-					       "video_proc_amp_%i", &i)) {
-				long val, flags;
-				HRESULT hr = move_directshow->procAmp->Get(
-					i, &val, &flags);
-				if (hr == S_OK && val != value_int) {
-					move_directshow->procAmp->Set(
-						i, value_int, flags);
-				}
-			}
-		}
-	} else {
+	if (move_directshow->move_value_type == MOVE_VALUE_TYPE_SETTINGS) {
 		if (move_directshow->camControl) {
 			for (auto prop =
 				     move_directshow->camControlProps->begin();
@@ -912,6 +934,33 @@ void move_directshow_tick(void *data, float seconds)
 					move_directshow->procAmp->Set(
 						prop->first, value_int, flags);
 				}
+			}
+		}
+	} else if (move_directshow->single_setting_name) {
+		const long value_int =
+			(long long)((1.0f - t) *
+					    (float)move_directshow->int_from +
+				    t * (float)move_directshow->int_to);
+		long i;
+		if (move_directshow->camControl &&
+		    1 == sscanf(move_directshow->single_setting_name,
+				"camera_control_%i", &i)) {
+			long val, flags;
+			HRESULT hr = move_directshow->camControl->Get(i, &val,
+								      &flags);
+			if (hr == S_OK && val != value_int) {
+				move_directshow->camControl->Set(i, value_int,
+								 flags);
+			}
+		} else if (move_directshow->procAmp &&
+			   1 == sscanf(move_directshow->single_setting_name,
+				       "video_proc_amp_%i", &i)) {
+			long val, flags;
+			HRESULT hr =
+				move_directshow->procAmp->Get(i, &val, &flags);
+			if (hr == S_OK && val != value_int) {
+				move_directshow->procAmp->Set(i, value_int,
+							      flags);
 			}
 		}
 	}
