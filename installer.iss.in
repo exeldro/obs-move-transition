@@ -124,3 +124,14 @@ begin
     Exec(ExpandConstant('{tmp}\msvc-redist-helper.exe'), '2019', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
+
+/////////////////////////////////////////////////////////////////////
+function NextButtonClick(PageId: Integer): Boolean;
+begin
+    Result := True;
+    if (PageId = wpSelectDir) and not FileExists(ExpandConstant('{app}\bin\64bit\obs64.exe')) then begin
+        MsgBox('OBS Studio (bin\64bit\obs64.exe) does not seem to be installed in that folder.  Please select the correct folder.', mbError, MB_OK);
+        Result := False;
+        exit;
+    end;
+end;
