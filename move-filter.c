@@ -362,11 +362,6 @@ bool move_filter_tick(struct move_filter *move_filter, float seconds, float *tp)
 	if (!move_filter->moving || !enabled)
 		return false;
 
-	if (!move_filter->duration) {
-		move_filter->moving = false;
-		return false;
-	}
-
 	move_filter->running_duration += seconds;
 	if (move_filter->running_duration * 1000.0f <
 	    (move_filter->reverse ? move_filter->end_delay
@@ -377,6 +372,10 @@ bool move_filter_tick(struct move_filter *move_filter, float seconds, float *tp)
 	    (float)(move_filter->start_delay + move_filter->duration +
 		    move_filter->end_delay)) {
 		move_filter->moving = false;
+	}
+	if (!move_filter->duration) {
+		*tp = 1.0f;
+		return true;
 	}
 	float t = (move_filter->running_duration * 1000.0f -
 		   (float)(move_filter->reverse ? move_filter->end_delay
@@ -424,7 +423,7 @@ void move_filter_properties(struct move_filter *move_filter,
 
 	obs_properties_t *duration = obs_properties_create();
 
-	p = obs_properties_add_int(duration, S_DURATION, "", 10, 10000000, 100);
+	p = obs_properties_add_int(duration, S_DURATION, "", 0, 10000000, 100);
 	obs_property_int_set_suffix(p, "ms");
 
 	p = obs_properties_add_group(ppts, S_CUSTOM_DURATION,
