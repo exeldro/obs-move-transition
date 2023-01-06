@@ -1353,8 +1353,23 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	      obs_sceneitem_get_bounds_type(item->item_b) == OBS_BOUNDS_NONE))) {
 		struct matrix4 transform_a;
 		obs_sceneitem_get_draw_transform(item->item_a, &transform_a);
+		if (isnan(transform_a.x.x) || isinf(transform_a.x.x)) {
+			obs_sceneitem_set_rot(
+				item->item_a,
+				obs_sceneitem_get_rot(item->item_a));
+			obs_sceneitem_get_draw_transform(item->item_a,
+							 &transform_a);
+		}
 		struct matrix4 transform_b;
 		obs_sceneitem_get_draw_transform(item->item_b, &transform_b);
+		if (isnan(transform_b.x.x) || isinf(transform_b.x.x)) {
+			obs_sceneitem_set_rot(
+				item->item_b,
+				obs_sceneitem_get_rot(item->item_b));
+			obs_sceneitem_get_draw_transform(item->item_b,
+							 &transform_b);
+		}
+
 		draw_transform.x.x =
 			(1.0f - t) * transform_a.x.x + t * transform_b.x.x;
 		draw_transform.x.y =
@@ -2717,18 +2732,20 @@ static void move_stop(void *data)
 	clear_items(move, false);
 }
 
-struct obs_source_info move_transition = {.id = "move_transition",
-					  .type = OBS_SOURCE_TYPE_TRANSITION,
-					  .get_name = move_get_name,
-					  .create = move_create,
-					  .destroy = move_destroy,
-					  .update = move_update,
-					  .video_render = move_video_render,
-					  .audio_render = move_audio_render,
-					  .get_properties = move_properties,
-					  .get_defaults = move_defaults,
-					  .transition_start = move_start,
-					  .transition_stop = move_stop};
+struct obs_source_info move_transition = {
+	.id = "move_transition",
+	.type = OBS_SOURCE_TYPE_TRANSITION,
+	.get_name = move_get_name,
+	.create = move_create,
+	.destroy = move_destroy,
+	.update = move_update,
+	.video_render = move_video_render,
+	.audio_render = move_audio_render,
+	.get_properties = move_properties,
+	.get_defaults = move_defaults,
+	.transition_start = move_start,
+	.transition_stop = move_stop,
+};
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_AUTHOR("Exeldro");
