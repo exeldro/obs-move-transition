@@ -256,7 +256,6 @@ void move_filter_init(struct move_filter *move_filter, obs_source_t *source,
 void move_filter_destroy(struct move_filter *move_filter);
 void move_filter_update(struct move_filter *move_filter, obs_data_t *settings);
 void move_filter_start(struct move_filter *move_filter);
-void move_filter_start_hotkey(struct move_filter *move_filter);
 bool move_filter_start_internal(struct move_filter *move_filter);
 void move_filter_stop(struct move_filter *move_filter);
 void move_filter_ended(struct move_filter *move_filter);

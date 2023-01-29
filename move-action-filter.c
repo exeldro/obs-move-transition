@@ -52,36 +52,10 @@ bool move_action_load_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 	return true;
 }
 
-void move_action_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
-			     bool pressed)
-{
-	if (!pressed)
-		return;
-	struct move_action_info *move_action = data;
-
-	move_filter_start_hotkey(&move_action->move_filter);
-
-	UNUSED_PARAMETER(id);
-	UNUSED_PARAMETER(hotkey);
-}
-
-
 void move_action_update(void *data, obs_data_t *settings)
 {
 	struct move_action_info *move_action = data;
 		move_filter_update(&move_action->move_filter, settings);
-	obs_source_t *parent =
-		obs_filter_get_parent(move_action->move_filter.source);
-	if (parent &&
-	    move_action->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID &&
-	    move_action->move_filter.filter_name) {
-		move_action->move_filter.move_start_hotkey =
-			obs_hotkey_register_source(
-				parent, move_action->move_filter.filter_name,
-				move_action->move_filter.filter_name,
-				move_action_start_hotkey, data);
-	}
 	bool changed = false;
 
 	move_action->frontend_action =
@@ -473,20 +447,6 @@ void move_action_defaults(obs_data_t *settings)
 void move_action_tick(void *data, float seconds)
 {
 	struct move_action_info *move_action = data;
-	if (move_action->move_filter.filter_name &&
-	    move_action->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_action->move_filter.source);
-		if (parent)
-			move_action->move_filter.move_start_hotkey =
-				obs_hotkey_register_source(
-					parent,
-					move_action->move_filter.filter_name,
-					move_action->move_filter.filter_name,
-					move_action_start_hotkey, data);
-	}
-
 	float t;
 	if (!move_filter_tick(&move_action->move_filter, seconds, &t))
 		return;

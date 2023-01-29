@@ -396,18 +396,6 @@ bool move_source_start_button(obs_properties_t *props, obs_property_t *property,
 	return false;
 }
 
-void move_source_start_hotkey(void *data, obs_hotkey_id id,
-			      obs_hotkey_t *hotkey, bool pressed)
-{
-	if (!pressed)
-		return;
-	struct move_source_info *move_source = data;
-	move_filter_start_hotkey(&move_source->move_filter);
-
-	UNUSED_PARAMETER(id);
-	UNUSED_PARAMETER(hotkey);
-}
-
 void move_source_stop(struct move_source_info *move_source)
 {
 	move_filter_stop(&move_source->move_filter);
@@ -595,15 +583,6 @@ void move_source_update(void *data, obs_data_t *settings)
 		move_source_source_changed(move_source, source_name);
 	}
 	move_filter_update(&move_source->move_filter, settings);
-	if (parent && move_source->move_filter.filter_name &&
-	    move_source->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID) {
-		move_source->move_filter.move_start_hotkey =
-			obs_hotkey_register_source(
-				parent, move_source->move_filter.filter_name,
-				move_source->move_filter.filter_name,
-				move_source_start_hotkey, data);
-	}
 
 	move_source->change_visibility =
 		obs_data_get_int(settings, S_CHANGE_VISIBILITY);

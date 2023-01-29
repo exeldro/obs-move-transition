@@ -433,19 +433,6 @@ bool move_value_start_button(obs_properties_t *props, obs_property_t *property,
 	return false;
 }
 
-void move_value_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
-			     bool pressed)
-{
-	if (!pressed)
-		return;
-	struct move_value_info *move_value = data;
-
-	move_filter_start_hotkey(&move_value->move_filter);
-
-	UNUSED_PARAMETER(id);
-	UNUSED_PARAMETER(hotkey);
-}
-
 void move_value_update(void *data, obs_data_t *settings)
 {
 	struct move_value_info *move_value = data;
@@ -453,16 +440,6 @@ void move_value_update(void *data, obs_data_t *settings)
 	move_filter_update(&move_value->move_filter, settings);
 	obs_source_t *parent =
 		obs_filter_get_parent(move_value->move_filter.source);
-	if (parent &&
-	    move_value->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID &&
-	    move_value->move_filter.filter_name) {
-		move_value->move_filter.move_start_hotkey =
-			obs_hotkey_register_source(
-				parent, move_value->move_filter.filter_name,
-				move_value->move_filter.filter_name,
-				move_value_start_hotkey, data);
-	}
 
 	const char *setting_filter_name =
 		obs_data_get_string(settings, S_FILTER);
@@ -1460,20 +1437,6 @@ void move_value_stop(struct move_value_info *move_value)
 void move_value_tick(void *data, float seconds)
 {
 	struct move_value_info *move_value = data;
-
-	if (move_value->move_filter.filter_name &&
-	    move_value->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID) {
-		obs_source_t *parent =
-			obs_filter_get_parent(move_value->move_filter.source);
-		if (parent)
-			move_value->move_filter.move_start_hotkey =
-				obs_hotkey_register_source(
-					parent,
-					move_value->move_filter.filter_name,
-					move_value->move_filter.filter_name,
-					move_value_start_hotkey, data);
-	}
 	float t;
 	if (!move_filter_tick(&move_value->move_filter, seconds, &t))
 		return;

@@ -31,67 +31,15 @@ void move_filter_destroy(struct move_filter *move_filter)
 		obs_hotkey_unregister(move_filter->move_start_hotkey);
 }
 
-void move_filter_update(struct move_filter *move_filter, obs_data_t *settings)
+void move_filter_start_hotkey(void *data, obs_hotkey_id id,
+			      obs_hotkey_t *hotkey, bool pressed)
 {
-	const char *filter_name = obs_source_get_name(move_filter->source);
-	if (!move_filter->filter_name ||
-	    strcmp(move_filter->filter_name, filter_name) != 0) {
-		bfree(move_filter->filter_name);
-		move_filter->filter_name = bstrdup(filter_name);
-		if (move_filter->move_start_hotkey != OBS_INVALID_HOTKEY_ID) {
-			obs_hotkey_unregister(move_filter->move_start_hotkey);
-			move_filter->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
-		}
-	}
-	move_filter->enabled_match_moving =
-		obs_data_get_bool(settings, S_ENABLED_MATCH_MOVING);
-	if (move_filter->enabled_match_moving && !move_filter->moving &&
-	    obs_source_enabled(move_filter->source))
-		move_filter_start(move_filter);
+	UNUSED_PARAMETER(id);
+	UNUSED_PARAMETER(hotkey);
+	if (!pressed)
+		return;
+	struct move_filter *move_filter = data;
 
-	move_filter->custom_duration =
-		obs_data_get_bool(settings, S_CUSTOM_DURATION);
-	if (move_filter->custom_duration)
-		move_filter->duration = obs_data_get_int(settings, S_DURATION);
-	move_filter->start_delay = obs_data_get_int(settings, S_START_DELAY);
-	move_filter->end_delay = obs_data_get_int(settings, S_END_DELAY);
-
-	move_filter->easing = obs_data_get_int(settings, S_EASING_MATCH);
-	move_filter->easing_function =
-		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
-
-	move_filter->start_trigger =
-		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
-	move_filter->stop_trigger =
-		(uint32_t)obs_data_get_int(settings, S_STOP_TRIGGER);
-
-	const char *simultaneous_move_name =
-		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
-	if (!move_filter->simultaneous_move_name ||
-	    strcmp(move_filter->simultaneous_move_name,
-		   simultaneous_move_name) != 0) {
-		bfree(move_filter->simultaneous_move_name);
-		move_filter->simultaneous_move_name =
-			bstrdup(simultaneous_move_name);
-	}
-
-	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
-	if (!move_filter->next_move_name ||
-	    strcmp(move_filter->next_move_name, next_move_name) != 0) {
-		bfree(move_filter->next_move_name);
-		move_filter->next_move_name = bstrdup(next_move_name);
-		move_filter->reverse = false;
-	}
-	move_filter->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
-}
-
-void move_filter_start(struct move_filter *move_filter)
-{
-	move_filter->move_start(move_filter);
-}
-
-void move_filter_start_hotkey(struct move_filter *move_filter)
-{
 	if (move_filter->next_move_on != NEXT_MOVE_ON_HOTKEY ||
 	    !move_filter->next_move_name ||
 	    !strlen(move_filter->next_move_name)) {
@@ -193,6 +141,73 @@ void move_filter_start_hotkey(struct move_filter *move_filter)
 		move_filter_start(obs_obj_get_data(filter));
 	}
 	da_push_back(move_filter->filters_done, &filter);
+}
+
+void move_filter_update(struct move_filter *move_filter, obs_data_t *settings)
+{
+	const char *filter_name = obs_source_get_name(move_filter->source);
+	if (!move_filter->filter_name ||
+	    strcmp(move_filter->filter_name, filter_name) != 0) {
+		bfree(move_filter->filter_name);
+		move_filter->filter_name = bstrdup(filter_name);
+		if (move_filter->move_start_hotkey != OBS_INVALID_HOTKEY_ID) {
+			obs_hotkey_unregister(move_filter->move_start_hotkey);
+			move_filter->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+		}
+	}
+	obs_source_t *parent = obs_filter_get_parent(move_filter->source);
+	if (parent && move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID &&
+	    move_filter->filter_name) {
+		move_filter->move_start_hotkey = obs_hotkey_register_source(
+			parent, move_filter->filter_name,
+			move_filter->filter_name, move_filter_start_hotkey,
+			move_filter);
+	}
+	move_filter->enabled_match_moving =
+		obs_data_get_bool(settings, S_ENABLED_MATCH_MOVING);
+	if (move_filter->enabled_match_moving && !move_filter->moving &&
+	    obs_source_enabled(move_filter->source))
+		move_filter_start(move_filter);
+
+	move_filter->custom_duration =
+		obs_data_get_bool(settings, S_CUSTOM_DURATION);
+	if (move_filter->custom_duration)
+		move_filter->duration = obs_data_get_int(settings, S_DURATION);
+	move_filter->start_delay = obs_data_get_int(settings, S_START_DELAY);
+	move_filter->end_delay = obs_data_get_int(settings, S_END_DELAY);
+
+	move_filter->easing = obs_data_get_int(settings, S_EASING_MATCH);
+	move_filter->easing_function =
+		obs_data_get_int(settings, S_EASING_FUNCTION_MATCH);
+
+	move_filter->start_trigger =
+		(uint32_t)obs_data_get_int(settings, S_START_TRIGGER);
+	move_filter->stop_trigger =
+		(uint32_t)obs_data_get_int(settings, S_STOP_TRIGGER);
+
+	const char *simultaneous_move_name =
+		obs_data_get_string(settings, S_SIMULTANEOUS_MOVE);
+	if (!move_filter->simultaneous_move_name ||
+	    strcmp(move_filter->simultaneous_move_name,
+		   simultaneous_move_name) != 0) {
+		bfree(move_filter->simultaneous_move_name);
+		move_filter->simultaneous_move_name =
+			bstrdup(simultaneous_move_name);
+	}
+
+	const char *next_move_name = obs_data_get_string(settings, S_NEXT_MOVE);
+	if (!move_filter->next_move_name ||
+	    strcmp(move_filter->next_move_name, next_move_name) != 0) {
+		bfree(move_filter->next_move_name);
+		move_filter->next_move_name = bstrdup(next_move_name);
+		move_filter->reverse = false;
+	}
+	move_filter->next_move_on = obs_data_get_int(settings, S_NEXT_MOVE_ON);
+}
+
+void move_filter_start(struct move_filter *move_filter)
+{
+	move_filter->move_start(move_filter);
 }
 
 bool move_filter_start_internal(struct move_filter *move_filter)
@@ -338,6 +353,18 @@ float get_eased(float f, long long easing, long long easing_function);
 
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *tp)
 {
+	if (move_filter->filter_name &&
+	    move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID) {
+		obs_source_t *parent =
+			obs_filter_get_parent(move_filter->source);
+		if (parent)
+			move_filter->move_start_hotkey =
+				obs_hotkey_register_source(
+					parent, move_filter->filter_name,
+					move_filter->filter_name,
+					move_filter_start_hotkey, move_filter);
+	}
+
 	const bool enabled = obs_source_enabled(move_filter->source);
 	if (move_filter->enabled != enabled) {
 		if (enabled &&
