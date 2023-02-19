@@ -669,7 +669,7 @@ void update_transform_text(struct move_source_info *move_source,
 		    OBS_BOUNDS_NONE) {
 			snprintf(
 				transform_text, 500,
-				"pos: x%c%.1f y%c%.1f rot:%c%.1f scale: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
+				"pos: x%c%.3f y%c%.3f rot:%c%.1f scale: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 				obs_data_get_char(pos, "x_sign"),
 				obs_data_get_double(pos, "x"),
 				obs_data_get_char(pos, "y_sign"),
@@ -691,7 +691,7 @@ void update_transform_text(struct move_source_info *move_source,
 		} else {
 			snprintf(
 				transform_text, 500,
-				"pos: x%c%.1f y%c%.1f rot:%c%.1f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
+				"pos: x%c%.3f y%c%.3f rot:%c%.1f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 				obs_data_get_char(pos, "x_sign"),
 				obs_data_get_double(pos, "x"),
 				obs_data_get_char(pos, "y_sign"),
@@ -714,7 +714,7 @@ void update_transform_text(struct move_source_info *move_source,
 	} else {
 		snprintf(
 			transform_text, 500,
-			"pos: x%c%.1f y%c%.1f rot:%c%.1f scale: x%c%.3f y%c%.3f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
+			"pos: x%c%.3f y%c%.3f rot:%c%.1f scale: x%c%.3f y%c%.3f bounds: x%c%.3f y%c%.3f crop: l%c%d t%c%d r%c%d b%c%d",
 			obs_data_get_char(pos, "x_sign"),
 			obs_data_get_double(pos, "x"),
 			obs_data_get_char(pos, "y_sign"),
