@@ -179,7 +179,7 @@ void move_values_load_properties(struct move_value_info *move_value,
 
 long long rand_between(long long a, long long b)
 {
-	if(a == b)
+	if (a == b)
 		return a;
 	return b > a ? a + rand() % (b - a) : b + rand() % (a - b);
 }
@@ -1401,15 +1401,15 @@ static obs_properties_t *move_value_properties(void *data)
 
 	return ppts;
 }
+
 void move_value_defaults(obs_data_t *settings)
 {
+	move_filter_defaults(settings);
 	obs_data_set_default_bool(settings, S_SINGLE_SETTING, true);
 	obs_data_set_default_bool(settings, S_CUSTOM_DURATION, true);
-	obs_data_set_default_int(settings, S_DURATION, 300);
 	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
 				 EASING_CUBIC);
-	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
 }
 
 void move_value_video_render(void *data, gs_effect_t *effect)

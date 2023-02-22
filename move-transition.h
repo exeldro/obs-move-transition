@@ -262,7 +262,7 @@ void move_filter_ended(struct move_filter *move_filter);
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *t);
 void move_filter_properties(struct move_filter *move_filter,
 			    obs_properties_t *ppts);
-
+void move_filter_defaults(obs_data_t *settings);
 void move_filter_activate(void *data);
 void move_filter_deactivate(void *data);
 void move_filter_show(void *data);

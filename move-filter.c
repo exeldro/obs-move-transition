@@ -547,6 +547,13 @@ void move_filter_properties(struct move_filter *move_filter,
 				OBS_TEXT_INFO);
 }
 
+void move_filter_defaults(obs_data_t *settings)
+{
+	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
+	obs_data_set_default_int(settings, S_DURATION, 300);
+	obs_data_set_default_double(settings, S_EASING_FACTOR_MATCH, 100.0);
+}
+
 void move_filter_activate(void *data)
 {
 	struct move_filter *move_filter = data;

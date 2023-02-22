@@ -438,11 +438,6 @@ static obs_properties_t *move_action_properties(void *data)
 	return ppts;
 }
 
-void move_action_defaults(obs_data_t *settings)
-{
-	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
-	obs_data_set_default_int(settings, S_DURATION, 300);
-}
 
 void move_action_tick(void *data, float seconds)
 {
@@ -589,7 +584,7 @@ struct obs_source_info move_action_filter = {
 	.create = move_action_create,
 	.destroy = move_action_destroy,
 	.get_properties = move_action_properties,
-	.get_defaults = move_action_defaults,
+	.get_defaults = move_filter_defaults,
 	.update = move_action_update,
 	.load = move_action_update,
 	.video_tick = move_action_tick,
@@ -607,7 +602,7 @@ struct obs_source_info move_audio_action_filter = {
 	.create = move_action_create,
 	.destroy = move_action_destroy,
 	.get_properties = move_action_properties,
-	.get_defaults = move_action_defaults,
+	.get_defaults = move_filter_defaults,
 	.update = move_action_update,
 	.load = move_action_update,
 	.video_tick = move_action_tick,

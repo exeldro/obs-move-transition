@@ -575,8 +575,6 @@ void move_source_update(void *data, obs_data_t *settings)
 {
 	struct move_source_info *move_source = data;
 
-	obs_source_t *parent =
-		obs_filter_get_parent(move_source->move_filter.source);
 	const char *source_name = obs_data_get_string(settings, S_SOURCE);
 	if (!move_source->source_name ||
 	    strcmp(move_source->source_name, source_name) != 0) {
@@ -1455,14 +1453,13 @@ static obs_properties_t *move_source_properties(void *data)
 
 void move_source_defaults(obs_data_t *settings)
 {
+	move_filter_defaults(settings);
 	obs_data_set_default_bool(settings, S_CUSTOM_DURATION, true);
 	obs_data_set_default_bool(settings, S_TRANSFORM, true);
-	obs_data_set_default_int(settings, S_DURATION, 300);
 	obs_data_set_default_int(settings, S_EASING_MATCH, EASE_IN_OUT);
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_MATCH,
 				 EASING_CUBIC);
 	obs_data_set_default_double(settings, S_CURVE_MATCH, 0.0);
-	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
 }
 
 void move_source_video_render(void *data, gs_effect_t *effect)

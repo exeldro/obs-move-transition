@@ -91,6 +91,7 @@ void audio_move_source_destroy(void *data, calldata_t *call_data)
 	struct audio_move_info *audio_move = data;
 	audio_move->target_source = NULL;
 	audio_move->sceneitem = NULL;
+	bfree(audio_move);
 }
 
 void audio_move_item_remove(void *data, calldata_t *call_data);

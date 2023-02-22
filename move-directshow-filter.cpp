@@ -1108,11 +1108,6 @@ void move_directshow_tick(void *data, float seconds)
 		move_filter_ended(&move_directshow->move_filter);
 }
 
-void move_directshow_defaults(obs_data_t *settings)
-{
-	obs_data_set_default_bool(settings, S_ENABLED_MATCH_MOVING, true);
-	obs_data_set_default_int(settings, S_DURATION, 300);
-}
 
 extern "C" {
 void SetMoveDirectShowFilter(struct obs_source_info *info)
@@ -1127,7 +1122,7 @@ void SetMoveDirectShowFilter(struct obs_source_info *info)
 	info->video_tick = move_directshow_tick;
 	info->update = move_directshow_update;
 	info->load = move_directshow_update;
-	info->get_defaults = move_directshow_defaults;
+	info->get_defaults = move_filter_defaults;
 	info->activate = move_filter_activate;
 	info->deactivate = move_filter_deactivate;
 	info->show = move_filter_show;
