@@ -8,6 +8,7 @@
 struct move_info {
 	obs_source_t *source;
 	bool start_init;
+	bool first_frame;
 	DARRAY(struct move_item *) items_a;
 	DARRAY(struct move_item *) items_b;
 	float t;
@@ -973,7 +974,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		ot = 0.0f;
 
 	if (item->item_a && item->item_b && item->transition &&
-	    !move->start_init) {
+	    !move->first_frame) {
 		uint32_t width_a = obs_source_get_width(
 			obs_sceneitem_get_source(item->item_a));
 		uint32_t width_b = obs_source_get_width(
@@ -1332,7 +1333,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			if (item->transition) {
 				obs_transition_set_manual_time(item->transition,
 							       ot);
-				if (!move->start_init) {
+				if (!move->first_frame) {
 					obs_source_video_render(
 						item->transition);
 				} else if (item->item_a) {
@@ -1496,7 +1497,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	} else {
 		if (item->transition) {
 			obs_transition_set_manual_time(item->transition, ot);
-			if (!move->start_init) {
+			if (!move->first_frame) {
 				obs_source_video_render(item->transition);
 			} else if (item->item_a) {
 				obs_source_video_render(source);
@@ -1952,6 +1953,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	move->t = obs_transition_get_time(move->source);
 
 	if (move->start_init) {
+		move->start_init = false;
+		move->first_frame = true;
 		obs_source_t *old_scene_a = move->scene_source_a;
 		move->scene_source_a = obs_transition_get_source(
 			move->source, OBS_TRANSITION_SOURCE_A);
@@ -2451,7 +2454,7 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		obs_transition_video_render_direct(move->source,
 						   OBS_TRANSITION_SOURCE_B);
 	}
-	move->start_init = false;
+	move->first_frame = false;
 
 	UNUSED_PARAMETER(effect);
 }
