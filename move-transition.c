@@ -69,11 +69,6 @@ struct move_item {
 	obs_scene_t *release_scene_b;
 };
 
-struct match_item3 {
-	obs_source_t *check_source;
-	bool matched;
-};
-
 static const struct {
 	enum gs_blend_type src_color;
 	enum gs_blend_type src_alpha;
@@ -1577,6 +1572,53 @@ bool same_transform_type(struct obs_transform_info *info_a,
 	       info_a->bounds_alignment == info_b->bounds_alignment;
 }
 
+struct move_item *match_item_by_override(struct move_info *move,
+					 obs_sceneitem_t *scene_item,
+					 size_t *found_pos)
+{
+	struct move_item *item = NULL;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	const char *name_b = obs_source_get_name(source);
+	obs_data_t *override_filter_b =
+		get_override_filter_settings(scene_item);
+	const char *override_name_b =
+		override_filter_b
+			? obs_data_get_string(override_filter_b, S_MATCH_SOURCE)
+			: NULL;
+	obs_data_release(override_filter_b);
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b)
+			continue;
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		const char *name_a = obs_source_get_name(check_source);
+		if (name_a && strlen(name_a) && override_name_b &&
+		    strcmp(name_a, override_name_b) == 0) {
+			item = check_item;
+			*found_pos = i;
+			break;
+		}
+		if (!name_b || !strlen(name_b))
+			continue;
+		obs_data_t *override_filter_a =
+			get_override_filter_settings(check_item->item_a);
+		if (override_filter_a) {
+			const char *override_name_a = obs_data_get_string(
+				override_filter_a, S_MATCH_SOURCE);
+			obs_data_release(override_filter_a);
+			if (strcmp(override_name_a, name_b) == 0) {
+				item = check_item;
+				*found_pos = i;
+				break;
+			}
+		}
+	}
+	return item;
+}
+
 bool is_number_match(const char c)
 {
 	if (c >= '0' && c <= '9')
@@ -1586,32 +1628,15 @@ bool is_number_match(const char c)
 	return false;
 }
 
-bool match_item3(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem, void *p)
-{
-	UNUSED_PARAMETER(obs_scene);
-	struct match_item3 *mi3 = p;
-	if (obs_sceneitem_get_source(sceneitem) == mi3->check_source) {
-		mi3->matched = true;
-		return false;
-	}
-	return true;
-}
-
-struct move_item *match_item2(struct move_info *move,
-			      obs_sceneitem_t *scene_item, bool part_match,
-			      size_t *found_pos)
+struct move_item *match_item_by_name(struct move_info *move,
+				     obs_sceneitem_t *scene_item,
+				     size_t *found_pos)
 {
 	struct move_item *item = NULL;
 	obs_source_t *source = obs_sceneitem_get_source(scene_item);
 	const char *name_b = obs_source_get_name(source);
-	obs_data_t *override_filter = get_override_filter_settings(scene_item);
-	const char *name_b2 =
-		override_filter
-			? obs_data_get_string(override_filter, S_MATCH_SOURCE)
-			: NULL;
-	if (override_filter)
-		obs_data_release(override_filter);
-
+	if (!name_b || !strlen(name_b))
+		return item;
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *check_item = move->items_a.array[i];
 		if (check_item->item_b)
@@ -1621,245 +1646,333 @@ struct move_item *match_item2(struct move_info *move,
 			obs_sceneitem_get_source(check_item->item_a);
 		if (!check_source)
 			continue;
-
 		if (check_source == source) {
 			item = check_item;
 			*found_pos = i;
 			break;
 		}
 		const char *name_a = obs_source_get_name(check_source);
-		if (name_a && name_b) {
-			if (strcmp(name_a, name_b) == 0) {
-				item = check_item;
-				*found_pos = i;
-				break;
-			}
-			if (name_b2 && strcmp(name_a, name_b2) == 0) {
-				item = check_item;
-				*found_pos = i;
-				break;
-			}
-			override_filter = get_override_filter_settings(
-				check_item->item_a);
-			if (override_filter) {
-				const char *name_a2 = obs_data_get_string(
-					override_filter, S_MATCH_SOURCE);
-				obs_data_release(override_filter);
-				if (strcmp(name_a2, name_b) == 0) {
-					item = check_item;
-					*found_pos = i;
-					break;
-				}
-			}
-			if (part_match) {
-				size_t len_a = strlen(name_a);
-				size_t len_b = strlen(name_b);
-				if (!len_a || !len_b)
-					continue;
-				const char *id_a =
-					obs_source_get_unversioned_id(
-						check_source);
-				const char *id_b =
-					obs_source_get_unversioned_id(source);
-				const char *clone_a = NULL;
-				const char *clone_b = NULL;
-				if (strcmp(id_a, "source-clone") == 0) {
-					obs_data_t *s = obs_source_get_settings(
-						check_source);
-					clone_a =
-						obs_data_get_string(s, "clone");
-					obs_data_release(s);
-				} else if (strcmp(id_a,
-						  "streamfx-source-mirror") ==
-					   0) {
-					obs_data_t *s = obs_source_get_settings(
-						check_source);
-					clone_a = obs_data_get_string(
-						s, "Source.Mirror.Source");
-					obs_data_release(s);
-				}
-
-				if (strcmp(id_b, "source-clone") == 0) {
-					obs_data_t *s =
-						obs_source_get_settings(source);
-					clone_b =
-						obs_data_get_string(s, "clone");
-					obs_data_release(s);
-				} else if (strcmp(id_b,
-						  "streamfx-source-mirror") ==
-					   0) {
-					obs_data_t *s = obs_source_get_settings(
-						check_source);
-					clone_b = obs_data_get_string(
-						s, "Source.Mirror.Source");
-					obs_data_release(s);
-				}
-				if ((clone_a && clone_b &&
-				     strcmp(clone_a, clone_b) == 0) ||
-				    (clone_a && strcmp(clone_a, name_b) == 0) ||
-				    (clone_b && strcmp(clone_b, name_a) == 0)) {
-					item = check_item;
-					*found_pos = i;
-					break;
-				}
-				if (len_a > len_b) {
-					if (move->last_word_match) {
-						char *last_space =
-							strrchr(name_b, ' ');
-						if (last_space &&
-						    last_space > name_b) {
-							len_b = last_space -
-								name_b;
-						}
-					}
-					while (len_b > 0 &&
-					       move->number_match &&
-					       is_number_match(
-						       name_b[len_b - 1]))
-						len_b--;
-					if (len_b > 0 && move->part_match) {
-						for (size_t pos = 0;
-						     pos <= len_a - len_b;
-						     pos++) {
-							if (memcmp(name_a + pos,
-								   name_b,
-								   len_b) ==
-							    0) {
-								item = check_item;
-								*found_pos = i;
-								break;
-							}
-						}
-						if (item)
-							break;
-					} else if (len_b > 0 &&
-						   memcmp(name_a, name_b,
-							  len_b) == 0) {
-						item = check_item;
-						*found_pos = i;
-						break;
-					}
-
-				} else {
-					if (move->last_word_match) {
-						char *last_space =
-							strrchr(name_a, ' ');
-						if (last_space &&
-						    last_space > name_a) {
-							len_a = last_space -
-								name_a;
-						}
-					}
-					while (len_a > 0 &&
-					       move->number_match &&
-					       is_number_match(
-						       name_a[len_a - 1]))
-						len_a--;
-					if (len_a > 0 && move->part_match) {
-						for (size_t pos = 0;
-						     pos <= len_b - len_a;
-						     pos++) {
-							if (memcmp(name_a,
-								   name_b + pos,
-								   len_a) ==
-							    0) {
-								item = check_item;
-								*found_pos = i;
-								break;
-							}
-						}
-						if (item)
-							break;
-					} else if (len_a > 0 &&
-						   memcmp(name_a, name_b,
-							  len_a) == 0) {
-						item = check_item;
-						*found_pos = i;
-						break;
-					}
-				}
-			}
-		} else if (!part_match) {
-			if (obs_source_get_type(check_source) ==
-			    obs_source_get_type(source)) {
-				obs_data_t *settings =
-					obs_source_get_settings(source);
-				obs_data_t *check_settings =
-					obs_source_get_settings(check_source);
-				if (settings && check_settings &&
-				    strcmp(obs_data_get_json(settings),
-					   obs_data_get_json(check_settings)) ==
-					    0) {
-					item = check_item;
-					*found_pos = i;
-					obs_data_release(check_settings);
-					obs_data_release(settings);
-					break;
-				}
-				obs_data_release(check_settings);
-				obs_data_release(settings);
-			}
+		if (!name_a)
+			continue;
+		if (strcmp(name_a, name_b) == 0) {
+			item = check_item;
+			*found_pos = i;
+			break;
 		}
-		if (part_match && !check_item->move_scene &&
-		    move->nested_scenes) {
-			if (obs_source_is_scene(source)) {
-				obs_scene_t *scene =
-					obs_scene_from_source(source);
-				struct match_item3 mi3;
-				mi3.check_source = check_source;
-				mi3.matched = false;
-				obs_scene_enum_items(scene, match_item3, &mi3);
-				if (mi3.matched) {
-					item = check_item;
-					item->move_scene = true;
-					*found_pos = i;
-					break;
-				}
-			} else if (obs_source_is_group(source)) {
-				obs_scene_t *scene =
-					obs_group_from_source(source);
-				struct match_item3 mi3;
-				mi3.check_source = check_source;
-				mi3.matched = false;
-				obs_scene_enum_items(scene, match_item3, &mi3);
-				if (mi3.matched) {
-					item = check_item;
-					item->move_scene = true;
-					*found_pos = i;
-					break;
+	}
+	return item;
+}
+
+struct move_item *match_item_by_type_and_settings(struct move_info *move,
+						  obs_sceneitem_t *scene_item,
+						  size_t *found_pos)
+{
+
+	struct move_item *item = NULL;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	if (obs_source_is_scene(source) || obs_source_is_group(source))
+		return item;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b)
+			continue;
+
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		if (obs_source_get_type(check_source) !=
+		    obs_source_get_type(source))
+			continue;
+
+		if (strcmp(obs_source_get_unversioned_id(check_source),
+			   obs_source_get_unversioned_id(source)) != 0)
+			continue;
+
+		obs_data_t *settings = obs_source_get_settings(source);
+		obs_data_t *check_settings =
+			obs_source_get_settings(check_source);
+		if (settings && check_settings &&
+		    strcmp(obs_data_get_json(settings),
+			   obs_data_get_json(check_settings)) == 0) {
+			item = check_item;
+			*found_pos = i;
+			obs_data_release(check_settings);
+			obs_data_release(settings);
+			break;
+		}
+		obs_data_release(check_settings);
+		obs_data_release(settings);
+	}
+	return item;
+}
+
+struct move_item *match_item_clone(struct move_info *move,
+				   obs_sceneitem_t *scene_item,
+				   size_t *found_pos)
+{
+	struct move_item *item = NULL;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	const char *name_b = obs_source_get_name(source);
+	if (!name_b || !strlen(name_b))
+		return item;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b)
+			continue;
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		const char *name_a = obs_source_get_name(check_source);
+		if (!name_a || !strlen(name_a))
+			continue;
+		const char *id_a = obs_source_get_unversioned_id(check_source);
+		const char *id_b = obs_source_get_unversioned_id(source);
+		const char *clone_a = NULL;
+		const char *clone_b = NULL;
+		if (strcmp(id_a, "source-clone") == 0) {
+			obs_data_t *s = obs_source_get_settings(check_source);
+			clone_a = obs_data_get_string(s, "clone");
+			obs_data_release(s);
+		} else if (strcmp(id_a, "streamfx-source-mirror") == 0) {
+			obs_data_t *s = obs_source_get_settings(check_source);
+			clone_a =
+				obs_data_get_string(s, "Source.Mirror.Source");
+			obs_data_release(s);
+		}
+
+		if (strcmp(id_b, "source-clone") == 0) {
+			obs_data_t *s = obs_source_get_settings(source);
+			clone_b = obs_data_get_string(s, "clone");
+			obs_data_release(s);
+		} else if (strcmp(id_b, "streamfx-source-mirror") == 0) {
+			obs_data_t *s = obs_source_get_settings(check_source);
+			clone_b =
+				obs_data_get_string(s, "Source.Mirror.Source");
+			obs_data_release(s);
+		}
+		if ((clone_a && clone_b && strcmp(clone_a, clone_b) == 0) ||
+		    (clone_a && strcmp(clone_a, name_b) == 0) ||
+		    (clone_b && strcmp(clone_b, name_a) == 0)) {
+			item = check_item;
+			*found_pos = i;
+			break;
+		}
+	}
+	return item;
+}
+
+struct move_item *match_item_name_part(struct move_info *move,
+				       obs_sceneitem_t *scene_item,
+				       size_t *found_pos)
+{
+	struct move_item *item = NULL;
+
+	if (!move->last_word_match && !move->number_match && !move->part_match)
+		return item;
+
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	const char *name_b = obs_source_get_name(source);
+	if (!name_b || !strlen(name_b))
+		return item;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b)
+			continue;
+
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		const char *name_a = obs_source_get_name(check_source);
+		if (!name_a)
+			continue;
+
+		size_t len_a = strlen(name_a);
+		size_t len_b = strlen(name_b);
+		if (!len_a || !len_b)
+			continue;
+
+		if (len_a > len_b) {
+			if (move->last_word_match) {
+				char *last_space = strrchr(name_b, ' ');
+				if (last_space && last_space > name_b) {
+					len_b = last_space - name_b;
 				}
 			}
-			if (obs_source_is_scene(check_source)) {
-				obs_scene_t *scene =
-					obs_scene_from_source(check_source);
-				struct match_item3 mi3;
-				mi3.check_source = source;
-				mi3.matched = false;
-				obs_scene_enum_items(scene, match_item3, &mi3);
-				if (mi3.matched) {
-					item = check_item;
-					item->move_scene = true;
-					*found_pos = i;
-					break;
+			while (len_b > 0 && move->number_match &&
+			       is_number_match(name_b[len_b - 1]))
+				len_b--;
+			if (len_b > 0 && move->part_match) {
+				for (size_t pos = 0; pos <= len_a - len_b;
+				     pos++) {
+					if (memcmp(name_a + pos, name_b,
+						   len_b) == 0) {
+						item = check_item;
+						*found_pos = i;
+						break;
+					}
 				}
-			} else if (obs_source_is_group(check_source)) {
-				obs_scene_t *scene =
-					obs_group_from_source(check_source);
-				struct match_item3 mi3;
-				mi3.check_source = source;
-				mi3.matched = false;
-				obs_scene_enum_items(scene, match_item3, &mi3);
-				if (mi3.matched) {
-					item = check_item;
-					item->move_scene = true;
-					*found_pos = i;
+				if (item)
 					break;
+			} else if (len_b > 0 &&
+				   memcmp(name_a, name_b, len_b) == 0) {
+				item = check_item;
+				*found_pos = i;
+				break;
+			}
+
+		} else {
+			if (move->last_word_match) {
+				char *last_space = strrchr(name_a, ' ');
+				if (last_space && last_space > name_a) {
+					len_a = last_space - name_a;
 				}
+			}
+			while (len_a > 0 && move->number_match &&
+			       is_number_match(name_a[len_a - 1]))
+				len_a--;
+			if (len_a > 0 && move->part_match) {
+				for (size_t pos = 0; pos <= len_b - len_a;
+				     pos++) {
+					if (memcmp(name_a, name_b + pos,
+						   len_a) == 0) {
+						item = check_item;
+						*found_pos = i;
+						break;
+					}
+				}
+				if (item)
+					break;
+			} else if (len_a > 0 &&
+				   memcmp(name_a, name_b, len_a) == 0) {
+				item = check_item;
+				*found_pos = i;
+				break;
 			}
 		}
 	}
 	return item;
 }
+
+struct match_item_nested_match {
+	obs_source_t *check_source;
+	bool matched;
+};
+
+bool match_item_nested_match(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem,
+			     void *p)
+{
+	UNUSED_PARAMETER(obs_scene);
+	struct match_item_nested_match *mi = p;
+	obs_source_t *source = obs_sceneitem_get_source(sceneitem);
+	if (!source)
+		return true;
+	if (source == mi->check_source) {
+		mi->matched = true;
+		return false;
+	}
+	const char *name_a = obs_source_get_name(mi->check_source);
+	const char *name_b = obs_source_get_name(source);
+	if (name_a && name_b && strlen(name_a) && strlen(name_b) &&
+	    strcmp(name_a, name_b) == 0) {
+		mi->matched = true;
+		return false;
+	}
+	return true;
+}
+
+struct move_item *match_item_nested(struct move_info *move,
+				    obs_sceneitem_t *scene_item,
+				    size_t *found_pos)
+{
+	struct move_item *item = NULL;
+	if (!move->nested_scenes)
+		return item;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b || check_item->move_scene)
+			continue;
+
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		if (obs_source_is_scene(source)) {
+			obs_scene_t *scene = obs_scene_from_source(source);
+			struct match_item_nested_match mi;
+			mi.check_source = check_source;
+			mi.matched = false;
+			obs_scene_enum_items(scene, match_item_nested_match,
+					     &mi);
+			if (mi.matched) {
+				item = check_item;
+				item->move_scene = true;
+				*found_pos = i;
+				break;
+			}
+		} else if (obs_source_is_group(source)) {
+			obs_scene_t *scene = obs_group_from_source(source);
+			struct match_item_nested_match mi;
+			mi.check_source = check_source;
+			mi.matched = false;
+			obs_scene_enum_items(scene, match_item_nested_match,
+					     &mi);
+			if (mi.matched) {
+				item = check_item;
+				item->move_scene = true;
+				*found_pos = i;
+				break;
+			}
+		}
+		if (obs_source_is_scene(check_source)) {
+			obs_scene_t *scene =
+				obs_scene_from_source(check_source);
+			struct match_item_nested_match mi;
+			mi.check_source = source;
+			mi.matched = false;
+			obs_scene_enum_items(scene, match_item_nested_match,
+					     &mi);
+			if (mi.matched) {
+				item = check_item;
+				item->move_scene = true;
+				*found_pos = i;
+				break;
+			}
+		} else if (obs_source_is_group(check_source)) {
+			obs_scene_t *scene =
+				obs_group_from_source(check_source);
+			struct match_item_nested_match mi;
+			mi.check_source = source;
+			mi.matched = false;
+			obs_scene_enum_items(scene, match_item_nested_match,
+					     &mi);
+			if (mi.matched) {
+				item = check_item;
+				item->move_scene = true;
+				*found_pos = i;
+				break;
+			}
+		}
+	}
+	return item;
+}
+
+typedef struct move_item *(*match_function)(struct move_info *move,
+					    obs_sceneitem_t *scene_item,
+					    size_t *found_pos);
+
+#define MATCH_FUNCTION_COUNT 6
+match_function match_functions[MATCH_FUNCTION_COUNT] = {
+	match_item_by_override,
+	match_item_by_name,
+	match_item_clone,
+	match_item_name_part,
+	match_item_by_type_and_settings,
+	match_item_nested};
 
 struct move_item *create_move_item()
 {
@@ -1893,7 +2006,7 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		return true;
 	}
 	struct move_info *move = data;
-	size_t old_pos;
+	size_t old_pos = 0;
 	struct move_item *item;
 	if (obs_sceneitem_get_source(scene_item) == move->scene_source_a) {
 		item = create_move_item();
@@ -1902,9 +2015,10 @@ bool match_item(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		item->move_scene = true;
 		move->matched_scene_a = true;
 	} else {
-		item = match_item2(move, scene_item, false, &old_pos);
-		if (!item) {
-			item = match_item2(move, scene_item, true, &old_pos);
+		for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
+			item = match_functions[i](move, scene_item, &old_pos);
+			if (item)
+				break;
 		}
 		if (item) {
 			move->matched_items++;
@@ -2003,12 +2117,13 @@ static void move_video_render(void *data, gs_effect_t *effect)
 				obs_source_get_name(move->scene_source_b));
 			obs_sceneitem_t *scene_item =
 				obs_scene_add(scene_b, move->scene_source_b);
-			size_t old_pos;
-			struct move_item *item =
-				match_item2(move, scene_item, false, &old_pos);
-			if (!item) {
-				item = match_item2(move, scene_item, true,
-						   &old_pos);
+			size_t old_pos = 0;
+			struct move_item *item = NULL;
+			for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
+				item = match_functions[i](move, scene_item,
+							  &old_pos);
+				if (item)
+					break;
 			}
 			if (item) {
 				move->matched_items++;
