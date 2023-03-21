@@ -559,7 +559,6 @@ void move_action_execute(void *data)
 						obs_sceneitem_set_visible(
 							item, false);
 				}
-				obs_sceneitem_release(item);
 			}
 			obs_source_release(scene_source);
 		}
