@@ -2,8 +2,10 @@
 
 Plugin for OBS Studio to move source to a new position during scene transition
 
-# Download
-https://obsproject.com/forum/resources/move-transition.913/
+# Installation
+Download from https://obsproject.com/forum/resources/move-transition.913/
+
+Or enter `flatpak install com.obsproject.Studio.Plugin.MoveTransition` on your terminal
 
 # Build
 1. In-tree build
