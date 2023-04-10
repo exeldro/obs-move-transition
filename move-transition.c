@@ -2886,6 +2886,9 @@ extern struct obs_source_info audio_move_filter;
 extern struct obs_source_info move_action_filter;
 extern struct obs_source_info move_audio_action_filter;
 #ifdef WIN32
+extern struct obs_source_info nvidia_move_filter;
+extern bool load_nvar(void);
+extern void unload_nvar(void);
 void SetMoveDirectShowFilter(struct obs_source_info *obs_source_info);
 #endif
 
@@ -2901,6 +2904,8 @@ bool obs_module_load(void)
 	obs_register_source(&move_action_filter);
 	obs_register_source(&move_audio_action_filter);
 #ifdef WIN32
+	if (load_nvar())
+		obs_register_source(&nvidia_move_filter);
 	struct obs_source_info move_directshow_filter = {0};
 	SetMoveDirectShowFilter(&move_directshow_filter);
 	obs_register_source(&move_directshow_filter);

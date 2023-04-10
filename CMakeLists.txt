@@ -52,7 +52,8 @@ if(OS_WINDOWS)
 	configure_file(${CMAKE_CURRENT_SOURCE_DIR}/resource.rc.in ${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.rc)
 	target_sources(${PROJECT_NAME} PRIVATE 
 		${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.rc
-		move-directshow-filter.cpp)
+		move-directshow-filter.cpp
+		nvidia-move-filter.c)
 	target_link_libraries(${PROJECT_NAME}
 		strmiids
 		w32-pthreads)
