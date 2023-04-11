@@ -68,6 +68,7 @@ struct nvidia_move_action {
 	uint32_t action;
 	obs_weak_source_t *target;
 	char *name; //scene item name or setting name
+	bool is_int;
 	uint32_t property;
 	float diff;
 	float factor;
@@ -193,6 +194,48 @@ static void nv_move_update(void *data, obs_data_t *settings)
 				    i);
 			action->property = (uint32_t)obs_data_get_int(
 				settings, name.array);
+		}
+		if (action->action == ACTION_MOVE_VALUE ||
+		    action->action == ACTION_ENABLE_FILTER) {
+			dstr_printf(&name, "action_%lld_source", i);
+			const char *source_name =
+				obs_data_get_string(settings, name.array);
+			obs_source_t *source =
+				obs_get_source_by_name(source_name);
+			if (source) {
+				dstr_printf(&name, "action_%lld_filter", i);
+				const char *filter_name = obs_data_get_string(
+					settings, name.array);
+				obs_source_t *f = obs_source_get_filter_by_name(
+					source, filter_name);
+				if (f ||
+				    action->action == ACTION_ENABLE_FILTER) {
+					obs_source_release(source);
+					source = f;
+				}
+				action->target =
+					obs_source_get_weak_source(source);
+
+				if (action->action == ACTION_MOVE_VALUE) {
+					dstr_printf(&name,
+						    "action_%lld_property", i);
+					action->name =
+						bstrdup(obs_data_get_string(
+							settings, name.array));
+
+					obs_properties_t *sp =
+						obs_source_properties(source);
+					obs_property_t *p = obs_properties_get(
+						sp, action->name);
+					action->is_int =
+						(obs_property_get_type(p) ==
+						 OBS_PROPERTY_INT);
+
+					obs_properties_destroy(sp);
+				}
+
+				obs_source_release(source);
+			}
 		}
 
 		dstr_printf(&name, "action_%lld_feature", i);
@@ -407,7 +450,7 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 	const char *action_prop = obs_property_name(property);
 	long long landmark = obs_data_get_int(settings, action_prop);
 	long long action_number = 0;
-	if (sscanf(action_prop, "action_%lld_action", &action_number) != 1 ||
+	if (sscanf(action_prop, "action_%lld_landmark", &action_number) != 1 ||
 	    !action_number)
 		return false;
 	struct dstr name = {0};
@@ -497,6 +540,8 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_sceneitem_property", action_number);
 	obs_property_t *sceneitem_property =
 		obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_property", action_number);
+	obs_property_t *p = obs_properties_get(props, name.array);
 	if (action == ACTION_MOVE_SOURCE) {
 		obs_property_set_visible(scene, true);
 		if (!obs_property_list_item_count(scene)) {
@@ -507,24 +552,28 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(source, false);
 		obs_property_set_visible(filter, false);
 		obs_property_set_visible(sceneitem_property, true);
+		obs_property_set_visible(p, false);
 	} else if (action == ACTION_MOVE_VALUE) {
 		obs_property_set_visible(scene, false);
 		obs_property_set_visible(sceneitem, false);
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
 		obs_property_set_visible(sceneitem_property, false);
+		obs_property_set_visible(p, true);
 	} else if (action == ACTION_ENABLE_FILTER) {
 		obs_property_set_visible(scene, false);
 		obs_property_set_visible(sceneitem, false);
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
 		obs_property_set_visible(sceneitem_property, false);
+		obs_property_set_visible(p, false);
 	} else if (action == ACTION_SOURCE_VISIBILITY) {
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(source, false);
 		obs_property_set_visible(filter, false);
 		obs_property_set_visible(sceneitem_property, false);
+		obs_property_set_visible(p, false);
 	}
 	if (obs_property_visible(scene) &&
 	    !obs_property_list_item_count(scene)) {
@@ -628,6 +677,59 @@ bool nv_move_sceneitem_property_changed(void *priv, obs_properties_t *props,
 	return true;
 }
 
+bool nv_move_filter_changed(void *priv, obs_properties_t *props,
+			    obs_property_t *property, obs_data_t *settings)
+{
+	const char *action_prop = obs_property_name(property);
+	const char *filter_name = obs_data_get_string(settings, action_prop);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_filter", &action_number) != 1 ||
+	    !action_number)
+		return false;
+
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_property", action_number);
+	obs_property_t *prop = obs_properties_get(props, name.array);
+	if (!prop)
+		return false;
+
+	obs_property_list_clear(prop);
+	obs_property_list_add_string(prop, "", "");
+
+	dstr_printf(&name, "action_%lld_source", action_number);
+	const char *source_name = obs_data_get_string(settings, name.array);
+	obs_source_t *source = obs_get_source_by_name(source_name);
+	if (!source)
+		return true;
+
+	obs_source_t *f = obs_source_get_filter_by_name(source, filter_name);
+	if (f) {
+		obs_source_release(source);
+		source = f;
+	}
+	obs_properties_t *sp = obs_source_properties(source);
+	obs_source_release(source);
+	if (!sp)
+		return true;
+	obs_property_t *p = obs_properties_first(sp);
+	for (; p != NULL; obs_property_next(&p)) {
+		if (!obs_property_visible(p))
+			continue;
+		const enum obs_property_type prop_type =
+			obs_property_get_type(p);
+		if (prop_type == OBS_PROPERTY_INT ||
+		    prop_type == OBS_PROPERTY_FLOAT) {
+			const char *n = obs_property_name(p);
+			const char *d = obs_property_description(p);
+			obs_property_list_add_string(prop, d, n);
+		}
+	}
+
+	obs_properties_destroy(sp);
+
+	return true;
+}
+
 bool nv_move_source_changed(void *priv, obs_properties_t *props,
 			    obs_property_t *property, obs_data_t *settings)
 {
@@ -653,6 +755,7 @@ bool nv_move_source_changed(void *priv, obs_properties_t *props,
 	obs_source_enum_filters(source, nv_move_add_filter, filter);
 
 	obs_source_release(source);
+	nv_move_filter_changed(priv, props, filter, settings);
 	return true;
 }
 
@@ -686,12 +789,8 @@ static obs_properties_t *nv_move_properties(void *data)
 					    OBS_COMBO_FORMAT_INT);
 		obs_property_list_add_int(p, obs_module_text("MoveSource"),
 					  ACTION_MOVE_SOURCE);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(p,
-						  obs_module_text("MoveValue"),
-						  ACTION_MOVE_VALUE),
-			true);
+		obs_property_list_add_int(p, obs_module_text("MoveValue"),
+					  ACTION_MOVE_VALUE);
 		obs_property_list_item_disable(
 			p,
 			obs_property_list_add_int(
@@ -726,10 +825,19 @@ static obs_properties_t *nv_move_properties(void *data)
 					    OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(p, nv_move_source_changed,
 						    data);
+
 		dstr_printf(&name, "action_%lld_filter", i);
 		p = obs_properties_add_list(group, name.array,
 					    obs_module_text("Filter"),
 					    OBS_COMBO_TYPE_EDITABLE,
+					    OBS_COMBO_FORMAT_STRING);
+		obs_property_set_modified_callback2(p, nv_move_filter_changed,
+						    data);
+
+		dstr_printf(&name, "action_%lld_property", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("Property"),
+					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_STRING);
 
 		dstr_printf(&name, "action_%lld_sceneitem_property", i);
@@ -737,6 +845,7 @@ static obs_properties_t *nv_move_properties(void *data)
 					    obs_module_text("Property"),
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
+
 		obs_property_list_item_disable(
 			p,
 			obs_property_list_add_int(p, obs_module_text("All"),
@@ -805,7 +914,7 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_bounding_box", i);
 		p = obs_properties_add_list(
 			group, name.array,
-			obs_module_text("BoundingBoxPeroperty"),
+			obs_module_text("BoundingBoxProperty"),
 			OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 		obs_property_list_add_int(p, obs_module_text("Left"),
 					  FEATURE_BOUNDINGBOX_LEFT);
@@ -1490,6 +1599,26 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 					filter, action);
 				obs_sceneitem_set_crop(item, &crop);
 			}
+		} else if (action->action == ACTION_MOVE_VALUE) {
+			obs_source_t *source =
+				obs_weak_source_get_source(action->target);
+			if (!source)
+				continue;
+			obs_data_t *d = obs_data_create();
+			if (action->is_int) {
+				obs_data_set_int(
+					d, action->name,
+					(long long)nv_move_action_get_float(
+						filter, action));
+			} else {
+				obs_data_set_double(
+					d, action->name,
+					(double)nv_move_action_get_float(
+						filter, action));
+			}
+			obs_source_update(source, d);
+			obs_data_release(d);
+			obs_source_release(source);
 		}
 	}
 
