@@ -61,6 +61,14 @@
 #define FEATURE_LANDMARK_DIFF 7
 #define FEATURE_LANDMARK_POS 8
 
+#define FEATURE_THRESHOLD_NONE 0
+#define FEATURE_THRESHOLD_ENABLE_OVER 1
+#define FEATURE_THRESHOLD_ENABLE_UNDER 2
+#define FEATURE_THRESHOLD_DISABLE_OVER 3
+#define FEATURE_THRESHOLD_DISABLE_UNDER 4
+#define FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER 5
+#define FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER 6
+
 bool nvar_loaded = false;
 bool nvar_new_sdk = false;
 
@@ -189,10 +197,14 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			dstr_printf(&name, "action_%lld_sceneitem_property", i);
 			action->property = (uint32_t)obs_data_get_int(
 				settings, name.array);
-		} else if (action->action == ACTION_SOURCE_VISIBILITY) {
-			dstr_printf(&name, "action_%lld_sceneitem_visibility",
-				    i);
+		} else if (action->action == ACTION_ENABLE_FILTER ||
+			   action->action == ACTION_SOURCE_VISIBILITY) {
+			dstr_printf(&name, "action_%lld_enable", i);
 			action->property = (uint32_t)obs_data_get_int(
+				settings, name.array);
+
+			dstr_printf(&name, "action_%lld_threshold", i);
+			action->threshold = (float)obs_data_get_double(
 				settings, name.array);
 		}
 		if (action->action == ACTION_MOVE_VALUE ||
@@ -266,11 +278,19 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		}
 		dstr_printf(&name, "action_%lld_factor", i);
 		obs_data_set_default_double(settings, name.array, 100.0f);
-		action->factor =
-			(float)obs_data_get_double(settings, name.array) /
-			100.0f;
-		dstr_printf(&name, "action_%lld_diff", i);
-		action->diff = (float)obs_data_get_double(settings, name.array);
+
+		if (action->action == ACTION_MOVE_SOURCE ||
+		    action->action == ACTION_MOVE_VALUE) {
+			action->factor = (float)obs_data_get_double(
+						 settings, name.array) /
+					 100.0f;
+			dstr_printf(&name, "action_%lld_diff", i);
+			action->diff = (float)obs_data_get_double(settings,
+								  name.array);
+		} else {
+			action->factor = 1.0f;
+			action->diff = 0.0f;
+		}
 	}
 	dstr_free(&name);
 
@@ -540,19 +560,34 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_sceneitem_property", action_number);
 	obs_property_t *sceneitem_property =
 		obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_enable", action_number);
+	obs_property_t *enable = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_threshold", action_number);
+	obs_property_t *threshold = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_property", action_number);
 	obs_property_t *p = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_factor", action_number);
+	obs_property_t *factor = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_diff", action_number);
+	obs_property_t *diff = obs_properties_get(props, name.array);
+
+	obs_property_set_visible(scene, false);
+	obs_property_set_visible(sceneitem, false);
+	obs_property_set_visible(source, false);
+	obs_property_set_visible(filter, false);
+	obs_property_set_visible(sceneitem_property, false);
+	obs_property_set_visible(enable, false);
+	obs_property_set_visible(threshold, false);
+	obs_property_set_visible(p, false);
+	obs_property_set_visible(factor, false);
+	obs_property_set_visible(diff, false);
+
 	if (action == ACTION_MOVE_SOURCE) {
 		obs_property_set_visible(scene, true);
-		if (!obs_property_list_item_count(scene)) {
-			obs_property_list_add_string(scene, "", "");
-			obs_enum_scenes(list_add_scene, scene);
-		}
 		obs_property_set_visible(sceneitem, true);
-		obs_property_set_visible(source, false);
-		obs_property_set_visible(filter, false);
 		obs_property_set_visible(sceneitem_property, true);
-		obs_property_set_visible(p, false);
+		obs_property_set_visible(factor, true);
+		obs_property_set_visible(diff, true);
 	} else {
 		dstr_printf(&name, "action_%lld_landmark", action_number);
 		obs_property_t *landmark =
@@ -578,26 +613,21 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		}
 	}
 	if (action == ACTION_MOVE_VALUE) {
-		obs_property_set_visible(scene, false);
-		obs_property_set_visible(sceneitem, false);
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
-		obs_property_set_visible(sceneitem_property, false);
 		obs_property_set_visible(p, true);
+		obs_property_set_visible(factor, true);
+		obs_property_set_visible(diff, true);
 	} else if (action == ACTION_ENABLE_FILTER) {
-		obs_property_set_visible(scene, false);
-		obs_property_set_visible(sceneitem, false);
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
-		obs_property_set_visible(sceneitem_property, false);
-		obs_property_set_visible(p, false);
+		obs_property_set_visible(enable, true);
+		obs_property_set_visible(threshold, true);
 	} else if (action == ACTION_SOURCE_VISIBILITY) {
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
-		obs_property_set_visible(source, false);
-		obs_property_set_visible(filter, false);
-		obs_property_set_visible(sceneitem_property, false);
-		obs_property_set_visible(p, false);
+		obs_property_set_visible(enable, true);
+		obs_property_set_visible(threshold, true);
 	}
 	if (obs_property_visible(scene) &&
 	    !obs_property_list_item_count(scene)) {
@@ -815,18 +845,11 @@ static obs_properties_t *nv_move_properties(void *data)
 					  ACTION_MOVE_SOURCE);
 		obs_property_list_add_int(p, obs_module_text("MoveValue"),
 					  ACTION_MOVE_VALUE);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(
-				p, obs_module_text("FilterEnable"),
-				ACTION_ENABLE_FILTER),
-			true);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(
-				p, obs_module_text("SourceVisibility"),
-				ACTION_SOURCE_VISIBILITY),
-			true);
+		obs_property_list_add_int(p, obs_module_text("FilterEnable"),
+					  ACTION_ENABLE_FILTER);
+		obs_property_list_add_int(p,
+					  obs_module_text("SourceVisibility"),
+					  ACTION_SOURCE_VISIBILITY);
 
 		obs_property_set_modified_callback2(p, nv_move_action_changed,
 						    data);
@@ -892,6 +915,41 @@ static obs_properties_t *nv_move_properties(void *data)
 					  SCENEITEM_PROPERTY_ROT);
 		obs_property_set_modified_callback2(
 			p, nv_move_sceneitem_property_changed, data);
+
+		dstr_printf(&name, "action_%lld_enable", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("Enable"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+
+		obs_property_list_item_disable(
+			p,
+			obs_property_list_add_int(
+				p, obs_module_text("ThresholdAction.None"),
+				FEATURE_THRESHOLD_NONE),
+			true);
+		obs_property_list_add_int(
+			p, obs_module_text("ThresholdAction.EnableOver"),
+			FEATURE_THRESHOLD_ENABLE_OVER);
+		obs_property_list_add_int(
+			p, obs_module_text("ThresholdAction.EnableUnder"),
+			FEATURE_THRESHOLD_ENABLE_UNDER);
+		obs_property_list_add_int(
+			p, obs_module_text("ThresholdAction.DisableOver"),
+			FEATURE_THRESHOLD_DISABLE_OVER);
+		obs_property_list_add_int(
+			p, obs_module_text("ThresholdAction.DisableUnder"),
+			FEATURE_THRESHOLD_DISABLE_UNDER);
+		obs_property_list_add_int(
+			p,
+			obs_module_text(
+				"ThresholdAction.EnableOverDisableUnder"),
+			FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER);
+		obs_property_list_add_int(
+			p,
+			obs_module_text(
+				"ThresholdAction.EnableUnderDisableOver"),
+			FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER);
 
 		dstr_printf(&name, "action_%lld_feature", i);
 		p = obs_properties_add_list(group, name.array,
@@ -1019,13 +1077,18 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Factor"),
-					     -10000.0, 10000, 1);
+					     -10000.0, 10000.0, 1.0);
 		obs_property_float_set_suffix(p, "%");
 
 		dstr_printf(&name, "action_%lld_diff", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Diff"), -10000.0,
-					     10000, 1);
+					     10000.0, 1.0);
+
+		dstr_printf(&name, "action_%lld_threshold", i);
+		p = obs_properties_add_float(group, name.array,
+					     obs_module_text("Threshold"),
+					     -10000.0, 10000, 1.0);
 
 		dstr_printf(&name, "action_%lld_group", i);
 		dstr_printf(&description, "%s %lld", obs_module_text("Action"),
@@ -1039,7 +1102,10 @@ static obs_properties_t *nv_move_properties(void *data)
 	return props;
 }
 
-static void nv_move_defaults(obs_data_t *settings) {}
+static void nv_move_defaults(obs_data_t *settings)
+{
+	obs_data_set_default_int(settings, "actions", 1);
+}
 
 static struct obs_source_frame *nv_move_video(void *data,
 					      struct obs_source_frame *frame)
@@ -1643,6 +1709,84 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			obs_source_update(source, d);
 			obs_data_release(d);
 			obs_source_release(source);
+		} else if (action->action == ACTION_ENABLE_FILTER) {
+			obs_source_t *source =
+				obs_weak_source_get_source(action->target);
+			if (!source)
+				continue;
+			float value = nv_move_action_get_float(filter, action);
+			if ((action->property ==
+				     FEATURE_THRESHOLD_ENABLE_OVER ||
+			     action->property ==
+				     FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+			    value >= action->threshold &&
+			    !obs_source_enabled(source)) {
+				obs_source_set_enabled(source, true);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+				   value < action->threshold &&
+				   !obs_source_enabled(source)) {
+				obs_source_set_enabled(source, true);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_DISABLE_OVER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+				   value >= action->threshold &&
+				   obs_source_enabled(source)) {
+				obs_source_set_enabled(source, false);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_DISABLE_UNDER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+				   value < action->threshold &&
+				   obs_source_enabled(source)) {
+				obs_source_set_enabled(source, false);
+			}
+			obs_source_release(source);
+		} else if (action->action == ACTION_SOURCE_VISIBILITY) {
+			if (!action->name)
+				continue;
+			obs_source_t *scene_source =
+				obs_weak_source_get_source(action->target);
+			if (!scene_source)
+				continue;
+			obs_scene_t *scene =
+				obs_scene_from_source(scene_source);
+			obs_source_release(scene_source);
+			if (!scene)
+				continue;
+			obs_sceneitem_t *item =
+				obs_scene_find_source(scene, action->name);
+			if (!item)
+				continue;
+			float value = nv_move_action_get_float(filter, action);
+			if ((action->property ==
+				     FEATURE_THRESHOLD_ENABLE_OVER ||
+			     action->property ==
+				     FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+			    value >= action->threshold) {
+				obs_sceneitem_set_visible(item, true);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+				   value < action->threshold) {
+				obs_sceneitem_set_visible(item, true);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_DISABLE_OVER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+				   value >= action->threshold) {
+				obs_sceneitem_set_visible(item, false);
+			} else if ((action->property ==
+					    FEATURE_THRESHOLD_DISABLE_UNDER ||
+				    action->property ==
+					    FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+				   value < action->threshold) {
+				obs_sceneitem_set_visible(item, false);
+			}
 		}
 	}
 
