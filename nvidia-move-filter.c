@@ -144,7 +144,7 @@ static void nv_move_update(void *data, obs_data_t *settings)
 
 	size_t actions = (size_t)obs_data_get_int(settings, "actions");
 	if (actions < filter->actions.num) {
-		for (size_t i = actions; i <= filter->actions.num; i++) {
+		for (size_t i = actions; i < filter->actions.num; i++) {
 			struct nvidia_move_action *action =
 				filter->actions.array + i;
 			obs_weak_source_release(action->target);
@@ -222,6 +222,7 @@ static void nv_move_update(void *data, obs_data_t *settings)
 					1;
 		}
 		dstr_printf(&name, "action_%lld_factor", i);
+		obs_data_set_default_double(settings, name.array, 100.0f);
 		action->factor =
 			(float)obs_data_get_double(settings, name.array) /
 			100.0f;
@@ -229,7 +230,6 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		action->diff = (float)obs_data_get_double(settings, name.array);
 	}
 	dstr_free(&name);
-
 
 	if (!filter->handle) {
 		bfree(filter->last_error);
@@ -401,6 +401,28 @@ bool list_add_scene(void *data, obs_source_t *source)
 	return true;
 }
 
+bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
+			      obs_property_t *property, obs_data_t *settings)
+{
+	const char *action_prop = obs_property_name(property);
+	long long landmark = obs_data_get_int(settings, action_prop);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_action", &action_number) != 1 ||
+	    !action_number)
+		return false;
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_landmark_1", action_number);
+	obs_property_t *landmark1 = obs_properties_get(props, name.array);
+	obs_property_set_visible(landmark1, true);
+	dstr_printf(&name, "action_%lld_landmark_2", action_number);
+	obs_property_t *landmark2 = obs_properties_get(props, name.array);
+	obs_property_set_visible(landmark2,
+				 landmark != FEATURE_LANDMARK_POS &&
+					 landmark >= FEATURE_LANDMARK_DISTANCE);
+
+	return true;
+}
+
 bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 			     obs_property_t *property, obs_data_t *settings)
 {
@@ -418,11 +440,18 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_landmark", action_number);
 	obs_property_t *landmark = obs_properties_get(props, name.array);
 	obs_property_set_visible(landmark, false);
+	dstr_printf(&name, "action_%lld_landmark_1", action_number);
+	obs_property_t *landmark1 = obs_properties_get(props, name.array);
+	obs_property_set_visible(landmark1, false);
+	dstr_printf(&name, "action_%lld_landmark_2", action_number);
+	obs_property_t *landmark2 = obs_properties_get(props, name.array);
+	obs_property_set_visible(landmark2, false);
 
 	if (feature == FEATURE_BOUNDINGBOX) {
 		obs_property_set_visible(bounding_box, true);
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(landmark, true);
+		nv_move_landmark_changed(priv, props, landmark, settings);
 	}
 	return true;
 }
@@ -514,27 +543,6 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	return true;
 }
 
-bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
-			      obs_property_t *property, obs_data_t *settings)
-{
-	const char *action_prop = obs_property_name(property);
-	long long landmark = obs_data_get_int(settings, action_prop);
-	long long action_number = 0;
-	if (sscanf(action_prop, "action_%lld_action", &action_number) != 1 ||
-	    !action_number)
-		return false;
-	struct dstr name = {0};
-	dstr_printf(&name, "action_%lld_landmark_1", action_number);
-	obs_property_t *landmark1 = obs_properties_get(props, name.array);
-	dstr_printf(&name, "action_%lld_landmark_2", action_number);
-	obs_property_t *landmark2 = obs_properties_get(props, name.array);
-	obs_property_set_visible(landmark2,
-				 landmark != FEATURE_LANDMARK_POS &&
-					 landmark >= FEATURE_LANDMARK_DISTANCE);
-
-	return true;
-}
-
 bool nv_move_add_sceneitems(obs_scene_t *scene, obs_sceneitem_t *sceneitem,
 			    void *data)
 {
@@ -605,6 +613,18 @@ bool nv_move_sceneitem_property_changed(void *priv, obs_properties_t *props,
 	for (size_t i = FEATURE_LANDMARK_DIFF; i <= FEATURE_LANDMARK_POS; i++) {
 		obs_property_list_item_disable(landmark, i, !dualprop);
 	}
+
+	dstr_printf(&name, "action_%lld_bounding_box", action_number);
+	obs_property_t *bbox = obs_properties_get(props, name.array);
+	for (size_t i = FEATURE_BOUNDINGBOX_LEFT;
+	     i <= FEATURE_BOUNDINGBOX_HEIGHT; i++) {
+		obs_property_list_item_disable(bbox, i, dualprop);
+	}
+	for (size_t i = FEATURE_BOUNDINGBOX_TOP_LEFT;
+	     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
+		obs_property_list_item_disable(bbox, i, !dualprop);
+	}
+
 	return true;
 }
 
@@ -650,9 +670,8 @@ static obs_properties_t *nv_move_properties(void *data)
 	}
 
 	obs_property_t *p = obs_properties_add_int_slider(
-		props, "actions",
-					  obs_module_text("Actions"), 1,
-					  MAX_ACTIONS, 1);
+		props, "actions", obs_module_text("Actions"), 1, MAX_ACTIONS,
+		1);
 
 	obs_property_set_modified_callback2(p, nv_move_actions_changed, data);
 
@@ -887,11 +906,7 @@ static obs_properties_t *nv_move_properties(void *data)
 	return props;
 }
 
-static void nv_move_defaults(obs_data_t *settings)
-{
-	obs_data_set_default_string(settings, "feature",
-				    NvAR_Feature_LandmarkDetection);
-}
+static void nv_move_defaults(obs_data_t *settings) {}
 
 static struct obs_source_frame *nv_move_video(void *data,
 					      struct obs_source_frame *frame)
@@ -1061,16 +1076,16 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 		} else if (action->feature_property == FEATURE_LANDMARK_ROT) {
 			value = DEG(atan2f(
 				(filter->landmarks
-					 .array[action->feature_number[0]]
+					 .array[action->feature_number[1]]
 					 .y -
 				 filter->landmarks
-					 .array[action->feature_number[1]]
+					 .array[action->feature_number[0]]
 					 .y),
 				(filter->landmarks
-					 .array[action->feature_number[0]]
+					 .array[action->feature_number[1]]
 					 .x -
 				 filter->landmarks
-					 .array[action->feature_number[1]]
+					 .array[action->feature_number[0]]
 					 .x)));
 		}
 	}
