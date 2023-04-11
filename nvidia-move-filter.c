@@ -553,7 +553,31 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(filter, false);
 		obs_property_set_visible(sceneitem_property, true);
 		obs_property_set_visible(p, false);
-	} else if (action == ACTION_MOVE_VALUE) {
+	} else {
+		dstr_printf(&name, "action_%lld_landmark", action_number);
+		obs_property_t *landmark =
+			obs_properties_get(props, name.array);
+		for (size_t i = FEATURE_LANDMARK_X; i <= FEATURE_LANDMARK_ROT;
+		     i++) {
+			obs_property_list_item_disable(landmark, i, false);
+		}
+		for (size_t i = FEATURE_LANDMARK_DIFF;
+		     i <= FEATURE_LANDMARK_POS; i++) {
+			obs_property_list_item_disable(landmark, i, true);
+		}
+
+		dstr_printf(&name, "action_%lld_bounding_box", action_number);
+		obs_property_t *bbox = obs_properties_get(props, name.array);
+		for (size_t i = FEATURE_BOUNDINGBOX_LEFT;
+		     i <= FEATURE_BOUNDINGBOX_HEIGHT; i++) {
+			obs_property_list_item_disable(bbox, i, false);
+		}
+		for (size_t i = FEATURE_BOUNDINGBOX_TOP_LEFT;
+		     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
+			obs_property_list_item_disable(bbox, i, true);
+		}
+	}
+	if (action == ACTION_MOVE_VALUE) {
 		obs_property_set_visible(scene, false);
 		obs_property_set_visible(sceneitem, false);
 		obs_property_set_visible(source, true);
@@ -794,7 +818,7 @@ static obs_properties_t *nv_move_properties(void *data)
 		obs_property_list_item_disable(
 			p,
 			obs_property_list_add_int(
-				p, obs_module_text("EnableFilter"),
+				p, obs_module_text("FilterEnable"),
 				ACTION_ENABLE_FILTER),
 			true);
 		obs_property_list_item_disable(
