@@ -1313,9 +1313,9 @@ static obs_properties_t *nv_move_properties(void *data)
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
 
-		obs_property_list_add_int(p, obs_module_text("X"),
+		obs_property_list_add_int(p, obs_module_text("PosX"),
 					  FEATURE_LANDMARK_X);
-		obs_property_list_add_int(p, obs_module_text("Y"),
+		obs_property_list_add_int(p, obs_module_text("PosY"),
 					  FEATURE_LANDMARK_Y);
 		obs_property_list_add_int(p, obs_module_text("Confidence"),
 					  FEATURE_LANDMARK_CONFIDENCE);
@@ -1387,13 +1387,13 @@ static obs_properties_t *nv_move_properties(void *data)
 					  BODY_3D_POS);
 		obs_property_list_add_int(p, obs_module_text("Body3DDiff"),
 					  BODY_3D_DIFF);
-		obs_property_list_add_int(p, obs_module_text("AngleX"),
+		obs_property_list_add_int(p, obs_module_text("BodyAngleX"),
 					  BODY_ANGLE_X);
-		obs_property_list_add_int(p, obs_module_text("AngleY"),
+		obs_property_list_add_int(p, obs_module_text("BodyAngleY"),
 					  BODY_ANGLE_Y);
-		obs_property_list_add_int(p, obs_module_text("AngleZ"),
+		obs_property_list_add_int(p, obs_module_text("BodyAngleZ"),
 					  BODY_ANGLE_Z);
-		obs_property_list_add_int(p, obs_module_text("Angle"),
+		obs_property_list_add_int(p, obs_module_text("BodyAngle"),
 					  BODY_ANGLE);
 
 		obs_property_set_modified_callback2(p, nv_move_body_changed,
@@ -1401,14 +1401,14 @@ static obs_properties_t *nv_move_properties(void *data)
 
 		dstr_printf(&name, "action_%lld_body_1", i);
 		p = obs_properties_add_list(group, name.array,
-					    obs_module_text("BodyProperty"),
+					    obs_module_text("Keypoint"),
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
 		nv_move_fill_body_list(p);
 
 		dstr_printf(&name, "action_%lld_body_2", i);
 		p = obs_properties_add_list(group, name.array,
-					    obs_module_text("BodyProperty"),
+					    obs_module_text("Keypoint"),
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
 		nv_move_fill_body_list(p);
@@ -1421,7 +1421,7 @@ static obs_properties_t *nv_move_properties(void *data)
 
 		dstr_printf(&name, "action_%lld_diff", i);
 		p = obs_properties_add_float(group, name.array,
-					     obs_module_text("Diff"), -10000.0,
+					     obs_module_text("Difference"), -10000.0,
 					     10000.0, 1.0);
 
 		dstr_printf(&name, "action_%lld_threshold", i);
