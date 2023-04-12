@@ -29,8 +29,7 @@
 #define FEATURE_POSE 2
 #define FEATURE_EXPRESSION 3
 #define FEATURE_GAZE 4
-#define FEATURE_KEYPOINTS 5
-#define FEATURE_JOINT_ANGLES 6
+#define FEATURE_BODY 5
 
 #define FEATURE_BOUNDINGBOX_LEFT 0
 #define FEATURE_BOUNDINGBOX_HORIZONTAL_CENTER 1
@@ -69,6 +68,29 @@
 #define FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER 5
 #define FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER 6
 
+#define BODY_CONFIDENCE 0
+#define BODY_2D_POSX 1
+#define BODY_2D_POSY 2
+#define BODY_2D_DISTANCE 3
+#define BODY_2D_ROT 4
+#define BODY_2D_DIFF_X 5
+#define BODY_2D_DIFF_Y 6
+#define BODY_2D_DIFF 7
+#define BODY_2D_POS 8
+#define BODY_3D_POSX 9
+#define BODY_3D_POSY 10
+#define BODY_3D_POSZ 11
+#define BODY_3D_DISTANCE 12
+#define BODY_3D_DIFF_X 13
+#define BODY_3D_DIFF_Y 14
+#define BODY_3D_DIFF_Z 15
+#define BODY_3D_POS 16
+#define BODY_3D_DIFF 17
+#define BODY_ANGLE_X 18
+#define BODY_ANGLE_Y 19
+#define BODY_ANGLE_Z 20
+#define BODY_ANGLE 21
+
 bool nvar_loaded = false;
 bool nvar_new_sdk = false;
 
@@ -92,12 +114,12 @@ struct nvidia_move_info {
 
 	DARRAY(struct nvidia_move_action) actions;
 
-	NvAR_FeatureHandle handle;
+	NvAR_FeatureHandle landmarkHandle;
+	NvAR_FeatureHandle expressionHandle;
+	NvAR_FeatureHandle gazeHandle;
+	NvAR_FeatureHandle bodyHandle;
 	CUstream stream; // CUDA stream
 	char *last_error;
-
-	bool stabilizeFace;
-	bool isNumLandmarks126;
 
 	bool got_new_frame;
 
@@ -115,7 +137,16 @@ struct nvidia_move_info {
 
 	DARRAY(float) landmarks_confidence;
 	DARRAY(NvAR_Point2f) landmarks;
-	struct NvAR_BBoxes bboxes;
+	DARRAY(NvAR_Point2f) gaze_output_landmarks;
+	NvAR_BBoxes bboxes;
+	NvAR_Quaternion pose;
+	float gaze_angles_vector[2];
+	float head_translation[3];
+	NvAR_Point3f gaze_direction[2];
+	DARRAY(float) keypoints_confidence;
+	DARRAY(NvAR_Point2f) keypoints;
+	DARRAY(NvAR_Point3f) keypoints3D;
+	DARRAY(NvAR_Quaternion) joint_angles;
 
 	gs_texrender_t *render;
 	gs_texrender_t *render_unorm;
@@ -147,6 +178,70 @@ static bool nv_move_log_error(struct nvidia_move_info *filter,
 	return true;
 }
 
+static void nv_move_feature_handle(struct nvidia_move_info *filter,
+				   NvAR_FeatureHandle handle)
+{
+	if (nv_move_log_error(
+		    filter,
+		    NvAR_SetString(handle, NvAR_Parameter_Config(ModelDir), ""),
+		    "Set ModelDir"))
+		return;
+
+	if (nv_move_log_error(filter,
+			      NvAR_SetCudaStream(
+				      handle, NvAR_Parameter_Config(CUDAStream),
+				      filter->stream),
+			      "Set CUDAStream"))
+		return;
+
+	if (filter->BGR_src_img) {
+		if (nv_move_log_error(
+			    filter,
+			    NvAR_SetObject(handle, NvAR_Parameter_Input(Image),
+					   filter->BGR_src_img,
+					   sizeof(NvCVImage)),
+			    "Set Image"))
+			return;
+	}
+	if (!filter->bboxes.max_boxes) {
+		filter->bboxes.boxes = (struct NvAR_Rect *)bzalloc(
+			sizeof(struct NvAR_Rect) * BBOXES_COUNT);
+		filter->bboxes.max_boxes = BBOXES_COUNT;
+		filter->bboxes.num_boxes = 0;
+	}
+	NvAR_SetObject(handle, NvAR_Parameter_Output(BoundingBoxes),
+		       &filter->bboxes, sizeof(NvAR_BBoxes));
+}
+
+static void nv_move_landmarks(struct nvidia_move_info *filter,
+			      NvAR_FeatureHandle handle)
+{
+	unsigned int OUTPUT_SIZE_KPTS = 0;
+	NvCV_Status nvErr = NvAR_GetU32(handle,
+					NvAR_Parameter_Config(Landmarks_Size),
+					&OUTPUT_SIZE_KPTS);
+	if (nvErr == NVCV_SUCCESS) {
+		da_resize(filter->landmarks, OUTPUT_SIZE_KPTS);
+
+		nvErr = NvAR_SetObject(handle, NvAR_Parameter_Output(Landmarks),
+				       filter->landmarks.array,
+				       sizeof(NvAR_Point2f));
+	}
+
+	unsigned int OUTPUT_SIZE_KPTS_CONF = 0;
+	nvErr = NvAR_GetU32(handle,
+			    NvAR_Parameter_Config(LandmarksConfidence_Size),
+			    &OUTPUT_SIZE_KPTS_CONF);
+	if (nvErr == NVCV_SUCCESS) {
+		da_resize(filter->landmarks_confidence, OUTPUT_SIZE_KPTS_CONF);
+
+		nvErr = NvAR_SetF32Array(
+			handle, NvAR_Parameter_Output(LandmarksConfidence),
+			filter->landmarks_confidence.array,
+			OUTPUT_SIZE_KPTS_CONF);
+	}
+}
+
 static void nv_move_update(void *data, obs_data_t *settings)
 {
 	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
@@ -164,6 +259,7 @@ static void nv_move_update(void *data, obs_data_t *settings)
 	}
 	da_resize(filter->actions, actions);
 
+	uint64_t feature_flags = 0;
 	struct dstr name = {0};
 	for (size_t i = 1; i <= actions; i++) {
 		struct nvidia_move_action *action =
@@ -254,6 +350,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		action->feature =
 			(uint32_t)obs_data_get_int(settings, name.array);
 
+		feature_flags |= (1ull << action->feature);
+
 		if (action->feature == FEATURE_BOUNDINGBOX) {
 			dstr_printf(&name, "action_%lld_bounding_box", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
@@ -275,6 +373,17 @@ static void nv_move_update(void *data, obs_data_t *settings)
 					(uint32_t)obs_data_get_int(settings,
 								   name.array) -
 					1;
+		} else if (action->feature == FEATURE_BODY) {
+			dstr_printf(&name, "action_%lld_body", i);
+			action->feature_property = (uint32_t)obs_data_get_int(
+				settings, name.array);
+
+			dstr_printf(&name, "action_%lld_body_1", i);
+			action->feature_number[0] = (uint32_t)obs_data_get_int(
+				settings, name.array);
+			dstr_printf(&name, "action_%lld_body_2", i);
+			action->feature_number[1] = (uint32_t)obs_data_get_int(
+				settings, name.array);
 		}
 		dstr_printf(&name, "action_%lld_factor", i);
 		obs_data_set_default_double(settings, name.array, 100.0f);
@@ -294,100 +403,189 @@ static void nv_move_update(void *data, obs_data_t *settings)
 	}
 	dstr_free(&name);
 
-	if (!filter->handle) {
-		bfree(filter->last_error);
-		filter->last_error = NULL;
-		if (filter->handle) {
-			nv_move_log_error(filter, NvAR_Destroy(filter->handle),
-					  "Destroy");
-			filter->handle = NULL;
-		}
-		if (nv_move_log_error(filter,
-				      NvAR_Create(NvAR_Feature_LandmarkDetection,
-						  &filter->handle),
-				      "Create"))
-			return;
+	bfree(filter->last_error);
+	filter->last_error = NULL;
 
-		//char modelDir[MAX_PATH];
-		//nvar_get_model_path(modelDir, MAX_PATH);
-		if (nv_move_log_error(
-			    filter,
-			    NvAR_SetString(filter->handle,
-					   NvAR_Parameter_Config(ModelDir), ""),
-			    "Set ModelDir"))
-			return;
-
-		if (nv_move_log_error(filter,
-				      NvAR_SetCudaStream(
-					      filter->handle,
-					      NvAR_Parameter_Config(CUDAStream),
-					      filter->stream),
-				      "Set CUDAStream"))
-			return;
-
-		if (filter->BGR_src_img) {
+	if (feature_flags & (1ull << FEATURE_BODY)) {
+		if (!filter->bodyHandle) {
 			if (nv_move_log_error(
 				    filter,
-				    NvAR_SetObject(filter->handle,
-						   NvAR_Parameter_Input(Image),
-						   filter->BGR_src_img,
-						   sizeof(NvCVImage)),
-				    "Set Image"))
+				    NvAR_Create(NvAR_Feature_BodyPoseEstimation,
+						&filter->bodyHandle),
+				    "Create body"))
+				return;
+			nv_move_feature_handle(filter, filter->bodyHandle);
+			unsigned int numKeyPoints = 0;
+			NvCV_Status nvErr =
+				NvAR_GetU32(filter->bodyHandle,
+					    NvAR_Parameter_Config(NumKeyPoints),
+					    &numKeyPoints);
+
+			if (nvErr == NVCV_SUCCESS) {
+				da_resize(filter->keypoints, numKeyPoints);
+
+				nvErr = NvAR_SetObject(
+					filter->bodyHandle,
+					NvAR_Parameter_Output(KeyPoints),
+					filter->keypoints.array,
+					sizeof(NvAR_Point2f));
+
+				da_resize(filter->keypoints3D, numKeyPoints);
+
+				nvErr = NvAR_SetObject(
+					filter->bodyHandle,
+					NvAR_Parameter_Output(KeyPoints3D),
+					filter->keypoints3D.array,
+					sizeof(NvAR_Point3f));
+
+				da_resize(filter->joint_angles, numKeyPoints);
+
+				nvErr = NvAR_SetObject(
+					filter->bodyHandle,
+					NvAR_Parameter_Output(JointAngles),
+					filter->joint_angles.array,
+					sizeof(NvAR_Quaternion));
+
+				da_resize(filter->keypoints_confidence,
+					  numKeyPoints);
+
+				nvErr = NvAR_SetF32Array(
+					filter->bodyHandle,
+					NvAR_Parameter_Output(
+						KeyPointsConfidence),
+					filter->keypoints_confidence.array,
+					sizeof(float));
+			} else {
+				nv_move_log_error(filter, nvErr,
+						  "NumKeyPoints");
+			}
+			if (nv_move_log_error(filter,
+					      NvAR_Load(filter->bodyHandle),
+					      "Load body"))
 				return;
 		}
+	} else if (filter->bodyHandle) {
+		nv_move_log_error(filter, NvAR_Destroy(filter->bodyHandle),
+				  "Destroy body");
+		filter->bodyHandle = NULL;
+	}
+	if (feature_flags & (1ull << FEATURE_GAZE)) {
+		if (!filter->gazeHandle) {
+			if (nv_move_log_error(
+				    filter,
+				    NvAR_Create(NvAR_Feature_GazeRedirection,
+						&filter->gazeHandle),
+				    "Create gaze"))
+				return;
+			nv_move_feature_handle(filter, filter->gazeHandle);
+			nv_move_landmarks(filter, filter->gazeHandle);
+			NvAR_SetObject(filter->gazeHandle,
+				       NvAR_Parameter_Output(HeadPose),
+				       &filter->pose, sizeof(NvAR_Quaternion));
+			NvAR_SetF32Array(
+				filter->gazeHandle,
+				NvAR_Parameter_Output(OutputGazeVector),
+				filter->gaze_angles_vector, 2);
 
-		unsigned int OUTPUT_SIZE_KPTS = 0;
-		NvCV_Status nvErr = NvAR_GetU32(
-			filter->handle, NvAR_Parameter_Config(Landmarks_Size),
-			&OUTPUT_SIZE_KPTS);
-		if (nvErr == NVCV_SUCCESS) {
-			da_resize(filter->landmarks, OUTPUT_SIZE_KPTS);
+			NvAR_SetF32Array(
+				filter->gazeHandle,
+				NvAR_Parameter_Output(OutputHeadTranslation),
+				filter->head_translation, 3);
 
-			nvErr = NvAR_SetObject(filter->handle,
-					       NvAR_Parameter_Output(Landmarks),
-					       filter->landmarks.array,
-					       sizeof(NvAR_Point2f));
+			NvAR_SetObject(filter->gazeHandle,
+				       NvAR_Parameter_Output(GazeDirection),
+				       &filter->gaze_direction,
+				       sizeof(NvAR_Point3f));
+
+			da_resize(filter->gaze_output_landmarks,
+				  filter->landmarks.num);
+
+			NvAR_SetObject(
+				filter->gazeHandle,
+				NvAR_Parameter_Output(GazeOutputLandmarks),
+				filter->gaze_output_landmarks.array,
+				sizeof(NvAR_Point2f));
+
+			if (nv_move_log_error(filter,
+					      NvAR_Load(filter->gazeHandle),
+					      "Load gaze"))
+				return;
 		}
-
-		unsigned int OUTPUT_SIZE_KPTS_CONF = 0;
-		nvErr = NvAR_GetU32(
-			filter->handle,
-			NvAR_Parameter_Config(LandmarksConfidence_Size),
-			&OUTPUT_SIZE_KPTS_CONF);
-		if (nvErr == NVCV_SUCCESS) {
-			da_resize(filter->landmarks_confidence,
-				  OUTPUT_SIZE_KPTS_CONF);
-
-			nvErr = NvAR_SetF32Array(
-				filter->handle,
-				NvAR_Parameter_Output(LandmarksConfidence),
-				filter->landmarks_confidence.array,
-				OUTPUT_SIZE_KPTS_CONF);
+	} else if (filter->gazeHandle) {
+		nv_move_log_error(filter, NvAR_Destroy(filter->gazeHandle),
+				  "Destroy gaze");
+		filter->gazeHandle = NULL;
+	}
+	if (feature_flags & (1ull << FEATURE_EXPRESSION)) {
+		if (!filter->expressionHandle) {
+			if (nv_move_log_error(
+				    filter,
+				    NvAR_Create(NvAR_Feature_FaceExpressions,
+						&filter->expressionHandle),
+				    "Create expression"))
+				return;
+			nv_move_feature_handle(filter,
+					       filter->expressionHandle);
+			nv_move_landmarks(filter, filter->expressionHandle);
+			// TODO
+			if (nv_move_log_error(
+				    filter, NvAR_Load(filter->expressionHandle),
+				    "Load expression"))
+				return;
 		}
+	} else if (filter->expressionHandle) {
+		nv_move_log_error(filter,
+				  NvAR_Destroy(filter->expressionHandle),
+				  "Destroy expression");
+		filter->expressionHandle = NULL;
+	}
 
-		if (!filter->bboxes.max_boxes) {
-			filter->bboxes.boxes = (struct NvAR_Rect *)bzalloc(
-				sizeof(struct NvAR_Rect) * BBOXES_COUNT);
-			filter->bboxes.max_boxes = BBOXES_COUNT;
-			filter->bboxes.num_boxes = 0;
+	if ((((feature_flags & (1ull << FEATURE_LANDMARK)) ||
+	      (feature_flags & (1ull << FEATURE_POSE))) &&
+	     !filter->gazeHandle && !filter->expressionHandle) ||
+	    ((feature_flags & (1ull << FEATURE_BOUNDINGBOX)) &&
+	     !filter->bodyHandle)) {
+		if (!filter->landmarkHandle) {
+			if (nv_move_log_error(
+				    filter,
+				    NvAR_Create(NvAR_Feature_LandmarkDetection,
+						&filter->landmarkHandle),
+				    "Create landmark"))
+				return;
+
+			nv_move_feature_handle(filter, filter->landmarkHandle);
+			nv_move_landmarks(filter, filter->landmarkHandle);
+			NvAR_SetObject(filter->gazeHandle,
+				       NvAR_Parameter_Output(Pose),
+				       &filter->pose, sizeof(NvAR_Quaternion));
+			if (nv_move_log_error(filter,
+					      NvAR_Load(filter->landmarkHandle),
+					      "Load expression"))
+				return;
 		}
-
-		nvErr = NvAR_SetObject(filter->handle,
-				       NvAR_Parameter_Output(BoundingBoxes),
-				       &filter->bboxes, sizeof(NvAR_BBoxes));
-
-		if (nv_move_log_error(filter, NvAR_Load(filter->handle),
-				      "Load"))
-			return;
+	} else if (filter->landmarkHandle) {
+		nv_move_log_error(filter, NvAR_Destroy(filter->landmarkHandle),
+				  "Destroy landmark");
+		filter->landmarkHandle = NULL;
 	}
 }
 
 static void nv_move_actual_destroy(void *data)
 {
 	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
-	if (filter->handle)
-		nv_move_log_error(filter, NvAR_Destroy(filter->handle),
-				  "Destroy");
+	if (filter->landmarkHandle)
+		nv_move_log_error(filter, NvAR_Destroy(filter->landmarkHandle),
+				  "Destroy landmark");
+	if (filter->expressionHandle)
+		nv_move_log_error(filter,
+				  NvAR_Destroy(filter->expressionHandle),
+				  "Destroy expression");
+	if (filter->gazeHandle)
+		nv_move_log_error(filter, NvAR_Destroy(filter->gazeHandle),
+				  "Destroy gaze");
+	if (filter->bodyHandle)
+		nv_move_log_error(filter, NvAR_Destroy(filter->bodyHandle),
+				  "Destroy body");
 
 	if (filter->stream)
 		nv_move_log_error(filter,
@@ -474,6 +672,9 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 	    !action_number)
 		return false;
 	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_feature", action_number);
+	if (obs_data_get_int(settings, name.array) != FEATURE_LANDMARK)
+		return false;
 	dstr_printf(&name, "action_%lld_landmark_1", action_number);
 	obs_property_t *landmark1 = obs_properties_get(props, name.array);
 	obs_property_set_visible(landmark1, true);
@@ -482,6 +683,35 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 	obs_property_set_visible(landmark2,
 				 landmark != FEATURE_LANDMARK_POS &&
 					 landmark >= FEATURE_LANDMARK_DISTANCE);
+
+	return true;
+}
+
+bool nv_move_body_changed(void *priv, obs_properties_t *props,
+			  obs_property_t *property, obs_data_t *settings)
+{
+	const char *action_prop = obs_property_name(property);
+	long long body = obs_data_get_int(settings, action_prop);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_body", &action_number) != 1 ||
+	    !action_number)
+		return false;
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_feature", action_number);
+	if (obs_data_get_int(settings, name.array) != FEATURE_BODY)
+		return false;
+	dstr_printf(&name, "action_%lld_body_1", action_number);
+	obs_property_t *body1 = obs_properties_get(props, name.array);
+	obs_property_set_visible(body1, true);
+	dstr_printf(&name, "action_%lld_body_2", action_number);
+	obs_property_t *body2 = obs_properties_get(props, name.array);
+	obs_property_set_visible(
+		body2,
+		body == BODY_2D_DIFF || body == BODY_2D_DISTANCE ||
+			body == BODY_2D_ROT || body == BODY_2D_DIFF_X ||
+			body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
+			body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
+			body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF);
 
 	return true;
 }
@@ -509,12 +739,24 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_landmark_2", action_number);
 	obs_property_t *landmark2 = obs_properties_get(props, name.array);
 	obs_property_set_visible(landmark2, false);
+	dstr_printf(&name, "action_%lld_body", action_number);
+	obs_property_t *body = obs_properties_get(props, name.array);
+	obs_property_set_visible(body, false);
+	dstr_printf(&name, "action_%lld_body_1", action_number);
+	obs_property_t *body1 = obs_properties_get(props, name.array);
+	obs_property_set_visible(body1, false);
+	dstr_printf(&name, "action_%lld_body_2", action_number);
+	obs_property_t *body2 = obs_properties_get(props, name.array);
+	obs_property_set_visible(body2, false);
 
 	if (feature == FEATURE_BOUNDINGBOX) {
 		obs_property_set_visible(bounding_box, true);
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(landmark, true);
 		nv_move_landmark_changed(priv, props, landmark, settings);
+	} else if (feature == FEATURE_BODY) {
+		obs_property_set_visible(body, true);
+		nv_move_body_changed(priv, props, body, settings);
 	}
 	return true;
 }
@@ -535,6 +777,49 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 	}
 	dstr_free(&name);
 	return changed;
+}
+
+static void nv_move_prop_number_floats(uint32_t number, long long action_number,
+				       obs_properties_t *props)
+{
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_landmark", action_number);
+	obs_property_t *landmark = obs_properties_get(props, name.array);
+
+	for (size_t i = FEATURE_LANDMARK_X; i <= FEATURE_LANDMARK_ROT; i++) {
+		obs_property_list_item_disable(landmark, i, number != 1);
+	}
+	for (size_t i = FEATURE_LANDMARK_DIFF; i <= FEATURE_LANDMARK_POS; i++) {
+		obs_property_list_item_disable(landmark, i, number != 2);
+	}
+
+	dstr_printf(&name, "action_%lld_bounding_box", action_number);
+	obs_property_t *bbox = obs_properties_get(props, name.array);
+	for (size_t i = FEATURE_BOUNDINGBOX_LEFT;
+	     i <= FEATURE_BOUNDINGBOX_HEIGHT; i++) {
+		obs_property_list_item_disable(bbox, i, number != 1);
+	}
+	for (size_t i = FEATURE_BOUNDINGBOX_TOP_LEFT;
+	     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
+		obs_property_list_item_disable(bbox, i, number != 2);
+	}
+
+	dstr_printf(&name, "action_%lld_body", action_number);
+	obs_property_t *body = obs_properties_get(props, name.array);
+	for (size_t i = BODY_CONFIDENCE; i <= BODY_2D_DIFF_Y; i++) {
+		obs_property_list_item_disable(body, i, number != 1);
+	}
+	obs_property_list_item_disable(body, BODY_2D_DIFF, number != 2);
+	obs_property_list_item_disable(body, BODY_2D_POS, number != 2);
+	for (size_t i = BODY_3D_POSX; i <= BODY_3D_DIFF_Z; i++) {
+		obs_property_list_item_disable(body, i, number != 1);
+	}
+	obs_property_list_item_disable(body, BODY_3D_POS, number != 3);
+	obs_property_list_item_disable(body, BODY_3D_DIFF, number != 3);
+	obs_property_list_item_disable(body, BODY_ANGLE, number != 3);
+	obs_property_list_item_disable(body, BODY_ANGLE_X, number != 1);
+	obs_property_list_item_disable(body, BODY_ANGLE_Y, number != 1);
+	obs_property_list_item_disable(body, BODY_ANGLE_Z, number != 1);
 }
 
 bool nv_move_action_changed(void *priv, obs_properties_t *props,
@@ -589,28 +874,7 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(factor, true);
 		obs_property_set_visible(diff, true);
 	} else {
-		dstr_printf(&name, "action_%lld_landmark", action_number);
-		obs_property_t *landmark =
-			obs_properties_get(props, name.array);
-		for (size_t i = FEATURE_LANDMARK_X; i <= FEATURE_LANDMARK_ROT;
-		     i++) {
-			obs_property_list_item_disable(landmark, i, false);
-		}
-		for (size_t i = FEATURE_LANDMARK_DIFF;
-		     i <= FEATURE_LANDMARK_POS; i++) {
-			obs_property_list_item_disable(landmark, i, true);
-		}
-
-		dstr_printf(&name, "action_%lld_bounding_box", action_number);
-		obs_property_t *bbox = obs_properties_get(props, name.array);
-		for (size_t i = FEATURE_BOUNDINGBOX_LEFT;
-		     i <= FEATURE_BOUNDINGBOX_HEIGHT; i++) {
-			obs_property_list_item_disable(bbox, i, false);
-		}
-		for (size_t i = FEATURE_BOUNDINGBOX_TOP_LEFT;
-		     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
-			obs_property_list_item_disable(bbox, i, true);
-		}
+		nv_move_prop_number_floats(1, action_number, props);
 	}
 	if (action == ACTION_MOVE_VALUE) {
 		obs_property_set_visible(source, true);
@@ -703,31 +967,10 @@ bool nv_move_sceneitem_property_changed(void *priv, obs_properties_t *props,
 	    !action_number)
 		return false;
 
-	struct dstr name = {0};
-	dstr_printf(&name, "action_%lld_landmark", action_number);
-	obs_property_t *landmark = obs_properties_get(props, name.array);
-
 	bool dualprop = (sceneitem_prop == SCENEITEM_PROPERTY_POS ||
 			 sceneitem_prop == SCENEITEM_PROPERTY_SCALE);
 
-	for (size_t i = FEATURE_LANDMARK_X; i <= FEATURE_LANDMARK_ROT; i++) {
-		obs_property_list_item_disable(landmark, i, dualprop);
-	}
-	for (size_t i = FEATURE_LANDMARK_DIFF; i <= FEATURE_LANDMARK_POS; i++) {
-		obs_property_list_item_disable(landmark, i, !dualprop);
-	}
-
-	dstr_printf(&name, "action_%lld_bounding_box", action_number);
-	obs_property_t *bbox = obs_properties_get(props, name.array);
-	for (size_t i = FEATURE_BOUNDINGBOX_LEFT;
-	     i <= FEATURE_BOUNDINGBOX_HEIGHT; i++) {
-		obs_property_list_item_disable(bbox, i, dualprop);
-	}
-	for (size_t i = FEATURE_BOUNDINGBOX_TOP_LEFT;
-	     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
-		obs_property_list_item_disable(bbox, i, !dualprop);
-	}
-
+	nv_move_prop_number_floats(dualprop ? 2 : 1, action_number, props);
 	return true;
 }
 
@@ -811,6 +1054,44 @@ bool nv_move_source_changed(void *priv, obs_properties_t *props,
 	obs_source_release(source);
 	nv_move_filter_changed(priv, props, filter, settings);
 	return true;
+}
+
+static void nv_move_fill_body_list(obs_property_t *p)
+{
+	obs_property_list_add_int(p, obs_module_text("Pelvis"), 0);
+	obs_property_list_add_int(p, obs_module_text("LeftHip"), 1);
+	obs_property_list_add_int(p, obs_module_text("RightHip"), 2);
+	obs_property_list_add_int(p, obs_module_text("Torso"), 3);
+	obs_property_list_add_int(p, obs_module_text("LeftKnee"), 4);
+	obs_property_list_add_int(p, obs_module_text("RightKnee"), 5);
+	obs_property_list_add_int(p, obs_module_text("Neck"), 6);
+	obs_property_list_add_int(p, obs_module_text("LeftAnkle"), 7);
+	obs_property_list_add_int(p, obs_module_text("RightAnkle"), 8);
+	obs_property_list_add_int(p, obs_module_text("LeftBigToe"), 9);
+	obs_property_list_add_int(p, obs_module_text("RightBigToe"), 10);
+	obs_property_list_add_int(p, obs_module_text("LeftSmallToe"), 11);
+	obs_property_list_add_int(p, obs_module_text("RightSmallToe"), 12);
+	obs_property_list_add_int(p, obs_module_text("LeftHeel"), 13);
+	obs_property_list_add_int(p, obs_module_text("RightHeel"), 14);
+	obs_property_list_add_int(p, obs_module_text("Nose"), 15);
+	obs_property_list_add_int(p, obs_module_text("LeftEye"), 16);
+	obs_property_list_add_int(p, obs_module_text("RightEye"), 17);
+	obs_property_list_add_int(p, obs_module_text("LeftEar"), 18);
+	obs_property_list_add_int(p, obs_module_text("RightEar"), 19);
+	obs_property_list_add_int(p, obs_module_text("LeftShoulder"), 20);
+	obs_property_list_add_int(p, obs_module_text("RightShoulder"), 21);
+	obs_property_list_add_int(p, obs_module_text("LeftElbow"), 22);
+	obs_property_list_add_int(p, obs_module_text("RightElbow"), 23);
+	obs_property_list_add_int(p, obs_module_text("LeftWrist"), 24);
+	obs_property_list_add_int(p, obs_module_text("RightWrist"), 25);
+	obs_property_list_add_int(p, obs_module_text("LeftPinkyKnuckle"), 26);
+	obs_property_list_add_int(p, obs_module_text("RightPickyKnuckle"), 27);
+	obs_property_list_add_int(p, obs_module_text("LeftMiddleTip"), 28);
+	obs_property_list_add_int(p, obs_module_text("RightMiddleTip"), 29);
+	obs_property_list_add_int(p, obs_module_text("LeftIndexKnuckle"), 30);
+	obs_property_list_add_int(p, obs_module_text("RightIndexKnuckle"), 31);
+	obs_property_list_add_int(p, obs_module_text("LeftThumbTip"), 32);
+	obs_property_list_add_int(p, obs_module_text("RightThumbTip"), 33);
 }
 
 static obs_properties_t *nv_move_properties(void *data)
@@ -977,18 +1258,8 @@ static obs_properties_t *nv_move_properties(void *data)
 			obs_property_list_add_int(p, obs_module_text("Gaze"),
 						  FEATURE_GAZE),
 			true);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(p,
-						  obs_module_text("Keypoints"),
-						  FEATURE_KEYPOINTS),
-			true);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(
-				p, obs_module_text("JointAngles"),
-				FEATURE_JOINT_ANGLES),
-			true);
+		obs_property_list_add_int(p, obs_module_text("Body"),
+					  FEATURE_BODY);
 
 		obs_property_set_modified_callback2(p, nv_move_feature_changed,
 						    data);
@@ -1073,6 +1344,74 @@ static obs_properties_t *nv_move_properties(void *data)
 		obs_properties_add_int_slider(group, name.array,
 					      obs_module_text("Landmark"), 1,
 					      (int)filter->landmarks.num, 1);
+
+		dstr_printf(&name, "action_%lld_body", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("BodyProperty"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+
+		obs_property_list_add_int(p, obs_module_text("Confidence"),
+					  BODY_CONFIDENCE);
+		obs_property_list_add_int(p, obs_module_text("Body2DPosX"),
+					  BODY_2D_POSX);
+		obs_property_list_add_int(p, obs_module_text("Body2DPosY"),
+					  BODY_2D_POSY);
+		obs_property_list_add_int(p, obs_module_text("Body2DDistance"),
+					  BODY_2D_DISTANCE);
+		obs_property_list_add_int(p, obs_module_text("Body2DRotation"),
+					  BODY_2D_ROT);
+		obs_property_list_add_int(p, obs_module_text("Body2DDiffX"),
+					  BODY_2D_DIFF_X);
+		obs_property_list_add_int(p, obs_module_text("Body2DDiffY"),
+					  BODY_2D_DIFF_Y);
+		obs_property_list_add_int(p, obs_module_text("Body2DDiff"),
+					  BODY_2D_DIFF);
+		obs_property_list_add_int(p, obs_module_text("Body2DPos"),
+					  BODY_2D_POS);
+		obs_property_list_add_int(p, obs_module_text("Body3DPosX"),
+					  BODY_3D_POSX);
+		obs_property_list_add_int(p, obs_module_text("Body3DPosY"),
+					  BODY_3D_POSY);
+		obs_property_list_add_int(p, obs_module_text("Body3DPosZ"),
+					  BODY_3D_POSZ);
+		obs_property_list_add_int(p, obs_module_text("Body3DDistance"),
+					  BODY_3D_DISTANCE);
+		obs_property_list_add_int(p, obs_module_text("Body3DDiffX"),
+					  BODY_3D_DIFF_X);
+		obs_property_list_add_int(p, obs_module_text("Body3DDiffY"),
+					  BODY_3D_DIFF_Y);
+		obs_property_list_add_int(p, obs_module_text("Body3DDiffZ"),
+					  BODY_3D_DIFF_Z);
+		obs_property_list_add_int(p, obs_module_text("Body3DPos"),
+					  BODY_3D_POS);
+		obs_property_list_add_int(p, obs_module_text("Body3DDiff"),
+					  BODY_3D_DIFF);
+		obs_property_list_add_int(p, obs_module_text("AngleX"),
+					  BODY_ANGLE_X);
+		obs_property_list_add_int(p, obs_module_text("AngleY"),
+					  BODY_ANGLE_Y);
+		obs_property_list_add_int(p, obs_module_text("AngleZ"),
+					  BODY_ANGLE_Z);
+		obs_property_list_add_int(p, obs_module_text("Angle"),
+					  BODY_ANGLE);
+
+		obs_property_set_modified_callback2(p, nv_move_body_changed,
+						    data);
+
+		dstr_printf(&name, "action_%lld_body_1", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("BodyProperty"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+		nv_move_fill_body_list(p);
+
+		dstr_printf(&name, "action_%lld_body_2", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("BodyProperty"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+		nv_move_fill_body_list(p);
 
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,
@@ -1287,6 +1626,120 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 					 .array[action->feature_number[0]]
 					 .x)));
 		}
+	} else if (action->feature == FEATURE_BODY) {
+		if (action->feature_property == BODY_CONFIDENCE) {
+			value = filter->keypoints_confidence
+					.array[action->feature_number[0]];
+		} else if (action->feature_property == BODY_2D_POSX) {
+			value = filter->keypoints
+					.array[action->feature_number[0]].x;
+		} else if (action->feature_property == BODY_2D_POSY) {
+			value = filter->keypoints
+					.array[action->feature_number[0]]
+					.y;
+		} else if (action->feature_property == BODY_2D_DISTANCE) {
+			float x = filter->keypoints
+					  .array[action->feature_number[0]]
+					  .x -
+				  filter->keypoints
+					  .array[action->feature_number[1]]
+					  .x;
+			float y = filter->keypoints
+					  .array[action->feature_number[0]]
+					  .y -
+				  filter->keypoints
+					  .array[action->feature_number[1]]
+					  .y;
+			value = sqrtf(x * x + y * y);
+		} else if (action->feature_property == BODY_2D_ROT) {
+			value = DEG(atan2f(
+				(filter->keypoints
+					 .array[action->feature_number[1]]
+					 .y -
+				 filter->keypoints
+					 .array[action->feature_number[0]]
+					 .y),
+				(filter->keypoints
+					 .array[action->feature_number[1]]
+					 .x -
+				 filter->keypoints
+					 .array[action->feature_number[0]]
+					 .x)));
+		} else if (action->feature_property == BODY_2D_DIFF_X) {
+			value = filter->keypoints
+					.array[action->feature_number[1]]
+					.x -
+				filter->keypoints
+					.array[action->feature_number[0]]
+					.x;
+		} else if (action->feature_property == BODY_2D_DIFF_Y) {
+			value = filter->keypoints
+					.array[action->feature_number[1]]
+					.y -
+				filter->keypoints
+					.array[action->feature_number[0]]
+					.y;
+		} else if (action->feature_property == BODY_3D_POSX) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.x;
+		} else if (action->feature_property == BODY_3D_POSY) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.y;
+		} else if (action->feature_property == BODY_3D_POSZ) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.z;
+		} else if (action->feature_property == BODY_3D_DISTANCE) {
+			float x = filter->keypoints3D
+					  .array[action->feature_number[0]]
+					  .x -
+				  filter->keypoints3D
+					  .array[action->feature_number[1]]
+					  .x;
+			float y = filter->keypoints3D
+					  .array[action->feature_number[0]]
+					  .y -
+				  filter->keypoints3D
+					  .array[action->feature_number[1]]
+					  .y;
+			float z = filter->keypoints3D
+					  .array[action->feature_number[0]]
+					  .z -
+				  filter->keypoints3D
+					  .array[action->feature_number[1]]
+					  .z;
+			value = sqrtf(x * x + y * y);
+			value = sqrtf(value * value + z * z);
+		} else if (action->feature_property == BODY_3D_DIFF_X) {
+			value = filter->keypoints3D
+					.array[action->feature_number[1]]
+					.x -
+				filter->keypoints3D
+					.array[action->feature_number[0]]
+					.x;
+		} else if (action->feature_property == BODY_3D_DIFF_Y) {
+			value = filter->keypoints3D
+					.array[action->feature_number[1]]
+					.y -
+				filter->keypoints3D
+					.array[action->feature_number[0]]
+					.y;
+		} else if (action->feature_property == BODY_3D_DIFF_Z) {
+			value = filter->keypoints3D
+					.array[action->feature_number[1]]
+					.z -
+				filter->keypoints3D
+					.array[action->feature_number[0]]
+					.z;
+		} else if (action->feature_property == BODY_ANGLE_X) {
+			filter->joint_angles.array[action->feature_number[0]].x;
+		} else if (action->feature_property == BODY_ANGLE_Y) {
+			filter->joint_angles.array[action->feature_number[0]].y;
+		} else if (action->feature_property == BODY_ANGLE_Z) {
+			filter->joint_angles.array[action->feature_number[0]].z;
+		}
 	}
 	value *= action->factor;
 	value += action->diff;
@@ -1371,6 +1824,28 @@ static void nv_move_action_get_vec2(struct nvidia_move_info *filter,
 					   .array[action->feature_number[0]]
 					   .x;
 			value->y = filter->landmarks
+					   .array[action->feature_number[0]]
+					   .y;
+		}
+	} else if (action->feature == FEATURE_BODY) {
+		if (action->feature_property == BODY_2D_DIFF) {
+			value->x = filter->keypoints
+					   .array[action->feature_number[1]]
+					   .x -
+				   filter->keypoints
+					   .array[action->feature_number[0]]
+					   .x;
+			value->y = filter->keypoints
+					   .array[action->feature_number[1]]
+					   .y -
+				   filter->keypoints
+					   .array[action->feature_number[0]]
+					   .y;
+		} else if (action->feature_property == BODY_2D_POS) {
+			value->x = filter->keypoints
+					   .array[action->feature_number[0]]
+					   .x;
+			value->y = filter->keypoints
 					   .array[action->feature_number[0]]
 					   .y;
 		}
@@ -1528,12 +2003,39 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				    NVCV_GPU, 1) != NVCV_SUCCESS) {
 			//goto fail;
 		}
-		nv_move_log_error(filter,
-				  NvAR_SetObject(filter->handle,
-						 NvAR_Parameter_Input(Image),
-						 filter->BGR_src_img,
-						 sizeof(NvCVImage)),
-				  "Set Image");
+
+		if (filter->landmarkHandle)
+			nv_move_log_error(
+				filter,
+				NvAR_SetObject(filter->landmarkHandle,
+					       NvAR_Parameter_Input(Image),
+					       filter->BGR_src_img,
+					       sizeof(NvCVImage)),
+				"Set Image");
+		if (filter->expressionHandle)
+			nv_move_log_error(
+				filter,
+				NvAR_SetObject(filter->expressionHandle,
+					       NvAR_Parameter_Input(Image),
+					       filter->BGR_src_img,
+					       sizeof(NvCVImage)),
+				"Set Image");
+		if (filter->gazeHandle)
+			nv_move_log_error(
+				filter,
+				NvAR_SetObject(filter->gazeHandle,
+					       NvAR_Parameter_Input(Image),
+					       filter->BGR_src_img,
+					       sizeof(NvCVImage)),
+				"Set Image");
+		if (filter->bodyHandle)
+			nv_move_log_error(
+				filter,
+				NvAR_SetObject(filter->bodyHandle,
+					       NvAR_Parameter_Input(Image),
+					       filter->BGR_src_img,
+					       sizeof(NvCVImage)),
+				"Set Image");
 	}
 	if (!filter->stage) {
 		if (NvCVImage_Create(base_width, base_height, NVCV_RGBA,
@@ -1563,8 +2065,18 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			  NvCVImage_UnmapResource(filter->src_img,
 						  filter->stream),
 			  "Unmap Resource");
-
-	nv_move_log_error(filter, NvAR_Run(filter->handle), "Run");
+	if (filter->landmarkHandle)
+		nv_move_log_error(filter, NvAR_Run(filter->landmarkHandle),
+				  "Run landmark");
+	if (filter->expressionHandle)
+		nv_move_log_error(filter, NvAR_Run(filter->expressionHandle),
+				  "Run expression");
+	if (filter->gazeHandle)
+		nv_move_log_error(filter, NvAR_Run(filter->gazeHandle),
+				  "Run gaze");
+	if (filter->bodyHandle)
+		nv_move_log_error(filter, NvAR_Run(filter->bodyHandle),
+				  "Run body");
 
 	for (size_t i = 0; i < filter->actions.num; i++) {
 		struct nvidia_move_action *action = filter->actions.array + i;
