@@ -161,6 +161,7 @@ struct nvidia_move_info {
 	DARRAY(NvAR_Point2f) gaze_output_landmarks;
 	NvAR_BBoxes bboxes;
 	NvAR_Quaternion pose;
+	DARRAY(float) expressions;
 	float gaze_angles_vector[2];
 	float head_translation[3];
 	NvAR_Point3f gaze_direction[2];
@@ -398,6 +399,13 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			dstr_printf(&name, "action_%lld_pose", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
 				settings, name.array);
+		} else if (action->feature == FEATURE_EXPRESSION) {
+			dstr_printf(&name, "action_%lld_expression", i);
+			if (obs_data_get_int(settings, name.array))
+				action->feature_property =
+					(uint32_t)obs_data_get_int(settings,
+								   name.array) -
+					1;
 		} else if (action->feature == FEATURE_GAZE) {
 			dstr_printf(&name, "action_%lld_gaze", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
@@ -569,7 +577,22 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			nv_move_feature_handle(filter,
 					       filter->expressionHandle);
 			nv_move_landmarks(filter, filter->expressionHandle);
-			// TODO
+			uint32_t expressionCount = 0;
+			NvCV_Status nvErr = NvAR_GetU32(
+				filter->expressionHandle,
+				NvAR_Parameter_Config(ExpressionCount),
+				&expressionCount);
+			if (nvErr == NVCV_SUCCESS) {
+				da_resize(filter->expressions, expressionCount);
+
+				nvErr = NvAR_SetF32Array(
+					filter->expressionHandle,
+					NvAR_Parameter_Output(
+						ExpressionCoefficients),
+					filter->expressions.array,
+					expressionCount);
+			}
+
 			if (nv_move_log_error(
 				    filter, NvAR_Load(filter->expressionHandle),
 				    "Load expression"))
@@ -636,6 +659,7 @@ static void nv_move_actual_destroy(void *data)
 
 	da_free(filter->landmarks_confidence);
 	da_free(filter->landmarks);
+	da_free(filter->expressions);
 	da_free(filter->gaze_output_landmarks);
 	da_free(filter->keypoints_confidence);
 	da_free(filter->keypoints);
@@ -792,6 +816,9 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_pose", action_number);
 	obs_property_t *pose = obs_properties_get(props, name.array);
 	obs_property_set_visible(pose, false);
+	dstr_printf(&name, "action_%lld_expression", action_number);
+	obs_property_t *expression = obs_properties_get(props, name.array);
+	obs_property_set_visible(expression, false);
 	dstr_printf(&name, "action_%lld_gaze", action_number);
 	obs_property_t *gaze = obs_properties_get(props, name.array);
 	obs_property_set_visible(gaze, false);
@@ -812,6 +839,8 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 		nv_move_landmark_changed(priv, props, landmark, settings);
 	} else if (feature == FEATURE_POSE) {
 		obs_property_set_visible(pose, true);
+	} else if (feature == FEATURE_EXPRESSION) {
+		obs_property_set_visible(expression, true);
 	} else if (feature == FEATURE_GAZE) {
 		obs_property_set_visible(gaze, true);
 	} else if (feature == FEATURE_BODY) {
@@ -1232,7 +1261,8 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 			   FEATURE_BOUNDINGBOX_HEIGHT) {
 			value = filter->bboxes.boxes[0].height;
 		}
-	} else if (action->feature == FEATURE_LANDMARK) {
+	} else if (action->feature == FEATURE_LANDMARK &&
+		   filter->landmarks.num) {
 		if (action->feature_property == FEATURE_LANDMARK_X) {
 			value = filter->landmarks
 					.array[action->feature_number[0]]
@@ -1301,6 +1331,9 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 		} else if (action->feature_property == FEATURE_POSE_W) {
 			value = filter->pose.w;
 		}
+	} else if (action->feature == FEATURE_EXPRESSION &&
+		   filter->expressions.num) {
+		value = filter->expressions.array[action->feature_property];
 	} else if (action->feature == FEATURE_GAZE) {
 		if (action->feature_property == FEATURE_GAZE_VECTOR_PITCH) {
 			value = DEG(filter->gaze_angles_vector[0]);
@@ -1526,7 +1559,8 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 			value->y = filter->bboxes.boxes[0].height;
 			success = true;
 		}
-	} else if (action->feature == FEATURE_LANDMARK) {
+	} else if (action->feature == FEATURE_LANDMARK &&
+		   filter->landmarks.num) {
 		if (action->feature_property == FEATURE_LANDMARK_DIFF) {
 			value->x = filter->landmarks
 					   .array[action->feature_number[1]]
@@ -1762,12 +1796,8 @@ static obs_properties_t *nv_move_properties(void *data)
 					  FEATURE_LANDMARK);
 		obs_property_list_add_int(p, obs_module_text("Pose"),
 					  FEATURE_POSE);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(p,
-						  obs_module_text("Expression"),
-						  FEATURE_EXPRESSION),
-			true);
+		obs_property_list_add_int(p, obs_module_text("Expression"),
+					  FEATURE_EXPRESSION);
 		obs_property_list_add_int(p, obs_module_text("Gaze"),
 					  FEATURE_GAZE);
 		obs_property_list_add_int(p, obs_module_text("Body"),
@@ -1871,6 +1901,11 @@ static obs_properties_t *nv_move_properties(void *data)
 					  FEATURE_POSE_Z);
 		obs_property_list_add_int(p, obs_module_text("PoseW"),
 					  FEATURE_POSE_W);
+
+		dstr_printf(&name, "action_%lld_expression", i);
+		obs_properties_add_int_slider(group, name.array,
+					      obs_module_text("Expression"), 1,
+					      (int)filter->expressions.num, 1);
 
 		dstr_printf(&name, "action_%lld_gaze", i);
 		p = obs_properties_add_list(group, name.array,
@@ -1989,18 +2024,18 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Factor"),
-					     -10000.0, 10000.0, 1.0);
+					     -1000000.0, 1000000.0, 1.0);
 		obs_property_float_set_suffix(p, "%");
 
 		dstr_printf(&name, "action_%lld_diff", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Difference"),
-					     -10000.0, 10000.0, 1.0);
+					     -1000000.0, 1000000.0, 1.0);
 
 		dstr_printf(&name, "action_%lld_threshold", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Threshold"),
-					     -10000.0, 10000, 1.0);
+					     -1000000.0, 1000000, 1.0);
 
 		dstr_printf(&name, "action_%lld_get_value", i);
 		obs_properties_add_button2(group, name.array,
