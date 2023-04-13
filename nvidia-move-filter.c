@@ -4,7 +4,7 @@
 #include <util/dstr.h>
 
 #define BBOXES_COUNT 25
-#define MAX_ACTIONS 10
+#define MAX_ACTIONS 20
 
 #define ACTION_MOVE_SOURCE 0
 #define ACTION_MOVE_VALUE 1
@@ -67,6 +67,27 @@
 #define FEATURE_THRESHOLD_DISABLE_UNDER 4
 #define FEATURE_THRESHOLD_ENABLE_OVER_DISABLE_UNDER 5
 #define FEATURE_THRESHOLD_ENABLE_UNDER_DISABLE_OVER 6
+
+#define FEATURE_POSE_X 0
+#define FEATURE_POSE_Y 1
+#define FEATURE_POSE_Z 2
+#define FEATURE_POSE_W 3
+
+#define FEATURE_GAZE_VECTOR 0
+#define FEATURE_GAZE_VECTOR_PITCH 1
+#define FEATURE_GAZE_VECTOR_YAW 2
+#define FEATURE_GAZE_HEADTRANSLATION 3
+#define FEATURE_GAZE_HEADTRANSLATION_X 4
+#define FEATURE_GAZE_HEADTRANSLATION_Y 5
+#define FEATURE_GAZE_HEADTRANSLATION_Z 6
+#define FEATURE_GAZE_DIRECTION_CENTER_POINT 7
+#define FEATURE_GAZE_DIRECTION_CENTER_POINT_X 8
+#define FEATURE_GAZE_DIRECTION_CENTER_POINT_Y 9
+#define FEATURE_GAZE_DIRECTION_CENTER_POINT_Z 10
+#define FEATURE_GAZE_DIRECTION_VECTOR 11
+#define FEATURE_GAZE_DIRECTION_VECTOR_X 12
+#define FEATURE_GAZE_DIRECTION_VECTOR_Y 13
+#define FEATURE_GAZE_DIRECTION_VECTOR_Z 14
 
 #define BODY_CONFIDENCE 0
 #define BODY_2D_POSX 1
@@ -373,6 +394,14 @@ static void nv_move_update(void *data, obs_data_t *settings)
 					(uint32_t)obs_data_get_int(settings,
 								   name.array) -
 					1;
+		} else if (action->feature == FEATURE_POSE) {
+			dstr_printf(&name, "action_%lld_pose", i);
+			action->feature_property = (uint32_t)obs_data_get_int(
+				settings, name.array);
+		} else if (action->feature == FEATURE_GAZE) {
+			dstr_printf(&name, "action_%lld_gaze", i);
+			action->feature_property = (uint32_t)obs_data_get_int(
+				settings, name.array);
 		} else if (action->feature == FEATURE_BODY) {
 			dstr_printf(&name, "action_%lld_body", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
@@ -506,6 +535,19 @@ static void nv_move_update(void *data, obs_data_t *settings)
 				filter->gaze_output_landmarks.array,
 				sizeof(NvAR_Point2f));
 
+			NvAR_SetU32(filter->gazeHandle,
+				    NvAR_Parameter_Config(Temporal), -1);
+
+			NvAR_SetU32(filter->gazeHandle,
+				    NvAR_Parameter_Config(GazeRedirect), false);
+
+			NvAR_SetU32(filter->gazeHandle,
+				    NvAR_Parameter_Config(UseCudaGraph), true);
+
+			NvAR_SetU32(filter->gazeHandle,
+				    NvAR_Parameter_Config(EyeSizeSensitivity),
+				    3);
+
 			if (nv_move_log_error(filter,
 					      NvAR_Load(filter->gazeHandle),
 					      "Load gaze"))
@@ -591,6 +633,14 @@ static void nv_move_actual_destroy(void *data)
 		nv_move_log_error(filter,
 				  NvAR_CudaStreamDestroy(filter->stream),
 				  "Destroy Cuda Stream");
+
+	da_free(filter->landmarks_confidence);
+	da_free(filter->landmarks);
+	da_free(filter->gaze_output_landmarks);
+	da_free(filter->keypoints_confidence);
+	da_free(filter->keypoints);
+	da_free(filter->keypoints3D);
+	da_free(filter->joint_angles);
 
 	obs_enter_graphics();
 	gs_texrender_destroy(filter->render);
@@ -739,6 +789,12 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_landmark_2", action_number);
 	obs_property_t *landmark2 = obs_properties_get(props, name.array);
 	obs_property_set_visible(landmark2, false);
+	dstr_printf(&name, "action_%lld_pose", action_number);
+	obs_property_t *pose = obs_properties_get(props, name.array);
+	obs_property_set_visible(pose, false);
+	dstr_printf(&name, "action_%lld_gaze", action_number);
+	obs_property_t *gaze = obs_properties_get(props, name.array);
+	obs_property_set_visible(gaze, false);
 	dstr_printf(&name, "action_%lld_body", action_number);
 	obs_property_t *body = obs_properties_get(props, name.array);
 	obs_property_set_visible(body, false);
@@ -754,6 +810,10 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(landmark, true);
 		nv_move_landmark_changed(priv, props, landmark, settings);
+	} else if (feature == FEATURE_POSE) {
+		obs_property_set_visible(pose, true);
+	} else if (feature == FEATURE_GAZE) {
+		obs_property_set_visible(gaze, true);
 	} else if (feature == FEATURE_BODY) {
 		obs_property_set_visible(body, true);
 		nv_move_body_changed(priv, props, body, settings);
@@ -803,6 +863,44 @@ static void nv_move_prop_number_floats(uint32_t number, long long action_number,
 	     i <= FEATURE_BOUNDINGBOX_SIZE; i++) {
 		obs_property_list_item_disable(bbox, i, number != 2);
 	}
+	dstr_printf(&name, "action_%lld_pose", action_number);
+	obs_property_t *pose = obs_properties_get(props, name.array);
+	for (size_t i = FEATURE_POSE_X; i <= FEATURE_POSE_W; i++) {
+		obs_property_list_item_disable(pose, i, number != 1);
+	}
+
+	dstr_printf(&name, "action_%lld_gaze", action_number);
+	obs_property_t *gaze = obs_properties_get(props, name.array);
+
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_VECTOR, number != 2);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_VECTOR_PITCH,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_VECTOR_YAW,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_HEADTRANSLATION,
+				       number != 3);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_HEADTRANSLATION_X,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_HEADTRANSLATION_Y,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_HEADTRANSLATION_Z,
+				       number != 1);
+	obs_property_list_item_disable(
+		gaze, FEATURE_GAZE_DIRECTION_CENTER_POINT, number != 3);
+	obs_property_list_item_disable(
+		gaze, FEATURE_GAZE_DIRECTION_CENTER_POINT_X, number != 1);
+	obs_property_list_item_disable(
+		gaze, FEATURE_GAZE_DIRECTION_CENTER_POINT_Y, number != 1);
+	obs_property_list_item_disable(
+		gaze, FEATURE_GAZE_DIRECTION_CENTER_POINT_Z, number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_DIRECTION_VECTOR,
+				       number != 3);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_DIRECTION_VECTOR_X,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_DIRECTION_VECTOR_Y,
+				       number != 1);
+	obs_property_list_item_disable(gaze, FEATURE_GAZE_DIRECTION_VECTOR_Z,
+				       number != 1);
 
 	dstr_printf(&name, "action_%lld_body", action_number);
 	obs_property_t *body = obs_properties_get(props, name.array);
@@ -973,6 +1071,25 @@ bool nv_move_sceneitem_property_changed(void *priv, obs_properties_t *props,
 	nv_move_prop_number_floats(dualprop ? 2 : 1, action_number, props);
 	return true;
 }
+static void add_number_props_to_list(obs_properties_t *sp, obs_property_t *list)
+{
+	obs_property_t *p = obs_properties_first(sp);
+	for (; p != NULL; obs_property_next(&p)) {
+		if (!obs_property_visible(p))
+			continue;
+		const enum obs_property_type prop_type =
+			obs_property_get_type(p);
+		if (prop_type == OBS_PROPERTY_INT ||
+		    prop_type == OBS_PROPERTY_FLOAT) {
+			const char *n = obs_property_name(p);
+			const char *d = obs_property_description(p);
+			obs_property_list_add_string(list, d, n);
+		} else if (prop_type == OBS_PROPERTY_GROUP) {
+			add_number_props_to_list(obs_property_group_content(p),
+						 list);
+		}
+	}
+}
 
 bool nv_move_filter_changed(void *priv, obs_properties_t *props,
 			    obs_property_t *property, obs_data_t *settings)
@@ -1008,19 +1125,7 @@ bool nv_move_filter_changed(void *priv, obs_properties_t *props,
 	obs_source_release(source);
 	if (!sp)
 		return true;
-	obs_property_t *p = obs_properties_first(sp);
-	for (; p != NULL; obs_property_next(&p)) {
-		if (!obs_property_visible(p))
-			continue;
-		const enum obs_property_type prop_type =
-			obs_property_get_type(p);
-		if (prop_type == OBS_PROPERTY_INT ||
-		    prop_type == OBS_PROPERTY_FLOAT) {
-			const char *n = obs_property_name(p);
-			const char *d = obs_property_description(p);
-			obs_property_list_add_string(prop, d, n);
-		}
-	}
+	add_number_props_to_list(sp, prop);
 
 	obs_properties_destroy(sp);
 
@@ -1242,22 +1347,16 @@ static obs_properties_t *nv_move_properties(void *data)
 					  FEATURE_BOUNDINGBOX);
 		obs_property_list_add_int(p, obs_module_text("Landmark"),
 					  FEATURE_LANDMARK);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(p, obs_module_text("Pose"),
-						  FEATURE_POSE),
-			true);
+		obs_property_list_add_int(p, obs_module_text("Pose"),
+					  FEATURE_POSE);
 		obs_property_list_item_disable(
 			p,
 			obs_property_list_add_int(p,
 						  obs_module_text("Expression"),
 						  FEATURE_EXPRESSION),
 			true);
-		obs_property_list_item_disable(
-			p,
-			obs_property_list_add_int(p, obs_module_text("Gaze"),
-						  FEATURE_GAZE),
-			true);
+		obs_property_list_add_int(p, obs_module_text("Gaze"),
+					  FEATURE_GAZE);
 		obs_property_list_add_int(p, obs_module_text("Body"),
 					  FEATURE_BODY);
 
@@ -1345,6 +1444,67 @@ static obs_properties_t *nv_move_properties(void *data)
 					      obs_module_text("Landmark"), 1,
 					      (int)filter->landmarks.num, 1);
 
+		dstr_printf(&name, "action_%lld_pose", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("PoseProperty"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+
+		obs_property_list_add_int(p, obs_module_text("PoseX"),
+					  FEATURE_POSE_X);
+		obs_property_list_add_int(p, obs_module_text("PoseY"),
+					  FEATURE_POSE_Y);
+		obs_property_list_add_int(p, obs_module_text("PoseZ"),
+					  FEATURE_POSE_Z);
+		obs_property_list_add_int(p, obs_module_text("PoseW"),
+					  FEATURE_POSE_W);
+
+		dstr_printf(&name, "action_%lld_gaze", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("GazeProperty"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+
+		obs_property_list_add_int(p, obs_module_text("Vector"),
+					  FEATURE_GAZE_VECTOR);
+		obs_property_list_add_int(p, obs_module_text("VectorPitch"),
+					  FEATURE_GAZE_VECTOR_PITCH);
+		obs_property_list_add_int(p, obs_module_text("VectorYaw"),
+					  FEATURE_GAZE_VECTOR_YAW);
+		obs_property_list_add_int(p, obs_module_text("HeadTranslation"),
+					  FEATURE_GAZE_HEADTRANSLATION);
+		obs_property_list_add_int(p,
+					  obs_module_text("HeadTranslationX"),
+					  FEATURE_GAZE_HEADTRANSLATION_X);
+		obs_property_list_add_int(p,
+					  obs_module_text("HeadTranslationY"),
+					  FEATURE_GAZE_HEADTRANSLATION_Y);
+		obs_property_list_add_int(p,
+					  obs_module_text("HeadTranslationZ"),
+					  FEATURE_GAZE_HEADTRANSLATION_Z);
+		obs_property_list_add_int(p, obs_module_text("CenterPoint"),
+					  FEATURE_GAZE_DIRECTION_CENTER_POINT);
+		obs_property_list_add_int(
+			p, obs_module_text("CenterPointX"),
+			FEATURE_GAZE_DIRECTION_CENTER_POINT_X);
+		obs_property_list_add_int(
+			p, obs_module_text("CenterPointY"),
+			FEATURE_GAZE_DIRECTION_CENTER_POINT_Y);
+		obs_property_list_add_int(
+			p, obs_module_text("CenterPointZ"),
+			FEATURE_GAZE_DIRECTION_CENTER_POINT_Z);
+		obs_property_list_add_int(p, obs_module_text("DirectionVector"),
+					  FEATURE_GAZE_DIRECTION_VECTOR);
+		obs_property_list_add_int(p,
+					  obs_module_text("DirectionVectorX"),
+					  FEATURE_GAZE_DIRECTION_VECTOR_X);
+		obs_property_list_add_int(p,
+					  obs_module_text("DirectionVectorY"),
+					  FEATURE_GAZE_DIRECTION_VECTOR_Y);
+		obs_property_list_add_int(p,
+					  obs_module_text("DirectionVectorZ"),
+					  FEATURE_GAZE_DIRECTION_VECTOR_Z);
+
 		dstr_printf(&name, "action_%lld_body", i);
 		p = obs_properties_add_list(group, name.array,
 					    obs_module_text("BodyProperty"),
@@ -1421,8 +1581,8 @@ static obs_properties_t *nv_move_properties(void *data)
 
 		dstr_printf(&name, "action_%lld_diff", i);
 		p = obs_properties_add_float(group, name.array,
-					     obs_module_text("Difference"), -10000.0,
-					     10000.0, 1.0);
+					     obs_module_text("Difference"),
+					     -10000.0, 10000.0, 1.0);
 
 		dstr_printf(&name, "action_%lld_threshold", i);
 		p = obs_properties_add_float(group, name.array,
@@ -1626,13 +1786,58 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 					 .array[action->feature_number[0]]
 					 .x)));
 		}
+	} else if (action->feature == FEATURE_POSE) {
+		if (action->feature_property == FEATURE_POSE_X) {
+			value = filter->pose.x;
+		} else if (action->feature_property == FEATURE_POSE_Y) {
+			value = filter->pose.y;
+		} else if (action->feature_property == FEATURE_POSE_Z) {
+			value = filter->pose.z;
+		} else if (action->feature_property == FEATURE_POSE_W) {
+			value = filter->pose.w;
+		}
+	} else if (action->feature == FEATURE_GAZE) {
+		if (action->feature_property == FEATURE_GAZE_VECTOR_PITCH) {
+			value = DEG(filter->gaze_angles_vector[0]);
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_VECTOR_YAW) {
+			value = DEG(filter->gaze_angles_vector[1]);
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_HEADTRANSLATION_X) {
+			value = filter->head_translation[0];
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_HEADTRANSLATION_Y) {
+			value = filter->head_translation[1];
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_HEADTRANSLATION_Z) {
+			value = filter->head_translation[2];
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_CENTER_POINT_X) {
+			value = filter->gaze_direction[0].x;
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_CENTER_POINT_Y) {
+			value = filter->gaze_direction[0].y;
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_CENTER_POINT_Z) {
+			value = filter->gaze_direction[0].z;
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_VECTOR_X) {
+			value = filter->gaze_direction[1].x;
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_VECTOR_Y) {
+			value = filter->gaze_direction[1].y;
+		} else if (action->feature_property ==
+			   FEATURE_GAZE_DIRECTION_VECTOR_Z) {
+			value = filter->gaze_direction[1].z;
+		}
 	} else if (action->feature == FEATURE_BODY) {
 		if (action->feature_property == BODY_CONFIDENCE) {
 			value = filter->keypoints_confidence
 					.array[action->feature_number[0]];
 		} else if (action->feature_property == BODY_2D_POSX) {
 			value = filter->keypoints
-					.array[action->feature_number[0]].x;
+					.array[action->feature_number[0]]
+					.x;
 		} else if (action->feature_property == BODY_2D_POSY) {
 			value = filter->keypoints
 					.array[action->feature_number[0]]
@@ -1826,6 +2031,11 @@ static void nv_move_action_get_vec2(struct nvidia_move_info *filter,
 			value->y = filter->landmarks
 					   .array[action->feature_number[0]]
 					   .y;
+		}
+	} else if (action->feature == FEATURE_GAZE) {
+		if (action->feature_property == FEATURE_GAZE_VECTOR) {
+			value->x = DEG(filter->gaze_angles_vector[0]);
+			value->y = DEG(filter->gaze_angles_vector[1]);
 		}
 	} else if (action->feature == FEATURE_BODY) {
 		if (action->feature_property == BODY_2D_DIFF) {
