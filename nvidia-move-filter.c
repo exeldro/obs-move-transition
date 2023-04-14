@@ -412,7 +412,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 		}
 	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
 		if (action->feature_number[0] >= filter->keypoints.num) {
-		}else if (action->feature_property == BODY_CONFIDENCE) {
+		} else if (action->feature_property == BODY_CONFIDENCE) {
 			value = filter->keypoints_confidence
 					.array[action->feature_number[0]];
 		} else if (action->feature_property == BODY_2D_POSX) {
@@ -1708,6 +1708,11 @@ static obs_properties_t *nv_move_properties(void *data)
 	struct dstr description = {0};
 	for (long long i = 1; i <= MAX_ACTIONS; i++) {
 		obs_properties_t *group = obs_properties_create();
+		dstr_printf(&name, "action_%lld_description", i);
+		obs_properties_add_text(group, name.array,
+					obs_module_text("ActionDescription"),
+					OBS_TEXT_DEFAULT);
+
 		dstr_printf(&name, "action_%lld_action", i);
 		p = obs_properties_add_list(group, name.array,
 					    obs_module_text("Action"),
