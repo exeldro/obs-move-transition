@@ -304,7 +304,8 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 		}
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
-		if (action->feature_property == FEATURE_LANDMARK_X) {
+		if (action->feature_number[0] >= filter->landmarks.num) {
+		} else if (action->feature_property == FEATURE_LANDMARK_X) {
 			value = filter->landmarks
 					.array[action->feature_number[0]]
 					.x;
@@ -409,8 +410,9 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 			   FEATURE_GAZE_DIRECTION_VECTOR_Z) {
 			value = filter->gaze_direction[1].z;
 		}
-	} else if (action->feature == FEATURE_BODY) {
-		if (action->feature_property == BODY_CONFIDENCE) {
+	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
+		if (action->feature_number[0] >= filter->keypoints.num) {
+		}else if (action->feature_property == BODY_CONFIDENCE) {
 			value = filter->keypoints_confidence
 					.array[action->feature_number[0]];
 		} else if (action->feature_property == BODY_2D_POSX) {
@@ -668,7 +670,7 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 
 	if (easing) {
 		value->x = action->previous_vec2.x * action->easing +
-			value->x * (1.0f - action->easing);
+			   value->x * (1.0f - action->easing);
 		action->previous_vec2.x = value->x;
 		value->y = action->previous_vec2.y * action->easing +
 			   value->y * (1.0f - action->easing);
@@ -854,7 +856,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		action->easing = ExponentialEaseOut(
 			(float)obs_data_get_double(settings, name.array) /
 			100.0f);
-		action->previous_float = nv_move_action_get_float(filter, action, false);
+		action->previous_float =
+			nv_move_action_get_float(filter, action, false);
 		nv_move_action_get_vec2(filter, action, false,
 					&action->previous_vec2);
 	}
@@ -1667,8 +1670,9 @@ static bool nv_move_get_value_clicked(obs_properties_t *props,
 		return false;
 	struct vec2 vec2;
 	struct dstr description = {0};
-	if (nv_move_action_get_vec2(
-		    filter, filter->actions.array + action_number - 1, false, &vec2)) {
+	if (nv_move_action_get_vec2(filter,
+				    filter->actions.array + action_number - 1,
+				    false, &vec2)) {
 		dstr_printf(&description, "%f : %f", vec2.x, vec2.y);
 	} else {
 		float value = nv_move_action_get_float(
@@ -2442,7 +2446,8 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			// SCENEITEM_PROPERTY_ALL
 			if (action->property == SCENEITEM_PROPERTY_POS) {
 				struct vec2 pos;
-				nv_move_action_get_vec2(filter, action, true, &pos);
+				nv_move_action_get_vec2(filter, action, true,
+							&pos);
 				obs_sceneitem_set_pos(item, &pos);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_POSX) {
