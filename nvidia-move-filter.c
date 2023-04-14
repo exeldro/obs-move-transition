@@ -374,7 +374,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 			value = filter->pose.w;
 		}
 	} else if (action->feature == FEATURE_EXPRESSION &&
-		   filter->expressions.num) {
+		   action->feature_property < filter->expressions.num) {
 		value = filter->expressions.array[action->feature_property];
 	} else if (action->feature == FEATURE_GAZE) {
 		if (action->feature_property == FEATURE_GAZE_VECTOR_PITCH) {
@@ -1000,6 +1000,9 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			nv_move_feature_handle(filter,
 					       filter->expressionHandle);
 			nv_move_landmarks(filter, filter->expressionHandle);
+			NvAR_SetObject(filter->expressionHandle,
+				       NvAR_Parameter_Output(Pose),
+				       &filter->pose, sizeof(NvAR_Quaternion));
 			uint32_t expressionCount = 0;
 			NvCV_Status nvErr = NvAR_GetU32(
 				filter->expressionHandle,
@@ -1043,7 +1046,7 @@ static void nv_move_update(void *data, obs_data_t *settings)
 
 			nv_move_feature_handle(filter, filter->landmarkHandle);
 			nv_move_landmarks(filter, filter->landmarkHandle);
-			NvAR_SetObject(filter->gazeHandle,
+			NvAR_SetObject(filter->landmarkHandle,
 				       NvAR_Parameter_Output(Pose),
 				       &filter->pose, sizeof(NvAR_Quaternion));
 			if (nv_move_log_error(filter,
