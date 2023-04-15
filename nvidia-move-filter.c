@@ -544,7 +544,8 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	bool success = false;
 	value->x = 0.0f;
 	value->y = 0.0f;
-	if (action->feature == FEATURE_BOUNDINGBOX) {
+	if (action->feature == FEATURE_BOUNDINGBOX &&
+	    filter->bboxes.max_boxes) {
 		if (action->feature_property == FEATURE_BOUNDINGBOX_TOP_LEFT) {
 			value->x = filter->bboxes.boxes[0].x;
 			value->y = filter->bboxes.boxes[0].y;
@@ -609,7 +610,8 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 		}
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
-		if (action->feature_property == FEATURE_LANDMARK_DIFF) {
+		if (action->feature_number[0] >= filter->landmarks.num) {
+		} else if (action->feature_property == FEATURE_LANDMARK_DIFF) {
 			value->x = filter->landmarks
 					   .array[action->feature_number[1]]
 					   .x -
