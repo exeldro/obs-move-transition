@@ -611,6 +611,15 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
 		if (action->feature_number[0] >= filter->landmarks.num) {
+		} else if (action->feature_property == FEATURE_LANDMARK_POS) {
+			value->x = filter->landmarks
+					   .array[action->feature_number[0]]
+					   .x;
+			value->y = filter->landmarks
+					   .array[action->feature_number[0]]
+					   .y;
+			success = true;
+		} else if (action->feature_number[1] >= filter->landmarks.num) {
 		} else if (action->feature_property == FEATURE_LANDMARK_DIFF) {
 			value->x = filter->landmarks
 					   .array[action->feature_number[1]]
@@ -625,14 +634,6 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 					   .array[action->feature_number[0]]
 					   .y;
 			success = true;
-		} else if (action->feature_property == FEATURE_LANDMARK_POS) {
-			value->x = filter->landmarks
-					   .array[action->feature_number[0]]
-					   .x;
-			value->y = filter->landmarks
-					   .array[action->feature_number[0]]
-					   .y;
-			success = true;
 		}
 	} else if (action->feature == FEATURE_GAZE) {
 		if (action->feature_property == FEATURE_GAZE_VECTOR) {
@@ -640,8 +641,18 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 			value->y = DEG(filter->gaze_angles_vector[1]);
 			success = true;
 		}
-	} else if (action->feature == FEATURE_BODY) {
-		if (action->feature_property == BODY_2D_DIFF) {
+	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
+		if (action->feature_number[0] >= filter->keypoints.num) {
+		} else if (action->feature_property == BODY_2D_POS) {
+			value->x = filter->keypoints
+					   .array[action->feature_number[0]]
+					   .x;
+			value->y = filter->keypoints
+					   .array[action->feature_number[0]]
+					   .y;
+			success = true;
+		} else if (action->feature_number[1] >= filter->keypoints.num) {
+		} else if (action->feature_property == BODY_2D_DIFF) {
 			value->x = filter->keypoints
 					   .array[action->feature_number[1]]
 					   .x -
@@ -652,14 +663,6 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 					   .array[action->feature_number[1]]
 					   .y -
 				   filter->keypoints
-					   .array[action->feature_number[0]]
-					   .y;
-			success = true;
-		} else if (action->feature_property == BODY_2D_POS) {
-			value->x = filter->keypoints
-					   .array[action->feature_number[0]]
-					   .x;
-			value->y = filter->keypoints
 					   .array[action->feature_number[0]]
 					   .y;
 			success = true;
