@@ -267,40 +267,51 @@ static void nv_move_landmarks(struct nvidia_move_info *filter,
 	}
 }
 
-static float nv_move_action_get_float(struct nvidia_move_info *filter,
-				      struct nvidia_move_action *action,
-				      bool easing)
+static bool nv_move_action_get_float(struct nvidia_move_info *filter,
+				     struct nvidia_move_action *action,
+				     bool easing, float *v)
 {
 	float value = 0.0f;
+	bool success = false;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
 	    filter->bboxes.max_boxes) {
 		if (action->feature_property == FEATURE_BOUNDINGBOX_LEFT) {
 			value = filter->bboxes.boxes[0].x;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_HORIZONTAL_CENTER) {
 			value = filter->bboxes.boxes[0].x +
 				filter->bboxes.boxes[0].width / 2.0f;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_RIGHT) {
 			value = filter->bboxes.boxes[0].x +
 				filter->bboxes.boxes[0].width;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_WIDTH) {
 			value = filter->bboxes.boxes[0].width;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_TOP) {
 			value = filter->bboxes.boxes[0].y;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_VERTICAL_CENTER) {
 			value = filter->bboxes.boxes[0].y +
 				filter->bboxes.boxes[0].height / 2.0f;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_BOTOM) {
 			value = filter->bboxes.boxes[0].y +
 				filter->bboxes.boxes[0].height;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_HEIGHT) {
 			value = filter->bboxes.boxes[0].height;
+			success = true;
+		} else {
+			success = false;
 		}
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
@@ -309,14 +320,18 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 			value = filter->landmarks
 					.array[action->feature_number[0]]
 					.x;
+			success = true;
 		} else if (action->feature_property == FEATURE_LANDMARK_Y) {
 			value = filter->landmarks
 					.array[action->feature_number[0]]
 					.y;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_LANDMARK_CONFIDENCE) {
 			value = filter->landmarks_confidence
 					.array[action->feature_number[0]];
+			success = true;
+		} else if (action->feature_number[1] >= filter->landmarks.num) {
 		} else if (action->feature_property ==
 			   FEATURE_LANDMARK_DISTANCE) {
 			float x = filter->landmarks
@@ -332,6 +347,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 					  .array[action->feature_number[1]]
 					  .y;
 			value = sqrtf(x * x + y * y);
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_LANDMARK_DIFF_X) {
 			value = filter->landmarks
@@ -340,6 +356,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->landmarks
 					.array[action->feature_number[0]]
 					.x;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_LANDMARK_DIFF_Y) {
 			value = filter->landmarks
@@ -348,6 +365,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->landmarks
 					.array[action->feature_number[0]]
 					.y;
+			success = true;
 		} else if (action->feature_property == FEATURE_LANDMARK_ROT) {
 			value = DEG(atan2f(
 				(filter->landmarks
@@ -362,67 +380,112 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				 filter->landmarks
 					 .array[action->feature_number[0]]
 					 .x)));
+			success = true;
 		}
 	} else if (action->feature == FEATURE_POSE) {
 		if (action->feature_property == FEATURE_POSE_X) {
 			value = filter->pose.x;
+			success = true;
 		} else if (action->feature_property == FEATURE_POSE_Y) {
 			value = filter->pose.y;
+			success = true;
 		} else if (action->feature_property == FEATURE_POSE_Z) {
 			value = filter->pose.z;
+			success = true;
 		} else if (action->feature_property == FEATURE_POSE_W) {
 			value = filter->pose.w;
+			success = true;
 		}
 	} else if (action->feature == FEATURE_EXPRESSION &&
 		   action->feature_property < filter->expressions.num) {
 		value = filter->expressions.array[action->feature_property];
+		success = true;
 	} else if (action->feature == FEATURE_GAZE) {
 		if (action->feature_property == FEATURE_GAZE_VECTOR_PITCH) {
 			value = DEG(filter->gaze_angles_vector[0]);
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_VECTOR_YAW) {
 			value = DEG(filter->gaze_angles_vector[1]);
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_HEADTRANSLATION_X) {
 			value = filter->head_translation[0];
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_HEADTRANSLATION_Y) {
 			value = filter->head_translation[1];
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_HEADTRANSLATION_Z) {
 			value = filter->head_translation[2];
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_CENTER_POINT_X) {
 			value = filter->gaze_direction[0].x;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_CENTER_POINT_Y) {
 			value = filter->gaze_direction[0].y;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_CENTER_POINT_Z) {
 			value = filter->gaze_direction[0].z;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_VECTOR_X) {
 			value = filter->gaze_direction[1].x;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_VECTOR_Y) {
 			value = filter->gaze_direction[1].y;
+			success = true;
 		} else if (action->feature_property ==
 			   FEATURE_GAZE_DIRECTION_VECTOR_Z) {
 			value = filter->gaze_direction[1].z;
+			success = true;
 		}
 	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
 		if (action->feature_number[0] >= filter->keypoints.num) {
 		} else if (action->feature_property == BODY_CONFIDENCE) {
 			value = filter->keypoints_confidence
 					.array[action->feature_number[0]];
+			success = true;
 		} else if (action->feature_property == BODY_2D_POSX) {
 			value = filter->keypoints
 					.array[action->feature_number[0]]
 					.x;
+			success = true;
 		} else if (action->feature_property == BODY_2D_POSY) {
 			value = filter->keypoints
 					.array[action->feature_number[0]]
 					.y;
+			success = true;
+		} else if (action->feature_property == BODY_3D_POSX) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.x;
+			success = true;
+		} else if (action->feature_property == BODY_3D_POSY) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.y;
+			success = true;
+		} else if (action->feature_property == BODY_3D_POSZ) {
+			value = filter->keypoints3D
+					.array[action->feature_number[0]]
+					.z;
+			success = true;
+		} else if (action->feature_property == BODY_ANGLE_X) {
+			filter->joint_angles.array[action->feature_number[0]].x;
+			success = true;
+		} else if (action->feature_property == BODY_ANGLE_Y) {
+			filter->joint_angles.array[action->feature_number[0]].y;
+			success = true;
+		} else if (action->feature_property == BODY_ANGLE_Z) {
+			filter->joint_angles.array[action->feature_number[0]].z;
+			success = true;
+		} else if (action->feature_number[1] >= filter->keypoints.num) {
 		} else if (action->feature_property == BODY_2D_DISTANCE) {
 			float x = filter->keypoints
 					  .array[action->feature_number[0]]
@@ -437,6 +500,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 					  .array[action->feature_number[1]]
 					  .y;
 			value = sqrtf(x * x + y * y);
+			success = true;
 		} else if (action->feature_property == BODY_2D_ROT) {
 			value = DEG(atan2f(
 				(filter->keypoints
@@ -451,6 +515,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				 filter->keypoints
 					 .array[action->feature_number[0]]
 					 .x)));
+			success = true;
 		} else if (action->feature_property == BODY_2D_DIFF_X) {
 			value = filter->keypoints
 					.array[action->feature_number[1]]
@@ -458,6 +523,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->keypoints
 					.array[action->feature_number[0]]
 					.x;
+			success = true;
 		} else if (action->feature_property == BODY_2D_DIFF_Y) {
 			value = filter->keypoints
 					.array[action->feature_number[1]]
@@ -465,18 +531,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->keypoints
 					.array[action->feature_number[0]]
 					.y;
-		} else if (action->feature_property == BODY_3D_POSX) {
-			value = filter->keypoints3D
-					.array[action->feature_number[0]]
-					.x;
-		} else if (action->feature_property == BODY_3D_POSY) {
-			value = filter->keypoints3D
-					.array[action->feature_number[0]]
-					.y;
-		} else if (action->feature_property == BODY_3D_POSZ) {
-			value = filter->keypoints3D
-					.array[action->feature_number[0]]
-					.z;
+			success = true;
 		} else if (action->feature_property == BODY_3D_DISTANCE) {
 			float x = filter->keypoints3D
 					  .array[action->feature_number[0]]
@@ -498,6 +553,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 					  .z;
 			value = sqrtf(x * x + y * y);
 			value = sqrtf(value * value + z * z);
+			success = true;
 		} else if (action->feature_property == BODY_3D_DIFF_X) {
 			value = filter->keypoints3D
 					.array[action->feature_number[1]]
@@ -505,6 +561,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->keypoints3D
 					.array[action->feature_number[0]]
 					.x;
+			success = true;
 		} else if (action->feature_property == BODY_3D_DIFF_Y) {
 			value = filter->keypoints3D
 					.array[action->feature_number[1]]
@@ -512,6 +569,7 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->keypoints3D
 					.array[action->feature_number[0]]
 					.y;
+			success = true;
 		} else if (action->feature_property == BODY_3D_DIFF_Z) {
 			value = filter->keypoints3D
 					.array[action->feature_number[1]]
@@ -519,22 +577,19 @@ static float nv_move_action_get_float(struct nvidia_move_info *filter,
 				filter->keypoints3D
 					.array[action->feature_number[0]]
 					.z;
-		} else if (action->feature_property == BODY_ANGLE_X) {
-			filter->joint_angles.array[action->feature_number[0]].x;
-		} else if (action->feature_property == BODY_ANGLE_Y) {
-			filter->joint_angles.array[action->feature_number[0]].y;
-		} else if (action->feature_property == BODY_ANGLE_Z) {
-			filter->joint_angles.array[action->feature_number[0]].z;
+			success = true;
 		}
 	}
+
 	value *= action->factor;
 	value += action->diff;
-	if (easing) {
+	if (success && easing) {
 		value = action->previous_float * action->easing +
 			value * (1.0f - action->easing);
 		action->previous_float = value;
 	}
-	return value;
+	*v = value;
+	return success;
 }
 
 static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
@@ -673,7 +728,7 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	value->y *= action->factor;
 	value->y += action->diff;
 
-	if (easing) {
+	if (success && easing) {
 		value->x = action->previous_vec2.x * action->easing +
 			   value->x * (1.0f - action->easing);
 		action->previous_vec2.x = value->x;
@@ -861,8 +916,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		action->easing = ExponentialEaseOut(
 			(float)obs_data_get_double(settings, name.array) /
 			100.0f);
-		action->previous_float =
-			nv_move_action_get_float(filter, action, false);
+		nv_move_action_get_float(filter, action, false,
+					 &action->previous_float);
 		nv_move_action_get_vec2(filter, action, false,
 					&action->previous_vec2);
 	}
@@ -1676,17 +1731,19 @@ static bool nv_move_get_value_clicked(obs_properties_t *props,
 	if (sscanf(action_prop, "action_%lld_get_value", &action_number) != 1 ||
 	    !action_number)
 		return false;
+	float value;
 	struct vec2 vec2;
 	struct dstr description = {0};
 	if (nv_move_action_get_vec2(filter,
 				    filter->actions.array + action_number - 1,
 				    false, &vec2)) {
 		dstr_printf(&description, "%f : %f", vec2.x, vec2.y);
-	} else {
-		float value = nv_move_action_get_float(
-			filter, filter->actions.array + action_number - 1,
-			false);
+	} else if (nv_move_action_get_float(
+			   filter, filter->actions.array + action_number - 1,
+			   false, &value)) {
 		dstr_printf(&description, "%f", value);
+	} else {
+		dstr_copy(&description, obs_module_text("Error"));
 	}
 	obs_property_set_description(property, description.array);
 	dstr_free(&description);
@@ -2459,37 +2516,42 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			// SCENEITEM_PROPERTY_ALL
 			if (action->property == SCENEITEM_PROPERTY_POS) {
 				struct vec2 pos;
-				nv_move_action_get_vec2(filter, action, true,
-							&pos);
-				obs_sceneitem_set_pos(item, &pos);
+				if (nv_move_action_get_vec2(filter, action,
+							    true, &pos))
+					obs_sceneitem_set_pos(item, &pos);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_POSX) {
 				struct vec2 pos;
 				obs_sceneitem_get_pos(item, &pos);
-				pos.x = nv_move_action_get_float(filter, action,
-								 true);
-				obs_sceneitem_set_pos(item, &pos);
+				if (nv_move_action_get_float(filter, action,
+							     true, &pos.x))
+					obs_sceneitem_set_pos(item, &pos);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_POSY) {
 				struct vec2 pos;
 				obs_sceneitem_get_pos(item, &pos);
-				pos.y = nv_move_action_get_float(filter, action,
-								 true);
-				obs_sceneitem_set_pos(item, &pos);
+				if (nv_move_action_get_float(filter, action,
+							     true, &pos.y))
+					obs_sceneitem_set_pos(item, &pos);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_SCALE) {
 				struct vec2 scale;
-				nv_move_action_get_vec2(filter, action, true,
-							&scale);
-				if (obs_sceneitem_get_bounds_type(item) ==
-				    OBS_BOUNDS_NONE) {
-					scale.x /= (float)obs_source_get_width(
-						obs_sceneitem_get_source(item));
-					scale.y /= (float)obs_source_get_height(
-						obs_sceneitem_get_source(item));
-					obs_sceneitem_set_scale(item, &scale);
-				} else {
-					obs_sceneitem_set_bounds(item, &scale);
+				if (nv_move_action_get_vec2(filter, action,
+							    true, &scale)) {
+					if (obs_sceneitem_get_bounds_type(
+						    item) == OBS_BOUNDS_NONE) {
+						scale.x /= (float)obs_source_get_width(
+							obs_sceneitem_get_source(
+								item));
+						scale.y /= (float)obs_source_get_height(
+							obs_sceneitem_get_source(
+								item));
+						obs_sceneitem_set_scale(item,
+									&scale);
+					} else {
+						obs_sceneitem_set_bounds(
+							item, &scale);
+					}
 				}
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_SCALEX) {
@@ -2497,18 +2559,22 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				if (obs_sceneitem_get_bounds_type(item) ==
 				    OBS_BOUNDS_NONE) {
 					obs_sceneitem_get_scale(item, &scale);
-					scale.x =
-						nv_move_action_get_float(
-							filter, action, true) /
-						(float)obs_source_get_width(
+					if (nv_move_action_get_float(
+						    filter, action, true,
+						    &scale.x)) {
+						scale.x /= (float)obs_source_get_width(
 							obs_sceneitem_get_source(
 								item));
-					obs_sceneitem_set_scale(item, &scale);
+						obs_sceneitem_set_scale(item,
+									&scale);
+					}
 				} else {
 					obs_sceneitem_get_bounds(item, &scale);
-					scale.x = nv_move_action_get_float(
-						filter, action, true);
-					obs_sceneitem_set_bounds(item, &scale);
+					if (nv_move_action_get_float(
+						    filter, action, true,
+						    &scale.x))
+						obs_sceneitem_set_bounds(
+							item, &scale);
 				}
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_SCALEY) {
@@ -2516,79 +2582,99 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				if (obs_sceneitem_get_bounds_type(item) ==
 				    OBS_BOUNDS_NONE) {
 					obs_sceneitem_get_scale(item, &scale);
-					scale.y =
-						nv_move_action_get_float(
-							filter, action, true) /
-						(float)obs_source_get_height(
+					if (nv_move_action_get_float(
+						    filter, action, true,
+						    &scale.y)) {
+						scale.y /= (float)obs_source_get_height(
 							obs_sceneitem_get_source(
 								item));
-					obs_sceneitem_set_scale(item, &scale);
+						obs_sceneitem_set_scale(item,
+									&scale);
+					}
 				} else {
 					obs_sceneitem_get_bounds(item, &scale);
-					scale.y = nv_move_action_get_float(
-						filter, action, true);
-					obs_sceneitem_set_bounds(item, &scale);
+					if (nv_move_action_get_float(
+						    filter, action, true,
+						    &scale.y))
+						obs_sceneitem_set_bounds(
+							item, &scale);
 				}
 			} else if (action->property == SCENEITEM_PROPERTY_ROT) {
-				obs_sceneitem_set_rot(
-					item, nv_move_action_get_float(
-						      filter, action, true));
+				float rot;
+				if (nv_move_action_get_float(filter, action,
+							     true, &rot))
+					obs_sceneitem_set_rot(item, rot);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_CROP_LEFT) {
 				struct obs_sceneitem_crop crop;
 				obs_sceneitem_get_crop(item, &crop);
-				crop.left = (int)nv_move_action_get_float(
-					filter, action, true);
-				obs_sceneitem_set_crop(item, &crop);
+				float value;
+				if (nv_move_action_get_float(filter, action,
+							     true, &value)) {
+					crop.left = (int)value;
+					obs_sceneitem_set_crop(item, &crop);
+				}
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_CROP_RIGHT) {
 				struct obs_sceneitem_crop crop;
 				obs_sceneitem_get_crop(item, &crop);
-				crop.right = (int)nv_move_action_get_float(
-					filter, action, true);
+				float value;
+				if (nv_move_action_get_float(filter, action,
+							     true, &value)) {
+					crop.right = (int)value;
+					obs_sceneitem_set_crop(item, &crop);
+				}
 				obs_sceneitem_set_crop(item, &crop);
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_CROP_TOP) {
 				struct obs_sceneitem_crop crop;
 				obs_sceneitem_get_crop(item, &crop);
-				crop.top = (int)nv_move_action_get_float(
-					filter, action, true);
-				obs_sceneitem_set_crop(item, &crop);
+				float value;
+				if (nv_move_action_get_float(filter, action,
+							     true, &value)) {
+					crop.top = (int)value;
+					obs_sceneitem_set_crop(item, &crop);
+				}
 			} else if (action->property ==
 				   SCENEITEM_PROPERTY_CROP_BOTTOM) {
 				struct obs_sceneitem_crop crop;
 				obs_sceneitem_get_crop(item, &crop);
-				crop.bottom = (int)nv_move_action_get_float(
-					filter, action, true);
-				obs_sceneitem_set_crop(item, &crop);
+				float value;
+				if (nv_move_action_get_float(filter, action,
+							     true, &value)) {
+					crop.bottom = (int)value;
+					obs_sceneitem_set_crop(item, &crop);
+				}
 			}
 		} else if (action->action == ACTION_MOVE_VALUE) {
+			float value;
+			if (!nv_move_action_get_float(filter, action, true,
+						      &value))
+				continue;
 			obs_source_t *source =
 				obs_weak_source_get_source(action->target);
 			if (!source)
 				continue;
 			obs_data_t *d = obs_data_create();
 			if (action->is_int) {
-				obs_data_set_int(
-					d, action->name,
-					(long long)nv_move_action_get_float(
-						filter, action, true));
+				obs_data_set_int(d, action->name,
+						 (long long)value);
 			} else {
-				obs_data_set_double(
-					d, action->name,
-					(double)nv_move_action_get_float(
-						filter, action, true));
+				obs_data_set_double(d, action->name,
+						    (double)value);
 			}
 			obs_source_update(source, d);
 			obs_data_release(d);
 			obs_source_release(source);
 		} else if (action->action == ACTION_ENABLE_FILTER) {
+			float value;
+			if (!nv_move_action_get_float(filter, action, true,
+						      &value))
+				continue;
 			obs_source_t *source =
 				obs_weak_source_get_source(action->target);
 			if (!source)
 				continue;
-			float value =
-				nv_move_action_get_float(filter, action, true);
 			if ((action->property ==
 				     FEATURE_THRESHOLD_ENABLE_OVER ||
 			     action->property ==
@@ -2620,6 +2706,10 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			}
 			obs_source_release(source);
 		} else if (action->action == ACTION_SOURCE_VISIBILITY) {
+			float value;
+			if (!nv_move_action_get_float(filter, action, true,
+						      &value))
+				continue;
 			if (!action->name)
 				continue;
 			obs_source_t *scene_source =
@@ -2635,8 +2725,6 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				obs_scene_find_source(scene, action->name);
 			if (!item)
 				continue;
-			float value =
-				nv_move_action_get_float(filter, action, true);
 			if ((action->property ==
 				     FEATURE_THRESHOLD_ENABLE_OVER ||
 			     action->property ==
