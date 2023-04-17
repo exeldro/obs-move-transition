@@ -3,6 +3,7 @@
 #include <util/threading.h>
 #include <util/dstr.h>
 #include "easing.h"
+#include "move-transition.h"
 
 #define BBOXES_COUNT 25
 #define MAX_ACTIONS 20
@@ -2175,6 +2176,9 @@ static obs_properties_t *nv_move_properties(void *data)
 	}
 	dstr_free(&name);
 	dstr_free(&description);
+
+	obs_properties_add_text(props, "plugin_info", PLUGIN_INFO,
+				OBS_TEXT_INFO);
 
 	return props;
 }
