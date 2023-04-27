@@ -777,7 +777,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			obs_source_t *source =
 				obs_get_source_by_name(scene_name);
 			if (source) {
-				if (obs_source_is_scene(source))
+				if (obs_source_is_scene(source) ||
+				    obs_source_is_group(source))
 					action->target =
 						obs_source_get_weak_source(
 							source);
@@ -2651,14 +2652,21 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				}
 			}
 		} else if (action->action == ACTION_MOVE_VALUE) {
+			if (!action->name || !strlen(action->name))
+				continue;
 			float value;
 			if (!nv_move_action_get_float(filter, action, true,
 						      &value))
 				continue;
 			obs_source_t *source =
 				obs_weak_source_get_source(action->target);
-			if (!source)
+			if (!source) {
+				if (action->target) {
+					obs_weak_source_release(action->target);
+					action->target = NULL;
+				}
 				continue;
+			}
 			obs_data_t *d = obs_data_create();
 			if (action->is_int) {
 				obs_data_set_int(d, action->name,
