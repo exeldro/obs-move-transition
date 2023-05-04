@@ -27,7 +27,7 @@
 #define TRANSFORM_POS_X 1
 #define TRANSFORM_POS_Y 2
 #define TRANSFORM_ROT 3
-#define TRANSFORM_SCALE 4
+#define TRANSFORM_SCALE 14
 #define TRANSFORM_SCALE_X 4
 #define TRANSFORM_SCALE_Y 5
 #define TRANSFORM_BOUNDS_X 6
@@ -778,14 +778,14 @@ void audio_move_tick(void *data, float seconds)
 			bounds.x =
 				(float)(filter->factor * filter->audio_value +
 					filter->base_value);
-			obs_sceneitem_set_scale(filter->sceneitem, &bounds);
+			obs_sceneitem_set_bounds(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_BOUNDS_Y) {
 			struct vec2 bounds;
 			obs_sceneitem_get_bounds(filter->sceneitem, &bounds);
 			bounds.y =
 				(float)(filter->factor * filter->audio_value +
 					filter->base_value);
-			obs_sceneitem_set_scale(filter->sceneitem, &bounds);
+			obs_sceneitem_set_bounds(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_CROP_LEFT) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
