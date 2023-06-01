@@ -2562,12 +2562,25 @@ static void move_video_render(void *data, gs_effect_t *effect)
 		gs_blend_state_pop();
 		gs_matrix_pop();
 
-	} else if (move->t <= 0.5f) {
-		obs_transition_video_render_direct(move->source,
-						   OBS_TRANSITION_SOURCE_A);
 	} else {
-		obs_transition_video_render_direct(move->source,
-						   OBS_TRANSITION_SOURCE_B);
+		if (move->items_a.num) {
+			clear_items(move, true);
+		}
+		if (move->scene_source_a) {
+			obs_source_release(move->scene_source_a);
+			move->scene_source_a = NULL;
+		}
+		if (move->scene_source_b) {
+			obs_source_release(move->scene_source_b);
+			move->scene_source_b = NULL;
+		}
+		if (move->t <= 0.5f) {
+			obs_transition_video_render_direct(
+				move->source, OBS_TRANSITION_SOURCE_A);
+		} else {
+			obs_transition_video_render_direct(
+				move->source, OBS_TRANSITION_SOURCE_B);
+		}
 	}
 	move->first_frame = false;
 
