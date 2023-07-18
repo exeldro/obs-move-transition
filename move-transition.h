@@ -97,6 +97,9 @@
 #define S_SETTING_COLOR "setting_color"
 #define S_SETTING_COLOR_MIN "setting_color_min"
 #define S_SETTING_COLOR_MAX "setting_color_max"
+#define S_SETTING_COLOR_ALPHA "setting_color_alpha"
+#define S_SETTING_COLOR_ALPHA_MIN "setting_color_alpha_min"
+#define S_SETTING_COLOR_ALPHA_MAX "setting_color_alpha_max"
 #define S_SETTING_TEXT "setting_text"
 #define S_SETTINGS "settings"
 #define S_SETTING_FROM "setting_from"
@@ -169,7 +172,8 @@
 #define MOVE_VALUE_INT 1
 #define MOVE_VALUE_FLOAT 2
 #define MOVE_VALUE_COLOR 3
-#define MOVE_VALUE_TEXT 4
+#define MOVE_VALUE_COLOR_ALPHA 4
+#define MOVE_VALUE_TEXT 5
 
 #define MOVE_VALUE_FORMAT_DECIMALS 0
 #define MOVE_VALUE_FORMAT_FLOAT 1
