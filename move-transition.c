@@ -2060,482 +2060,445 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 		move_filter_start(obs_obj_get_data(filter));
 }
 
+static void move_start_init(struct move_info *move)
+{
+	if (!move->start_init)
+		return;
+	move->start_init = false;
+	move->first_frame = true;
+	obs_source_t *old_scene_a = move->scene_source_a;
+	move->scene_source_a = obs_transition_get_source(
+		move->source, OBS_TRANSITION_SOURCE_A);
+	obs_source_t *old_scene_b = move->scene_source_b;
+	move->scene_source_b = obs_transition_get_source(
+		move->source, OBS_TRANSITION_SOURCE_B);
+
+	obs_source_release(old_scene_a);
+	obs_source_release(old_scene_b);
+
+	clear_items(move, true);
+	move->matched_items = 0;
+	move->transition_pool_move_index = 0;
+	move->transition_pool_in_index = 0;
+	move->transition_pool_out_index = 0;
+	move->matched_scene_a = false;
+	move->matched_scene_b = false;
+	move->item_pos = 0;
+	obs_scene_t *scene_a = obs_scene_from_source(move->scene_source_a);
+	if (!scene_a)
+		scene_a = obs_group_from_source(move->scene_source_a);
+	if (scene_a) {
+		obs_scene_enum_items(scene_a, add_item, move);
+	} else if (move->scene_source_a) {
+
+		scene_a = obs_scene_create_private(
+			obs_source_get_name(move->scene_source_a));
+		obs_sceneitem_t *scene_item =
+			obs_scene_add(scene_a, move->scene_source_a);
+		struct move_item *item = create_move_item();
+		da_push_back(move->items_a, &item);
+		obs_sceneitem_addref(scene_item);
+		item->item_a = scene_item;
+		item->release_scene_a = scene_a;
+	}
+	move->item_pos = 0;
+	obs_scene_t *scene_b = obs_scene_from_source(move->scene_source_b);
+	if (!scene_b)
+		scene_b = obs_group_from_source(move->scene_source_b);
+	if (scene_b) {
+		obs_scene_enum_items(scene_b, match_item, move);
+	} else if (move->scene_source_b) {
+		scene_b = obs_scene_create_private(
+			obs_source_get_name(move->scene_source_b));
+		obs_sceneitem_t *scene_item =
+			obs_scene_add(scene_b, move->scene_source_b);
+		size_t old_pos = 0;
+		struct move_item *item = NULL;
+		for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
+			item = match_functions[i](move, scene_item, &old_pos);
+			if (item)
+				break;
+		}
+		if (item) {
+			move->matched_items++;
+			if (old_pos >= move->item_pos)
+				move->item_pos = old_pos + 1;
+		} else {
+			item = create_move_item();
+			da_insert(move->items_a, move->item_pos, &item);
+			move->item_pos++;
+		}
+		obs_sceneitem_addref(scene_item);
+		item->item_b = scene_item;
+		item->release_scene_b = scene_b;
+		da_push_back(move->items_b, &item);
+	}
+	if (!move->matched_items &&
+	    (move->matched_scene_a || move->matched_scene_b)) {
+		size_t i = 0;
+		while (i < move->items_a.num) {
+			struct move_item *item = move->items_a.array[i];
+			if (move->matched_scene_a && item->item_a) {
+				obs_sceneitem_release(item->item_a);
+				da_erase(move->items_a, i);
+			} else if (move->matched_scene_b && item->item_b) {
+				obs_sceneitem_release(item->item_b);
+				da_erase(move->items_a, i);
+			} else {
+				i++;
+			}
+		}
+		if (move->matched_scene_b) {
+			move->items_b.num = 0;
+		}
+	}
+	// insert missing items from items_a into items_b
+	move->item_pos = 0;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if (item->item_a && !item->item_b) {
+			da_insert(move->items_b, move->item_pos, &item);
+			move->item_pos++;
+		} else {
+			for (size_t j = move->item_pos; j < move->items_b.num;
+			     j++) {
+				if (item == move->items_b.array[j]) {
+					move->item_pos = j + 1;
+					break;
+				}
+			}
+		}
+	}
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if ((item->item_a && item->item_b) || item->move_scene) {
+			item->easing = move->easing_move;
+			item->easing_function = move->easing_function_move;
+			item->transition_scale = move->transition_move_scale;
+			item->curve = move->curve_move;
+		} else if (item->item_b) {
+			item->easing = move->easing_in;
+			item->easing_function = move->easing_function_in;
+			item->position = move->position_in;
+			item->zoom = move->zoom_in;
+			item->curve = move->curve_in;
+		} else if (item->item_a) {
+			item->easing = move->easing_out;
+			item->easing_function = move->easing_function_out;
+			item->position = move->position_out;
+			item->zoom = move->zoom_out;
+			item->curve = move->curve_out;
+		}
+
+		obs_data_t *settings_a =
+			get_override_filter_settings(item->item_a);
+		obs_data_t *settings_b =
+			get_override_filter_settings(item->item_b);
+		if (settings_a && settings_b) {
+			long long val_a =
+				obs_data_get_int(settings_a, S_EASING_MATCH);
+			long long val_b =
+				obs_data_get_int(settings_b, S_EASING_MATCH);
+			if (val_a != NO_OVERRIDE && val_b != NO_OVERRIDE) {
+				item->easing = (val_a & EASE_IN) |
+					       (val_b & EASE_OUT);
+			} else if (val_a != NO_OVERRIDE) {
+				item->easing = val_a;
+			} else if (val_b != NO_OVERRIDE) {
+				item->easing = val_b;
+			}
+			val_a = obs_data_get_int(settings_a,
+						 S_EASING_FUNCTION_MATCH);
+			val_b = obs_data_get_int(settings_b,
+						 S_EASING_FUNCTION_MATCH);
+			if (val_a != NO_OVERRIDE) {
+				item->easing_function = val_a;
+			} else if (val_b != NO_OVERRIDE) {
+				item->easing_function = val_b;
+			}
+			const char *cv_a = obs_data_get_string(
+				settings_a, S_TRANSITION_MATCH);
+			const char *cv_b = obs_data_get_string(
+				settings_b, S_TRANSITION_MATCH);
+			if (cv_a && strlen(cv_a)) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(cv_a);
+			} else if (cv_b && strlen(cv_b)) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(cv_b);
+			}
+			val_a = obs_data_get_int(settings_a,
+						 S_TRANSITION_SCALE);
+			val_b = obs_data_get_int(settings_b,
+						 S_TRANSITION_SCALE);
+			if (val_a != NO_OVERRIDE) {
+				item->transition_scale = val_a;
+			} else if (val_b != NO_OVERRIDE) {
+				item->transition_scale = val_b;
+			}
+			if (obs_data_get_bool(settings_a,
+					      S_CURVE_OVERRIDE_MATCH)) {
+				item->curve = (float)obs_data_get_double(
+					settings_a, S_CURVE_MATCH);
+			} else if (obs_data_get_bool(settings_b,
+						     S_CURVE_OVERRIDE_MATCH)) {
+				item->curve = (float)obs_data_get_double(
+					settings_b, S_CURVE_MATCH);
+			}
+
+			val_a = obs_data_get_int(settings_a,
+						 S_START_DELAY_MATCH_FROM);
+			val_b = obs_data_get_int(settings_b,
+						 S_START_DELAY_MATCH_TO);
+			if (val_a != NO_OVERRIDE && val_b != NO_OVERRIDE) {
+				item->start_percentage = (int)(val_a + val_b) >>
+							 1;
+			} else if (val_a != NO_OVERRIDE) {
+				item->start_percentage = (int)val_a;
+			} else if (val_b != NO_OVERRIDE) {
+				item->start_percentage = (int)val_b;
+			}
+			val_a = obs_data_get_int(settings_a,
+						 S_END_DELAY_MATCH_FROM);
+			val_b = obs_data_get_int(settings_b,
+						 S_END_DELAY_MATCH_TO);
+			if (val_a != NO_OVERRIDE && val_b != NO_OVERRIDE) {
+				item->end_percentage =
+					100 - ((int)(val_a + val_b) >> 1);
+			} else if (val_a != NO_OVERRIDE) {
+				item->end_percentage = 100 - (int)val_a;
+			} else if (val_b != NO_OVERRIDE) {
+				item->end_percentage = 100 - (int)val_b;
+			}
+			const char *start_move_a = obs_data_get_string(
+				settings_a, S_START_MOVE_MATCH_FROM);
+			if (start_move_a && strlen(start_move_a)) {
+				sceneitem_start_move(item->item_a,
+						     start_move_a);
+			}
+			const char *start_move_b = obs_data_get_string(
+				settings_b, S_START_MOVE_MATCH_TO);
+			if (start_move_b && strlen(start_move_b)) {
+				sceneitem_start_move(item->item_b,
+						     start_move_b);
+			}
+		} else if (settings_a) {
+			long long val;
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_a,
+						       S_EASING_MATCH);
+			else
+				val = obs_data_get_int(settings_a,
+						       S_EASING_OUT);
+			if (val != NO_OVERRIDE) {
+				item->easing = val;
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_a,
+						       S_EASING_FUNCTION_MATCH);
+			else
+				val = obs_data_get_int(settings_a,
+						       S_EASING_FUNCTION_OUT);
+			if (val != NO_OVERRIDE) {
+				item->easing_function = val;
+			}
+			val = obs_data_get_int(settings_a, S_ZOOM_OUT);
+			if (val != NO_OVERRIDE) {
+				item->zoom = !!val;
+			}
+			val = obs_data_get_int(settings_a, S_POSITION_OUT);
+			if (val != NO_OVERRIDE) {
+				item->position = val;
+			}
+			val = obs_data_get_int(settings_a, S_TRANSITION_SCALE);
+			if (val != NO_OVERRIDE) {
+				item->transition_scale = val;
+			}
+			const char *ti = obs_data_get_string(settings_a,
+							     S_TRANSITION_OUT);
+			if (!item->move_scene && ti && strlen(ti) &&
+			    item->item_a && !item->item_b) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(ti);
+			}
+			const char *tm = obs_data_get_string(
+				settings_a, S_TRANSITION_MATCH);
+			if (tm && strlen(tm) &&
+			    ((item->item_a && item->item_b) ||
+			     item->move_scene)) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(tm);
+			}
+			if (((item->item_a && item->item_b) ||
+			     item->move_scene) &&
+			    obs_data_get_bool(settings_a,
+					      S_CURVE_OVERRIDE_MATCH)) {
+				item->curve = (float)obs_data_get_double(
+					settings_a, S_CURVE_MATCH);
+			} else if (!item->move_scene && item->item_a &&
+				   !item->item_b &&
+				   obs_data_get_bool(settings_a,
+						     S_CURVE_OVERRIDE_OUT)) {
+				item->curve = (float)obs_data_get_double(
+					settings_a, S_CURVE_OUT);
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(
+					settings_a, S_START_DELAY_MATCH_FROM);
+			else
+				val = obs_data_get_int(settings_a,
+						       S_START_DELAY_OUT);
+			if (val != NO_OVERRIDE) {
+				item->start_percentage = (int)val;
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_a,
+						       S_END_DELAY_MATCH_FROM);
+			else
+				val = obs_data_get_int(settings_a,
+						       S_END_DELAY_OUT);
+			if (val != NO_OVERRIDE) {
+				item->end_percentage = 100 - (int)val;
+			}
+			const char *move_start =
+				((item->item_a && item->item_b) ||
+				 item->move_scene)
+					? obs_data_get_string(
+						  settings_a,
+						  S_START_MOVE_MATCH_FROM)
+					: obs_data_get_string(settings_a,
+							      S_START_MOVE_OUT);
+			if (move_start && strlen(move_start)) {
+				sceneitem_start_move(item->item_a, move_start);
+			}
+
+		} else if (settings_b) {
+			long long val;
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_b,
+						       S_EASING_MATCH);
+			else
+				val = obs_data_get_int(settings_b, S_EASING_IN);
+			if (val != NO_OVERRIDE) {
+				item->easing = val;
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_b,
+						       S_EASING_FUNCTION_MATCH);
+			else
+				val = obs_data_get_int(settings_b,
+						       S_EASING_FUNCTION_IN);
+			if (val != NO_OVERRIDE) {
+				item->easing_function = val;
+			}
+			val = obs_data_get_int(settings_b, S_ZOOM_IN);
+			if (val != NO_OVERRIDE) {
+				item->zoom = !!val;
+			}
+			val = obs_data_get_int(settings_b, S_POSITION_IN);
+			if (val != NO_OVERRIDE) {
+				item->position = val;
+			}
+			val = obs_data_get_int(settings_b, S_TRANSITION_SCALE);
+			if (val != NO_OVERRIDE) {
+				item->transition_scale = val;
+			}
+			const char *to = obs_data_get_string(settings_b,
+							     S_TRANSITION_IN);
+			if (!item->move_scene && to && strlen(to) &&
+			    !item->item_a && item->item_b) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(to);
+			}
+			const char *tm = obs_data_get_string(
+				settings_b, S_TRANSITION_MATCH);
+			if (tm && strlen(tm) &&
+			    ((item->item_a && item->item_b) ||
+			     item->move_scene)) {
+				bfree(item->transition_name);
+				item->transition_name = bstrdup(tm);
+			}
+			if (((item->item_a && item->item_b) ||
+			     item->move_scene) &&
+			    obs_data_get_bool(settings_b,
+					      S_CURVE_OVERRIDE_MATCH)) {
+				item->curve = (float)obs_data_get_double(
+					settings_b, S_CURVE_MATCH);
+			} else if (!item->move_scene && !item->item_a &&
+				   item->item_b &&
+				   obs_data_get_bool(settings_b,
+						     S_CURVE_OVERRIDE_IN)) {
+				item->curve = (float)obs_data_get_double(
+					settings_b, S_CURVE_IN);
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_b,
+						       S_START_DELAY_MATCH_TO);
+			else
+				val = obs_data_get_int(settings_b,
+						       S_START_DELAY_IN);
+			if (val != NO_OVERRIDE) {
+				item->start_percentage = (int)val;
+			}
+			if ((item->item_a && item->item_b) || item->move_scene)
+				val = obs_data_get_int(settings_b,
+						       S_END_DELAY_MATCH_TO);
+			else
+				val = obs_data_get_int(settings_b,
+						       S_END_DELAY_IN);
+			if (val != NO_OVERRIDE) {
+				item->end_percentage = 100 - (int)val;
+			}
+			const char *move_start =
+				((item->item_a && item->item_b) ||
+				 item->move_scene)
+					? obs_data_get_string(
+						  settings_b,
+						  S_START_MOVE_MATCH_TO)
+					: obs_data_get_string(settings_a,
+							      S_START_MOVE_IN);
+			if (move_start && strlen(move_start)) {
+				sceneitem_start_move(item->item_b, move_start);
+			}
+		}
+		obs_data_release(settings_a);
+		obs_data_release(settings_b);
+		if (!item->transition_name && !item->move_scene &&
+		    !item->item_a && item->item_b && move->transition_in &&
+		    strlen(move->transition_in)) {
+
+			bfree(item->transition_name);
+			item->transition_name = bstrdup(move->transition_in);
+		}
+		if (!item->transition_name && !item->move_scene &&
+		    item->item_a && !item->item_b && move->transition_out &&
+		    strlen(move->transition_out)) {
+			bfree(item->transition_name);
+			item->transition_name = bstrdup(move->transition_out);
+		}
+		if (!item->transition_name &&
+		    ((item->item_a && item->item_b) || item->move_scene) &&
+		    move->transition_move && strlen(move->transition_move)) {
+			bfree(item->transition_name);
+			item->transition_name = bstrdup(move->transition_move);
+		}
+	}
+}
+
+static void move_video_tick(void *data, float seconds)
+{
+	UNUSED_PARAMETER(seconds);
+	struct move_info *move = data;
+	move_start_init(move);
+}
+
 static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
 	move->t = obs_transition_get_time(move->source);
 
-	if (move->start_init) {
-		move->start_init = false;
-		move->first_frame = true;
-		obs_source_t *old_scene_a = move->scene_source_a;
-		move->scene_source_a = obs_transition_get_source(
-			move->source, OBS_TRANSITION_SOURCE_A);
-		obs_source_t *old_scene_b = move->scene_source_b;
-		move->scene_source_b = obs_transition_get_source(
-			move->source, OBS_TRANSITION_SOURCE_B);
-
-		obs_source_release(old_scene_a);
-		obs_source_release(old_scene_b);
-
-		clear_items(move, true);
-		move->matched_items = 0;
-		move->transition_pool_move_index = 0;
-		move->transition_pool_in_index = 0;
-		move->transition_pool_out_index = 0;
-		move->matched_scene_a = false;
-		move->matched_scene_b = false;
-		move->item_pos = 0;
-		obs_scene_t *scene_a =
-			obs_scene_from_source(move->scene_source_a);
-		if (!scene_a)
-			scene_a = obs_group_from_source(move->scene_source_a);
-		if (scene_a) {
-			obs_scene_enum_items(scene_a, add_item, data);
-		} else if (move->scene_source_a) {
-
-			scene_a = obs_scene_create_private(
-				obs_source_get_name(move->scene_source_a));
-			obs_sceneitem_t *scene_item =
-				obs_scene_add(scene_a, move->scene_source_a);
-			struct move_item *item = create_move_item();
-			da_push_back(move->items_a, &item);
-			obs_sceneitem_addref(scene_item);
-			item->item_a = scene_item;
-			item->release_scene_a = scene_a;
-		}
-		move->item_pos = 0;
-		obs_scene_t *scene_b =
-			obs_scene_from_source(move->scene_source_b);
-		if (!scene_b)
-			scene_b = obs_group_from_source(move->scene_source_b);
-		if (scene_b) {
-			obs_scene_enum_items(scene_b, match_item, data);
-		} else if (move->scene_source_b) {
-			scene_b = obs_scene_create_private(
-				obs_source_get_name(move->scene_source_b));
-			obs_sceneitem_t *scene_item =
-				obs_scene_add(scene_b, move->scene_source_b);
-			size_t old_pos = 0;
-			struct move_item *item = NULL;
-			for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
-				item = match_functions[i](move, scene_item,
-							  &old_pos);
-				if (item)
-					break;
-			}
-			if (item) {
-				move->matched_items++;
-				if (old_pos >= move->item_pos)
-					move->item_pos = old_pos + 1;
-			} else {
-				item = create_move_item();
-				da_insert(move->items_a, move->item_pos, &item);
-				move->item_pos++;
-			}
-			obs_sceneitem_addref(scene_item);
-			item->item_b = scene_item;
-			item->release_scene_b = scene_b;
-			da_push_back(move->items_b, &item);
-		}
-		if (!move->matched_items &&
-		    (move->matched_scene_a || move->matched_scene_b)) {
-			size_t i = 0;
-			while (i < move->items_a.num) {
-				struct move_item *item = move->items_a.array[i];
-				if (move->matched_scene_a && item->item_a) {
-					obs_sceneitem_release(item->item_a);
-					da_erase(move->items_a, i);
-				} else if (move->matched_scene_b &&
-					   item->item_b) {
-					obs_sceneitem_release(item->item_b);
-					da_erase(move->items_a, i);
-				} else {
-					i++;
-				}
-			}
-			if (move->matched_scene_b) {
-				move->items_b.num = 0;
-			}
-		}
-		// insert missing items from items_a into items_b
-		move->item_pos = 0;
-		for (size_t i = 0; i < move->items_a.num; i++) {
-			struct move_item *item = move->items_a.array[i];
-			if (item->item_a && !item->item_b) {
-				da_insert(move->items_b, move->item_pos, &item);
-				move->item_pos++;
-			} else {
-				for (size_t j = move->item_pos;
-				     j < move->items_b.num; j++) {
-					if (item == move->items_b.array[j]) {
-						move->item_pos = j + 1;
-						break;
-					}
-				}
-			}
-		}
-		for (size_t i = 0; i < move->items_a.num; i++) {
-			struct move_item *item = move->items_a.array[i];
-			if ((item->item_a && item->item_b) ||
-			    item->move_scene) {
-				item->easing = move->easing_move;
-				item->easing_function =
-					move->easing_function_move;
-				item->transition_scale =
-					move->transition_move_scale;
-				item->curve = move->curve_move;
-			} else if (item->item_b) {
-				item->easing = move->easing_in;
-				item->easing_function =
-					move->easing_function_in;
-				item->position = move->position_in;
-				item->zoom = move->zoom_in;
-				item->curve = move->curve_in;
-			} else if (item->item_a) {
-				item->easing = move->easing_out;
-				item->easing_function =
-					move->easing_function_out;
-				item->position = move->position_out;
-				item->zoom = move->zoom_out;
-				item->curve = move->curve_out;
-			}
-
-			obs_data_t *settings_a =
-				get_override_filter_settings(item->item_a);
-			obs_data_t *settings_b =
-				get_override_filter_settings(item->item_b);
-			if (settings_a && settings_b) {
-				long long val_a = obs_data_get_int(
-					settings_a, S_EASING_MATCH);
-				long long val_b = obs_data_get_int(
-					settings_b, S_EASING_MATCH);
-				if (val_a != NO_OVERRIDE &&
-				    val_b != NO_OVERRIDE) {
-					item->easing = (val_a & EASE_IN) |
-						       (val_b & EASE_OUT);
-				} else if (val_a != NO_OVERRIDE) {
-					item->easing = val_a;
-				} else if (val_b != NO_OVERRIDE) {
-					item->easing = val_b;
-				}
-				val_a = obs_data_get_int(
-					settings_a, S_EASING_FUNCTION_MATCH);
-				val_b = obs_data_get_int(
-					settings_b, S_EASING_FUNCTION_MATCH);
-				if (val_a != NO_OVERRIDE) {
-					item->easing_function = val_a;
-				} else if (val_b != NO_OVERRIDE) {
-					item->easing_function = val_b;
-				}
-				const char *cv_a = obs_data_get_string(
-					settings_a, S_TRANSITION_MATCH);
-				const char *cv_b = obs_data_get_string(
-					settings_b, S_TRANSITION_MATCH);
-				if (cv_a && strlen(cv_a)) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(cv_a);
-				} else if (cv_b && strlen(cv_b)) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(cv_b);
-				}
-				val_a = obs_data_get_int(settings_a,
-							 S_TRANSITION_SCALE);
-				val_b = obs_data_get_int(settings_b,
-							 S_TRANSITION_SCALE);
-				if (val_a != NO_OVERRIDE) {
-					item->transition_scale = val_a;
-				} else if (val_b != NO_OVERRIDE) {
-					item->transition_scale = val_b;
-				}
-				if (obs_data_get_bool(settings_a,
-						      S_CURVE_OVERRIDE_MATCH)) {
-					item->curve = (float)obs_data_get_double(
-						settings_a, S_CURVE_MATCH);
-				} else if (obs_data_get_bool(
-						   settings_b,
-						   S_CURVE_OVERRIDE_MATCH)) {
-					item->curve = (float)obs_data_get_double(
-						settings_b, S_CURVE_MATCH);
-				}
-
-				val_a = obs_data_get_int(
-					settings_a, S_START_DELAY_MATCH_FROM);
-				val_b = obs_data_get_int(
-					settings_b, S_START_DELAY_MATCH_TO);
-				if (val_a != NO_OVERRIDE &&
-				    val_b != NO_OVERRIDE) {
-					item->start_percentage =
-						(int)(val_a + val_b) >> 1;
-				} else if (val_a != NO_OVERRIDE) {
-					item->start_percentage = (int)val_a;
-				} else if (val_b != NO_OVERRIDE) {
-					item->start_percentage = (int)val_b;
-				}
-				val_a = obs_data_get_int(
-					settings_a, S_END_DELAY_MATCH_FROM);
-				val_b = obs_data_get_int(settings_b,
-							 S_END_DELAY_MATCH_TO);
-				if (val_a != NO_OVERRIDE &&
-				    val_b != NO_OVERRIDE) {
-					item->end_percentage =
-						100 -
-						((int)(val_a + val_b) >> 1);
-				} else if (val_a != NO_OVERRIDE) {
-					item->end_percentage = 100 - (int)val_a;
-				} else if (val_b != NO_OVERRIDE) {
-					item->end_percentage = 100 - (int)val_b;
-				}
-				const char *start_move_a = obs_data_get_string(
-					settings_a, S_START_MOVE_MATCH_FROM);
-				if (start_move_a && strlen(start_move_a)) {
-					sceneitem_start_move(item->item_a,
-							     start_move_a);
-				}
-				const char *start_move_b = obs_data_get_string(
-					settings_b, S_START_MOVE_MATCH_TO);
-				if (start_move_b && strlen(start_move_b)) {
-					sceneitem_start_move(item->item_b,
-							     start_move_b);
-				}
-			} else if (settings_a) {
-				long long val;
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(settings_a,
-							       S_EASING_MATCH);
-				else
-					val = obs_data_get_int(settings_a,
-							       S_EASING_OUT);
-				if (val != NO_OVERRIDE) {
-					item->easing = val;
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_a,
-						S_EASING_FUNCTION_MATCH);
-				else
-					val = obs_data_get_int(
-						settings_a,
-						S_EASING_FUNCTION_OUT);
-				if (val != NO_OVERRIDE) {
-					item->easing_function = val;
-				}
-				val = obs_data_get_int(settings_a, S_ZOOM_OUT);
-				if (val != NO_OVERRIDE) {
-					item->zoom = !!val;
-				}
-				val = obs_data_get_int(settings_a,
-						       S_POSITION_OUT);
-				if (val != NO_OVERRIDE) {
-					item->position = val;
-				}
-				val = obs_data_get_int(settings_a,
-						       S_TRANSITION_SCALE);
-				if (val != NO_OVERRIDE) {
-					item->transition_scale = val;
-				}
-				const char *ti = obs_data_get_string(
-					settings_a, S_TRANSITION_OUT);
-				if (!item->move_scene && ti && strlen(ti) &&
-				    item->item_a && !item->item_b) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(ti);
-				}
-				const char *tm = obs_data_get_string(
-					settings_a, S_TRANSITION_MATCH);
-				if (tm && strlen(tm) &&
-				    ((item->item_a && item->item_b) ||
-				     item->move_scene)) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(tm);
-				}
-				if (((item->item_a && item->item_b) ||
-				     item->move_scene) &&
-				    obs_data_get_bool(settings_a,
-						      S_CURVE_OVERRIDE_MATCH)) {
-					item->curve = (float)obs_data_get_double(
-						settings_a, S_CURVE_MATCH);
-				} else if (!item->move_scene && item->item_a &&
-					   !item->item_b &&
-					   obs_data_get_bool(
-						   settings_a,
-						   S_CURVE_OVERRIDE_OUT)) {
-					item->curve = (float)obs_data_get_double(
-						settings_a, S_CURVE_OUT);
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_a,
-						S_START_DELAY_MATCH_FROM);
-				else
-					val = obs_data_get_int(
-						settings_a, S_START_DELAY_OUT);
-				if (val != NO_OVERRIDE) {
-					item->start_percentage = (int)val;
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_a,
-						S_END_DELAY_MATCH_FROM);
-				else
-					val = obs_data_get_int(settings_a,
-							       S_END_DELAY_OUT);
-				if (val != NO_OVERRIDE) {
-					item->end_percentage = 100 - (int)val;
-				}
-				const char *move_start =
-					((item->item_a && item->item_b) ||
-					 item->move_scene)
-						? obs_data_get_string(
-							  settings_a,
-							  S_START_MOVE_MATCH_FROM)
-						: obs_data_get_string(
-							  settings_a,
-							  S_START_MOVE_OUT);
-				if (move_start && strlen(move_start)) {
-					sceneitem_start_move(item->item_a,
-							     move_start);
-				}
-
-			} else if (settings_b) {
-				long long val;
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(settings_b,
-							       S_EASING_MATCH);
-				else
-					val = obs_data_get_int(settings_b,
-							       S_EASING_IN);
-				if (val != NO_OVERRIDE) {
-					item->easing = val;
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_b,
-						S_EASING_FUNCTION_MATCH);
-				else
-					val = obs_data_get_int(
-						settings_b,
-						S_EASING_FUNCTION_IN);
-				if (val != NO_OVERRIDE) {
-					item->easing_function = val;
-				}
-				val = obs_data_get_int(settings_b, S_ZOOM_IN);
-				if (val != NO_OVERRIDE) {
-					item->zoom = !!val;
-				}
-				val = obs_data_get_int(settings_b,
-						       S_POSITION_IN);
-				if (val != NO_OVERRIDE) {
-					item->position = val;
-				}
-				val = obs_data_get_int(settings_b,
-						       S_TRANSITION_SCALE);
-				if (val != NO_OVERRIDE) {
-					item->transition_scale = val;
-				}
-				const char *to = obs_data_get_string(
-					settings_b, S_TRANSITION_IN);
-				if (!item->move_scene && to && strlen(to) &&
-				    !item->item_a && item->item_b) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(to);
-				}
-				const char *tm = obs_data_get_string(
-					settings_b, S_TRANSITION_MATCH);
-				if (tm && strlen(tm) &&
-				    ((item->item_a && item->item_b) ||
-				     item->move_scene)) {
-					bfree(item->transition_name);
-					item->transition_name = bstrdup(tm);
-				}
-				if (((item->item_a && item->item_b) ||
-				     item->move_scene) &&
-				    obs_data_get_bool(settings_b,
-						      S_CURVE_OVERRIDE_MATCH)) {
-					item->curve = (float)obs_data_get_double(
-						settings_b, S_CURVE_MATCH);
-				} else if (!item->move_scene && !item->item_a &&
-					   item->item_b &&
-					   obs_data_get_bool(
-						   settings_b,
-						   S_CURVE_OVERRIDE_IN)) {
-					item->curve =
-						(float)obs_data_get_double(
-							settings_b, S_CURVE_IN);
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_b,
-						S_START_DELAY_MATCH_TO);
-				else
-					val = obs_data_get_int(
-						settings_b, S_START_DELAY_IN);
-				if (val != NO_OVERRIDE) {
-					item->start_percentage = (int)val;
-				}
-				if ((item->item_a && item->item_b) ||
-				    item->move_scene)
-					val = obs_data_get_int(
-						settings_b,
-						S_END_DELAY_MATCH_TO);
-				else
-					val = obs_data_get_int(settings_b,
-							       S_END_DELAY_IN);
-				if (val != NO_OVERRIDE) {
-					item->end_percentage = 100 - (int)val;
-				}
-				const char *move_start =
-					((item->item_a && item->item_b) ||
-					 item->move_scene)
-						? obs_data_get_string(
-							  settings_b,
-							  S_START_MOVE_MATCH_TO)
-						: obs_data_get_string(
-							  settings_a,
-							  S_START_MOVE_IN);
-				if (move_start && strlen(move_start)) {
-					sceneitem_start_move(item->item_b,
-							     move_start);
-				}
-			}
-			obs_data_release(settings_a);
-			obs_data_release(settings_b);
-			if (!item->transition_name && !item->move_scene &&
-			    !item->item_a && item->item_b &&
-			    move->transition_in &&
-			    strlen(move->transition_in)) {
-
-				bfree(item->transition_name);
-				item->transition_name =
-					bstrdup(move->transition_in);
-			}
-			if (!item->transition_name && !item->move_scene &&
-			    item->item_a && !item->item_b &&
-			    move->transition_out &&
-			    strlen(move->transition_out)) {
-				bfree(item->transition_name);
-				item->transition_name =
-					bstrdup(move->transition_out);
-			}
-			if (!item->transition_name &&
-			    ((item->item_a && item->item_b) ||
-			     item->move_scene) &&
-			    move->transition_move &&
-			    strlen(move->transition_move)) {
-				bfree(item->transition_name);
-				item->transition_name =
-					bstrdup(move->transition_move);
-			}
-		}
-	}
+	move_start_init(move);
 
 	if (move->t > 0.0f && move->t < 1.0f) {
 		if (!move->scene_source_a)
@@ -2870,6 +2833,7 @@ struct obs_source_info move_transition = {
 	.create = move_create,
 	.destroy = move_destroy,
 	.update = move_update,
+	.video_tick = move_video_tick,
 	.video_render = move_video_render,
 	.audio_render = move_audio_render,
 	.get_properties = move_properties,
