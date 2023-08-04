@@ -2060,8 +2060,9 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 		move_filter_start(obs_obj_get_data(filter));
 }
 
-static void move_start_init(struct move_info *move)
+static void move_start_init(struct move_info *move, bool in_graphics)
 {
+	move->t = obs_transition_get_time(move->source);
 	if (!move->start_init)
 		return;
 	move->start_init = false;
@@ -2076,7 +2077,7 @@ static void move_start_init(struct move_info *move)
 	obs_source_release(old_scene_a);
 	obs_source_release(old_scene_b);
 
-	clear_items(move, true);
+	clear_items(move, in_graphics);
 	move->matched_items = 0;
 	move->transition_pool_move_index = 0;
 	move->transition_pool_in_index = 0;
@@ -2489,18 +2490,16 @@ static void move_video_tick(void *data, float seconds)
 {
 	UNUSED_PARAMETER(seconds);
 	struct move_info *move = data;
-	move_start_init(move);
+	move_start_init(move, false);
 }
 
 static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
-	move->t = obs_transition_get_time(move->source);
+	move_start_init(move, true);
 
-	move_start_init(move);
-
-	if (move->t > 0.0f && move->t < 1.0f) {
+	if (move->t >= 0.0f && move->t < 1.0f) {
 		if (!move->scene_source_a)
 			move->scene_source_a = obs_transition_get_source(
 				move->source, OBS_TRANSITION_SOURCE_A);
