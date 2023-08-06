@@ -1861,6 +1861,75 @@ struct match_item_nested_match {
 	bool matched;
 };
 
+bool match_item_nested_all_match(obs_scene_t *obs_scene,
+				 obs_sceneitem_t *sceneitem, void *p)
+{
+	UNUSED_PARAMETER(obs_scene);
+	if (!obs_sceneitem_visible(sceneitem))
+		return true;
+	struct match_item_nested_match *mi = p;
+	obs_source_t *source = obs_sceneitem_get_source(sceneitem);
+	if (!source)
+		return true;
+	obs_scene_t *scene = obs_scene_from_source(mi->check_source);
+	obs_sceneitem_t *item =
+		obs_scene_find_source(scene, obs_source_get_name(source));
+	if (!item) {
+		mi->matched = false;
+		return false;
+	}
+	return true;
+}
+
+struct move_item *match_item_scene_same(struct move_info *move,
+					obs_sceneitem_t *scene_item,
+					size_t *found_pos)
+{
+	struct move_item *item = NULL;
+	if (!move->nested_scenes)
+		return item;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	if (!obs_source_is_scene(source) && !obs_source_is_group(source))
+		return item;
+	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
+
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b || check_item->move_scene)
+			continue;
+
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+
+		if (!obs_source_is_scene(check_source) &&
+		    !obs_source_is_group(check_source))
+			continue;
+
+		obs_scene_t *check_scene = obs_scene_from_source(check_source);
+		if (!check_scene)
+			check_scene = obs_group_from_source(check_source);
+
+		struct match_item_nested_match mi;
+		mi.check_source = check_source;
+		mi.matched = true;
+		obs_scene_enum_items(scene, match_item_nested_all_match, &mi);
+		mi.check_source = source;
+		obs_scene_enum_items(check_scene, match_item_nested_all_match,
+				     &mi);
+		if (mi.matched) {
+			item = check_item;
+			item->move_scene = true;
+			*found_pos = i;
+			break;
+		}
+	}
+	return item;
+}
+
 bool match_item_nested_match(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem,
 			     void *p)
 {
@@ -1961,18 +2030,89 @@ struct move_item *match_item_nested(struct move_info *move,
 	return item;
 }
 
+bool match_item_nested_any_match(obs_scene_t *obs_scene,
+				 obs_sceneitem_t *sceneitem, void *p)
+{
+	UNUSED_PARAMETER(obs_scene);
+	if (!obs_sceneitem_visible(sceneitem))
+		return true;
+	struct match_item_nested_match *mi = p;
+	obs_source_t *source = obs_sceneitem_get_source(sceneitem);
+	if (!source)
+		return true;
+	obs_scene_t *scene = obs_scene_from_source(mi->check_source);
+
+	obs_sceneitem_t *item =
+		obs_scene_find_source(scene, obs_source_get_name(source));
+	if (item && obs_sceneitem_visible(item)) {
+		mi->matched = true;
+		return false;
+	}
+	return true;
+}
+
+struct move_item *match_item_scene_match(struct move_info *move,
+					 obs_sceneitem_t *scene_item,
+					 size_t *found_pos)
+{
+	struct move_item *item = NULL;
+	if (!move->nested_scenes)
+		return item;
+	obs_source_t *source = obs_sceneitem_get_source(scene_item);
+	if (!obs_source_is_scene(source) && !obs_source_is_group(source))
+		return item;
+	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
+
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *check_item = move->items_a.array[i];
+		if (check_item->item_b || check_item->move_scene)
+			continue;
+
+		obs_source_t *check_source =
+			obs_sceneitem_get_source(check_item->item_a);
+		if (!check_source)
+			continue;
+		if (!obs_source_is_scene(check_source) &&
+		    !obs_source_is_group(check_source))
+			continue;
+
+		obs_scene_t *check_scene = obs_scene_from_source(check_source);
+		if (!check_scene)
+			check_scene = obs_group_from_source(check_source);
+
+		struct match_item_nested_match mi;
+		mi.check_source = check_source;
+		mi.matched = false;
+		obs_scene_enum_items(scene, match_item_nested_any_match, &mi);
+		mi.check_source = source;
+		obs_scene_enum_items(check_scene, match_item_nested_any_match,
+				     &mi);
+		if (mi.matched) {
+			item = check_item;
+			item->move_scene = true;
+			*found_pos = i;
+			break;
+		}
+	}
+	return item;
+}
+
 typedef struct move_item *(*match_function)(struct move_info *move,
 					    obs_sceneitem_t *scene_item,
 					    size_t *found_pos);
 
-#define MATCH_FUNCTION_COUNT 6
+#define MATCH_FUNCTION_COUNT 8
 match_function match_functions[MATCH_FUNCTION_COUNT] = {
 	match_item_by_override,
 	match_item_by_name,
 	match_item_clone,
 	match_item_name_part,
 	match_item_by_type_and_settings,
-	match_item_nested};
+	match_item_scene_same,
+	match_item_nested,
+	match_item_scene_match};
 
 struct move_item *create_move_item()
 {
