@@ -129,6 +129,7 @@ struct nvidia_move_action {
 	uint32_t feature_property;
 	uint32_t feature_number[3];
 	float threshold;
+	float required_confidence;
 	float easing;
 	float previous_float;
 	struct vec2 previous_vec2;
@@ -275,7 +276,7 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 	float value = 0.0f;
 	bool success = false;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
-	    filter->bboxes.max_boxes) {
+	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
 		if (action->feature_property == FEATURE_BOUNDINGBOX_LEFT) {
 			value = filter->bboxes.boxes[0].x;
 			success = true;
@@ -317,6 +318,9 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
 		if (action->feature_number[0] >= filter->landmarks.num) {
+		} else if (filter->landmarks_confidence
+				   .array[action->feature_number[0]] <
+			   action->required_confidence) {
 		} else if (action->feature_property == FEATURE_LANDMARK_X) {
 			value = filter->landmarks
 					.array[action->feature_number[0]]
@@ -448,6 +452,9 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 		}
 	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
 		if (action->feature_number[0] >= filter->keypoints.num) {
+		} else if (filter->keypoints_confidence
+				   .array[action->feature_number[0]] <
+			   action->required_confidence) {
 		} else if (action->feature_property == BODY_CONFIDENCE) {
 			value = filter->keypoints_confidence
 					.array[action->feature_number[0]];
@@ -601,7 +608,7 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	value->x = 0.0f;
 	value->y = 0.0f;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
-	    filter->bboxes.max_boxes) {
+	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
 		if (action->feature_property == FEATURE_BOUNDINGBOX_TOP_LEFT) {
 			value->x = filter->bboxes.boxes[0].x;
 			value->y = filter->bboxes.boxes[0].y;
@@ -667,6 +674,9 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	} else if (action->feature == FEATURE_LANDMARK &&
 		   filter->landmarks.num) {
 		if (action->feature_number[0] >= filter->landmarks.num) {
+		} else if (filter->landmarks_confidence
+				   .array[action->feature_number[0]] <
+			   action->required_confidence) {
 		} else if (action->feature_property == FEATURE_LANDMARK_POS) {
 			value->x = filter->landmarks
 					   .array[action->feature_number[0]]
@@ -699,6 +709,9 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 		}
 	} else if (action->feature == FEATURE_BODY && filter->keypoints.num) {
 		if (action->feature_number[0] >= filter->keypoints.num) {
+		} else if (filter->keypoints_confidence
+				   .array[action->feature_number[0]] <
+			   action->required_confidence) {
 		} else if (action->feature_property == BODY_2D_POS) {
 			value->x = filter->keypoints
 					   .array[action->feature_number[0]]
@@ -708,6 +721,9 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 					   .y;
 			success = true;
 		} else if (action->feature_number[1] >= filter->keypoints.num) {
+		} else if (filter->keypoints_confidence
+				   .array[action->feature_number[1]] <
+			   action->required_confidence) {
 		} else if (action->feature_property == BODY_2D_DIFF) {
 			value->x = filter->keypoints
 					   .array[action->feature_number[1]]
@@ -872,6 +888,11 @@ static void nv_move_update(void *data, obs_data_t *settings)
 					(uint32_t)obs_data_get_int(settings,
 								   name.array) -
 					1;
+			dstr_printf(&name, "action_%lld_required_confidence",
+				    i);
+			action->required_confidence =
+				(float)obs_data_get_double(settings,
+							   name.array);
 		} else if (action->feature == FEATURE_POSE) {
 			dstr_printf(&name, "action_%lld_pose", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
@@ -898,6 +919,11 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			dstr_printf(&name, "action_%lld_body_2", i);
 			action->feature_number[1] = (uint32_t)obs_data_get_int(
 				settings, name.array);
+			dstr_printf(&name, "action_%lld_required_confidence",
+				    i);
+			action->required_confidence =
+				(float)obs_data_get_double(settings,
+							   name.array);
 		}
 		dstr_printf(&name, "action_%lld_factor", i);
 		obs_data_set_default_double(settings, name.array, 100.0f);
@@ -1323,11 +1349,16 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_body_2", action_number);
 	obs_property_t *body2 = obs_properties_get(props, name.array);
 	obs_property_set_visible(body2, false);
+	dstr_printf(&name, "action_%lld_required_confidence", action_number);
+	obs_property_t *required_confidence =
+		obs_properties_get(props, name.array);
+	obs_property_set_visible(required_confidence, false);
 
 	if (feature == FEATURE_BOUNDINGBOX) {
 		obs_property_set_visible(bounding_box, true);
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(landmark, true);
+		obs_property_set_visible(required_confidence, true);
 		nv_move_landmark_changed(priv, props, landmark, settings);
 	} else if (feature == FEATURE_POSE) {
 		obs_property_set_visible(pose, true);
@@ -1341,6 +1372,7 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(gaze, true);
 	} else if (feature == FEATURE_BODY) {
 		obs_property_set_visible(body, true);
+		obs_property_set_visible(required_confidence, true);
 		nv_move_body_changed(priv, props, body, settings);
 	}
 	return true;
@@ -2140,6 +2172,11 @@ static obs_properties_t *nv_move_properties(void *data)
 					    OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
 		nv_move_fill_body_list(p);
+
+		dstr_printf(&name, "action_%lld_required_confidence", i);
+		p = obs_properties_add_float_slider(
+			group, name.array, obs_module_text("Confidence"), 0.0,
+			20.0, 0.01);
 
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,

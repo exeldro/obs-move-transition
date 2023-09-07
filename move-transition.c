@@ -144,6 +144,7 @@ static const char *move_get_name(void *type_data)
 
 static void *move_create(obs_data_t *settings, obs_source_t *source)
 {
+	UNUSED_PARAMETER(settings);
 	struct move_info *move = bzalloc(sizeof(struct move_info));
 	move->source = source;
 	da_init(move->items_a);
