@@ -314,6 +314,7 @@ void audio_move_update(void *data, obs_data_t *settings)
 		}
 	}
 	if (target_source && obs_source_removed(target_source)) {
+		obs_source_release(target_source);
 		target_source = NULL;
 	}
 	if (target_source) {
