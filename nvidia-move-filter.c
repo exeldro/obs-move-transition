@@ -140,6 +140,7 @@ struct nvidia_move_info {
 
 	DARRAY(struct nvidia_move_action) actions;
 
+	NvAR_FeatureHandle faceDetectHandle;
 	NvAR_FeatureHandle landmarkHandle;
 	NvAR_FeatureHandle expressionHandle;
 	NvAR_FeatureHandle gazeHandle;
@@ -164,6 +165,7 @@ struct nvidia_move_info {
 	DARRAY(float) landmarks_confidence;
 	DARRAY(NvAR_Point2f) landmarks;
 	DARRAY(NvAR_Point2f) gaze_output_landmarks;
+	DARRAY(float) bboxes_confidence;
 	NvAR_BBoxes bboxes;
 	NvAR_Quaternion pose;
 	DARRAY(float) expressions;
@@ -277,7 +279,10 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 	bool success = false;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
 	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
-		if (action->feature_property == FEATURE_BOUNDINGBOX_LEFT) {
+		if (filter->bboxes_confidence.array[0] <
+		    action->required_confidence) {
+		} else if (action->feature_property ==
+			   FEATURE_BOUNDINGBOX_LEFT) {
 			value = filter->bboxes.boxes[0].x;
 			success = true;
 		} else if (action->feature_property ==
@@ -609,7 +614,10 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	value->y = 0.0f;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
 	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
-		if (action->feature_property == FEATURE_BOUNDINGBOX_TOP_LEFT) {
+		if (filter->bboxes_confidence.array[0] <
+		    action->required_confidence) {
+		} else if (action->feature_property ==
+			   FEATURE_BOUNDINGBOX_TOP_LEFT) {
 			value->x = filter->bboxes.boxes[0].x;
 			value->y = filter->bboxes.boxes[0].y;
 			success = true;
@@ -871,6 +879,11 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			dstr_printf(&name, "action_%lld_bounding_box", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
 				settings, name.array);
+			dstr_printf(&name, "action_%lld_required_confidence",
+				    i);
+			action->required_confidence =
+				(float)obs_data_get_double(settings,
+							   name.array);
 		} else if (action->feature == FEATURE_LANDMARK) {
 			dstr_printf(&name, "action_%lld_landmark", i);
 			action->feature_property = (uint32_t)obs_data_get_int(
@@ -1119,11 +1132,59 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		filter->expressionHandle = NULL;
 	}
 
+	if ((feature_flags & (1ull << FEATURE_BOUNDINGBOX))) {
+		if (!filter->bboxes_confidence.num)
+			da_resize(filter->bboxes_confidence, BBOXES_COUNT);
+		if (filter->bodyHandle) {
+			NvAR_SetF32Array(
+				filter->bodyHandle,
+				NvAR_Parameter_Output(BoundingBoxesConfidence),
+				filter->bboxes_confidence.array, BBOXES_COUNT);
+		} else if (filter->gazeHandle) {
+			NvAR_SetF32Array(
+				filter->gazeHandle,
+				NvAR_Parameter_Output(BoundingBoxesConfidence),
+				filter->bboxes_confidence.array, BBOXES_COUNT);
+		} else if (filter->expressionHandle) {
+			NvAR_SetF32Array(
+				filter->expressionHandle,
+				NvAR_Parameter_Output(BoundingBoxesConfidence),
+				filter->bboxes_confidence.array, BBOXES_COUNT);
+		} else {
+			if (!filter->faceDetectHandle) {
+				if (nv_move_log_error(
+					    filter,
+					    NvAR_Create(
+						    NvAR_Feature_FaceBoxDetection,
+						    &filter->faceDetectHandle),
+					    "Create faceDetect"))
+					return;
+				nv_move_feature_handle(
+					filter, filter->faceDetectHandle);
+				NvAR_SetF32Array(
+					filter->faceDetectHandle,
+					NvAR_Parameter_Output(
+						BoundingBoxesConfidence),
+					filter->bboxes_confidence.array,
+					BBOXES_COUNT);
+
+				if (nv_move_log_error(
+					    filter,
+					    NvAR_Load(filter->faceDetectHandle),
+					    "Load faceDetect"))
+					return;
+			}
+		}
+	} else if (filter->faceDetectHandle) {
+		nv_move_log_error(filter,
+				  NvAR_Destroy(filter->faceDetectHandle),
+				  "Destroy faceDetect");
+		filter->faceDetectHandle = NULL;
+	}
+
 	if ((((feature_flags & (1ull << FEATURE_LANDMARK)) ||
 	      (feature_flags & (1ull << FEATURE_POSE))) &&
-	     !filter->gazeHandle && !filter->expressionHandle) ||
-	    ((feature_flags & (1ull << FEATURE_BOUNDINGBOX)) &&
-	     !filter->bodyHandle)) {
+	     !filter->gazeHandle && !filter->expressionHandle)) {
 		if (!filter->landmarkHandle) {
 			if (nv_move_log_error(
 				    filter,
@@ -1152,6 +1213,10 @@ static void nv_move_update(void *data, obs_data_t *settings)
 static void nv_move_actual_destroy(void *data)
 {
 	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
+	if (filter->faceDetectHandle)
+		nv_move_log_error(filter,
+				  NvAR_Destroy(filter->faceDetectHandle),
+				  "Destroy faceDetect");
 	if (filter->landmarkHandle)
 		nv_move_log_error(filter, NvAR_Destroy(filter->landmarkHandle),
 				  "Destroy landmark");
@@ -1171,6 +1236,7 @@ static void nv_move_actual_destroy(void *data)
 				  NvAR_CudaStreamDestroy(filter->stream),
 				  "Destroy Cuda Stream");
 
+	da_free(filter->bboxes_confidence);
 	da_free(filter->landmarks_confidence);
 	da_free(filter->landmarks);
 	da_free(filter->expressions);
@@ -1356,6 +1422,7 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 
 	if (feature == FEATURE_BOUNDINGBOX) {
 		obs_property_set_visible(bounding_box, true);
+		obs_property_set_visible(required_confidence, true);
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(landmark, true);
 		obs_property_set_visible(required_confidence, true);
@@ -2176,7 +2243,7 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_required_confidence", i);
 		p = obs_properties_add_float_slider(
 			group, name.array, obs_module_text("Confidence"), 0.0,
-			20.0, 0.01);
+			25.0, 0.01);
 
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,
@@ -2461,7 +2528,14 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				    NVCV_GPU, 1) != NVCV_SUCCESS) {
 			//goto fail;
 		}
-
+		if (filter->faceDetectHandle)
+			nv_move_log_error(
+				filter,
+				NvAR_SetObject(filter->faceDetectHandle,
+					       NvAR_Parameter_Input(Image),
+					       filter->BGR_src_img,
+					       sizeof(NvCVImage)),
+				"Set Image");
 		if (filter->landmarkHandle)
 			nv_move_log_error(
 				filter,
@@ -2523,6 +2597,9 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 			  NvCVImage_UnmapResource(filter->src_img,
 						  filter->stream),
 			  "Unmap Resource");
+	if (filter->faceDetectHandle)
+		nv_move_log_error(filter, NvAR_Run(filter->faceDetectHandle),
+				  "Run faceDetect");
 	if (filter->landmarkHandle)
 		nv_move_log_error(filter, NvAR_Run(filter->landmarkHandle),
 				  "Run landmark");
