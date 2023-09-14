@@ -175,11 +175,13 @@ static void clear_items(struct move_info *move, bool in_graphics)
 
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
-		obs_scene_release(item->release_scene_a);
+		if (item->release_scene_a)
+			obs_scene_release(item->release_scene_a);
 		item->release_scene_a = NULL;
 		obs_sceneitem_release(item->item_a);
 		item->item_a = NULL;
-		obs_scene_release(item->release_scene_b);
+		if (item->release_scene_b)
+			obs_scene_release(item->release_scene_b);
 		item->release_scene_b = NULL;
 		obs_sceneitem_release(item->item_b);
 		item->item_b = NULL;
@@ -2201,6 +2203,16 @@ void sceneitem_start_move(obs_sceneitem_t *item, const char *start_move)
 		move_filter_start(obs_obj_get_data(filter));
 }
 
+static bool darray_sceneitem_push_back(obs_scene_t *scene,
+				       obs_sceneitem_t *item, void *data)
+{
+	UNUSED_PARAMETER(scene);
+	struct darray *array = data;
+	if (obs_sceneitem_visible(item))
+		darray_push_back(sizeof(item), array, &item);
+	return true;
+}
+
 static void move_start_init(struct move_info *move, bool in_graphics)
 {
 	move->t = obs_transition_get_time(move->source);
@@ -2232,9 +2244,8 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 	if (scene_a) {
 		obs_scene_enum_items(scene_a, add_item, move);
 	} else if (move->scene_source_a) {
-
-		scene_a = obs_scene_create_private(
-			obs_source_get_name(move->scene_source_a));
+		const char *n = obs_source_get_name(move->scene_source_a);
+		scene_a = obs_scene_create_private(n);
 		obs_sceneitem_t *scene_item =
 			obs_scene_add(scene_a, move->scene_source_a);
 		struct move_item *item = create_move_item();
@@ -2248,10 +2259,103 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 	if (!scene_b)
 		scene_b = obs_group_from_source(move->scene_source_b);
 	if (scene_b) {
-		obs_scene_enum_items(scene_b, match_item, move);
+		//put items in todo array
+		DARRAY(obs_sceneitem_t *) items;
+		da_init(items);
+		obs_scene_enum_items(scene_b, darray_sceneitem_push_back,
+				     &items);
+		struct move_item *item = NULL;
+		for (size_t i = items.num; i > 0; i--) {
+			obs_sceneitem_t *scene_item = items.array[i - 1];
+			if (obs_sceneitem_get_source(scene_item) ==
+			    move->scene_source_a) {
+				item = create_move_item();
+
+				item->move_scene = true;
+				move->matched_scene_a = true;
+				da_erase(items, i - 1);
+
+				obs_sceneitem_addref(scene_item);
+				item->item_b = scene_item;
+				da_insert(move->items_b, 0, &item);
+			}
+		}
+		if (!move->matched_scene_a) {
+			for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
+				for (size_t j = items.num; j > 0; j--) {
+					obs_sceneitem_t *scene_item =
+						items.array[j - 1];
+					size_t old_pos = 0;
+					item = match_functions[i](
+						move, scene_item, &old_pos);
+					if (item) {
+						move->matched_items++;
+
+						da_erase(items, j - 1);
+
+						obs_sceneitem_addref(
+							scene_item);
+						item->item_b = scene_item;
+					}
+				}
+			}
+		}
+		for (size_t i = items.num; i > 0; i--) {
+			obs_sceneitem_t *scene_item = items.array[i - 1];
+			item = create_move_item();
+
+			obs_sceneitem_addref(scene_item);
+			item->item_b = scene_item;
+
+			size_t insert = 0;
+			int order =
+				obs_sceneitem_get_order_position(scene_item);
+			while (insert < move->items_b.num &&
+			       order > obs_sceneitem_get_order_position(
+					       move->items_b.array[insert]
+						       ->item_b)) {
+				insert++;
+			}
+			da_insert(move->items_b, insert, &item);
+		}
+		da_free(items);
+		//add matched items to items_b
+		for (size_t i = 0; i < move->items_a.num; i++) {
+			struct move_item *item = move->items_a.array[i];
+			if (item->item_b) {
+				size_t insert = 0;
+				int order = obs_sceneitem_get_order_position(
+					item->item_b);
+				while (insert < move->items_b.num &&
+				       order > obs_sceneitem_get_order_position(
+						       move->items_b
+							       .array[insert]
+							       ->item_b)) {
+					insert++;
+				}
+				da_insert(move->items_b, insert, &item);
+			}
+		}
+		// insert not matched items from items_b into items_a
+		move->item_pos = 0;
+		for (size_t i = 0; i < move->items_b.num; i++) {
+			struct move_item *item = move->items_b.array[i];
+			if (item->item_b && !item->item_a) {
+				da_insert(move->items_a, move->item_pos, &item);
+				move->item_pos++;
+			} else {
+				for (size_t j = move->item_pos;
+				     j < move->items_a.num; j++) {
+					if (item == move->items_a.array[j]) {
+						move->item_pos = j + 1;
+						break;
+					}
+				}
+			}
+		}
 	} else if (move->scene_source_b) {
-		scene_b = obs_scene_create_private(
-			obs_source_get_name(move->scene_source_b));
+		const char *n = obs_source_get_name(move->scene_source_b);
+		scene_b = obs_scene_create_private(n);
 		obs_sceneitem_t *scene_item =
 			obs_scene_add(scene_b, move->scene_source_b);
 		size_t old_pos = 0;
@@ -2275,6 +2379,7 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 		item->release_scene_b = scene_b;
 		da_push_back(move->items_b, &item);
 	}
+	//only a matched scene
 	if (!move->matched_items &&
 	    (move->matched_scene_a || move->matched_scene_b)) {
 		size_t i = 0;
@@ -2282,10 +2387,26 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			struct move_item *item = move->items_a.array[i];
 			if (move->matched_scene_a && item->item_a) {
 				obs_sceneitem_release(item->item_a);
+				if (item->release_scene_a)
+					obs_scene_release(
+						item->release_scene_a);
+				if (item->release_scene_b)
+					obs_scene_release(
+						item->release_scene_b);
 				da_erase(move->items_a, i);
+				bfree(item->transition_name);
+				bfree(item);
 			} else if (move->matched_scene_b && item->item_b) {
 				obs_sceneitem_release(item->item_b);
+				if (item->release_scene_a)
+					obs_scene_release(
+						item->release_scene_a);
+				if (item->release_scene_b)
+					obs_scene_release(
+						item->release_scene_b);
 				da_erase(move->items_a, i);
+				bfree(item->transition_name);
+				bfree(item);
 			} else {
 				i++;
 			}
