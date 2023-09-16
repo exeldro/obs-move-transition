@@ -249,26 +249,28 @@ static void nv_move_landmarks(struct nvidia_move_info *filter,
 	NvCV_Status nvErr = NvAR_GetU32(handle,
 					NvAR_Parameter_Config(Landmarks_Size),
 					&OUTPUT_SIZE_KPTS);
-	if (nvErr == NVCV_SUCCESS) {
-		da_resize(filter->landmarks, OUTPUT_SIZE_KPTS);
+	if (nvErr != NVCV_SUCCESS)
+		return;
 
-		nvErr = NvAR_SetObject(handle, NvAR_Parameter_Output(Landmarks),
-				       filter->landmarks.array,
-				       sizeof(NvAR_Point2f));
-	}
+	da_resize(filter->landmarks, OUTPUT_SIZE_KPTS);
+
+	nvErr = NvAR_SetObject(handle, NvAR_Parameter_Output(Landmarks),
+			       filter->landmarks.array, sizeof(NvAR_Point2f));
 
 	unsigned int OUTPUT_SIZE_KPTS_CONF = 0;
 	nvErr = NvAR_GetU32(handle,
 			    NvAR_Parameter_Config(LandmarksConfidence_Size),
 			    &OUTPUT_SIZE_KPTS_CONF);
-	if (nvErr == NVCV_SUCCESS) {
-		da_resize(filter->landmarks_confidence, OUTPUT_SIZE_KPTS_CONF);
 
-		nvErr = NvAR_SetF32Array(
-			handle, NvAR_Parameter_Output(LandmarksConfidence),
-			filter->landmarks_confidence.array,
-			OUTPUT_SIZE_KPTS_CONF);
-	}
+	if (nvErr == NVCV_SUCCESS)
+		da_resize(filter->landmarks_confidence, OUTPUT_SIZE_KPTS_CONF);
+	else
+		da_resize(filter->landmarks_confidence, OUTPUT_SIZE_KPTS);
+
+	nvErr = NvAR_SetF32Array(handle,
+				 NvAR_Parameter_Output(LandmarksConfidence),
+				 filter->landmarks_confidence.array,
+				 (int)filter->landmarks_confidence.num);
 }
 
 static bool nv_move_action_get_float(struct nvidia_move_info *filter,
