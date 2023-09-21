@@ -856,8 +856,9 @@ void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to,
 					obs_data_get_default_int(data_from,
 								 name));
 		} else if (prop_type == OBS_PROPERTY_TEXT) {
-			obs_property_list_add_string(setting_list, description,
-						     name);
+			if (obs_property_text_type(prop_from) != OBS_TEXT_INFO)
+				obs_property_list_add_string(setting_list,
+							     description, name);
 		}
 	}
 }
