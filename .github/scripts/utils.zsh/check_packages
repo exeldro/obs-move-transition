@@ -24,16 +24,16 @@ if (( ! ${+commands[packagesbuild]} )) {
   pushd
   mkcd ${project_root:h}/obs-build-dependencies
 
-  local packages_url='http://s.sudre.free.fr/Software/files/Packages.dmg'
+  local packages_url='http://s.sudre.free.fr/Software/files/Packages_1210_1.dmg'
   local packages_hash='6afdd25386295974dad8f078b8f1e41cabebd08e72d970bf92f707c7e48b16c9'
 
-  if [[ ! -f Packages.dmg ]] {
+  if [[ ! -f Packages_1210_1.dmg ]] {
     log_status 'Download Packages.app'
     curl ${curl_opts} ${packages_url}
   }
 
   local image_checksum
-  read -r image_checksum _ <<< "$(sha256sum Packages.dmg)"
+  read -r image_checksum _ <<< "$(sha256sum Packages_1210_1.dmg)"
 
   if [[ ${packages_hash} != ${image_checksum} ]] {
     log_error "Checksum mismatch of Packages.app download.
@@ -42,7 +42,7 @@ Actual   : ${image_checksum}"
     return 2
   }
 
-  hdiutil attach -noverify Packages.dmg &> /dev/null && log_status 'Packages.dmg image mounted.'
+  hdiutil attach -noverify Packages_1210_1.dmg &> /dev/null && log_status 'Packages_1210_1.dmg image mounted.'
 
   log_info 'Installing Packages.app...'
   packages_volume=$(hdiutil info -plist | grep '<string>/Volumes/Packages' | sed 's/.*<string>\(\/Volumes\/[^<]*\)<\/string>/\1/')
