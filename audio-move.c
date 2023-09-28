@@ -942,6 +942,53 @@ void audio_move_tick(void *data, float seconds)
 		obs_source_release(source);
 	}
 }
+
+void audio_move_remove(void *data, obs_source_t *source) {
+	UNUSED_PARAMETER(source);
+	struct audio_move_info *audio_move = data;
+	if (audio_move->target_source) {
+		obs_source_t *source =
+			obs_weak_source_get_source(audio_move->target_source);
+		signal_handler_t *sh = obs_source_get_signal_handler(source);
+		signal_handler_disconnect(sh, "remove",
+					  audio_move_source_remove, audio_move);
+		signal_handler_disconnect(
+			sh, "destroy", audio_move_source_destroy, audio_move);
+		obs_source_release(source);
+		obs_weak_source_release(audio_move->target_source);
+	}
+	audio_move->target_source = NULL;
+	if (audio_move->sceneitem) {
+		obs_scene_t *scene =
+			obs_sceneitem_get_scene(audio_move->sceneitem);
+		signal_handler_t *sh = obs_source_get_signal_handler(
+			obs_scene_get_source(scene));
+		if (sh) {
+			signal_handler_disconnect(sh, "item_remove",
+						  audio_move_item_remove,
+						  audio_move);
+			signal_handler_disconnect(sh, "remove",
+						  audio_move_source_remove,
+						  audio_move);
+			signal_handler_disconnect(sh, "destroy",
+						  audio_move_source_destroy,
+						  audio_move);
+		}
+		obs_source_t *item_source =
+			obs_sceneitem_get_source(audio_move->sceneitem);
+		if (item_source) {
+			sh = obs_source_get_signal_handler(item_source);
+			signal_handler_disconnect(sh, "remove",
+						  audio_move_source_remove,
+						  audio_move);
+			signal_handler_disconnect(sh, "destroy",
+						  audio_move_source_destroy,
+						  audio_move);
+		}
+	}
+	audio_move->sceneitem = NULL;
+}
+
 struct obs_source_info audio_move_filter = {
 	.id = AUDIO_MOVE_FILTER_ID,
 	.type = OBS_SOURCE_TYPE_FILTER,
@@ -954,4 +1001,5 @@ struct obs_source_info audio_move_filter = {
 	.update = audio_move_update,
 	.load = audio_move_update,
 	.video_tick = audio_move_tick,
+	.filter_remove = audio_move_remove,
 };
