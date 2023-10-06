@@ -205,6 +205,8 @@ void audio_move_update(void *data, obs_data_t *settings)
 	if (source && obs_source_removed(source))
 		source = NULL;
 	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
 	if (audio_move->sceneitem) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
@@ -231,7 +233,7 @@ void audio_move_update(void *data, obs_data_t *settings)
 		}
 	}
 	audio_move->sceneitem =
-		scene ? obs_scene_find_source(scene, sceneitem_name) : NULL;
+		scene ? obs_scene_find_source_recursive(scene, sceneitem_name) : NULL;
 	if (audio_move->sceneitem &&
 	    obs_source_removed(
 		    obs_sceneitem_get_source(audio_move->sceneitem))) {
@@ -416,8 +418,31 @@ static bool add_source_to_prop_list(void *data, obs_source_t *source)
 {
 	obs_property_t *p = (obs_property_t *)data;
 	const char *name = obs_source_get_name(source);
-	if (name && strlen(name))
-		obs_property_list_add_string(p, name, name);
+	if (!name || !strlen(name))
+		return true;
+	size_t count = obs_property_list_item_count(p);
+	size_t idx = 0;
+	while (idx < count &&
+	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+		idx++;
+	obs_property_list_insert_string(p, idx, name, name);
+	return true;
+}
+
+static bool add_group_to_prop_list(void *data, obs_source_t *source)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	if (!obs_source_is_group(source))
+		return true;
+	const char *name = obs_source_get_name(source);
+	if (!name || !strlen(name))
+		return true;
+	size_t count = obs_property_list_item_count(p);
+	size_t idx = 0;
+	while (idx < count &&
+	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+		idx++;
+	obs_property_list_insert_string(p, idx, name, name);
 	return true;
 }
 
@@ -433,6 +458,7 @@ static bool audio_move_action_changed(obs_properties_t *props,
 	    action == VALUE_ACTION_SOURCE_VISIBILITY) {
 		obs_property_list_clear(scene);
 		obs_enum_scenes(add_source_to_prop_list, scene);
+		obs_enum_sources(add_group_to_prop_list, scene);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 	} else {
@@ -512,6 +538,8 @@ static bool audio_move_scene_changed(void *data, obs_properties_t *props,
 	obs_source_t *source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
 	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
 	if (!scene)
 		return true;
 	obs_scene_enum_items(scene, add_sceneitem_to_prop_list, sceneitem);

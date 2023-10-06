@@ -284,8 +284,31 @@ static bool add_source_to_prop_list(void *data, obs_source_t *source)
 {
 	obs_property_t *p = (obs_property_t *)data;
 	const char *name = obs_source_get_name(source);
-	if (name && strlen(name))
-		obs_property_list_add_string(p, name, name);
+	if (!name || !strlen(name))
+		return true;
+	size_t count = obs_property_list_item_count(p);
+	size_t idx = 0;
+	while (idx < count &&
+	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+		idx++;
+	obs_property_list_insert_string(p, idx, name, name);
+	return true;
+}
+
+static bool add_group_to_prop_list(void *data, obs_source_t *source)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	if (!obs_source_is_group(source))
+		return true;
+	const char *name = obs_source_get_name(source);
+	if (!name || !strlen(name))
+		return true;
+	size_t count = obs_property_list_item_count(p);
+	size_t idx = 0;
+	while (idx < count &&
+	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+		idx++;
+	obs_property_list_insert_string(p, idx, name, name);
 	return true;
 }
 
@@ -300,6 +323,7 @@ static bool move_action_action_changed(obs_properties_t *props,
 	if (action == MOVE_ACTION_SOURCE_VISIBILITY) {
 		obs_property_list_clear(scene);
 		obs_enum_scenes(add_source_to_prop_list, scene);
+		obs_enum_sources(add_group_to_prop_list, scene);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 	} else {
@@ -369,6 +393,8 @@ static bool move_action_scene_changed(void *data, obs_properties_t *props,
 	obs_source_t *source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
 	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
 	if (!scene)
 		return true;
 	obs_scene_enum_items(scene, add_sceneitem_to_prop_list, sceneitem);
@@ -540,7 +566,9 @@ void move_action_execute(void *data)
 				obs_get_source_by_name(move_action->scene_name);
 			obs_scene_t *scene =
 				obs_scene_from_source(scene_source);
-			obs_sceneitem_t *item = obs_scene_find_source(
+			if (!scene)
+				scene = obs_group_from_source(scene_source);
+			obs_sceneitem_t *item = obs_scene_find_source_recursive(
 				scene, move_action->sceneitem_name);
 			if (item) {
 
