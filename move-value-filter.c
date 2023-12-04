@@ -5,6 +5,7 @@
 #include <time.h>
 #include <util/dstr.h>
 #include <obs-frontend-api.h>
+#include <util/platform.h>
 
 #define TEXT_BUFFER_SIZE 256
 #define VOLUME_SETTING "source_volume"
@@ -43,9 +44,9 @@ struct move_value_info {
 	struct vec4 color_min;
 	struct vec4 color_max;
 
-	char *text_from;
+	wchar_t *text_from;
 	size_t text_from_len;
-	char *text_to;
+	wchar_t *text_to;
 	size_t text_to_len;
 	size_t text_same;
 	size_t text_step;
@@ -378,8 +379,9 @@ void move_value_start(struct move_value_info *move_value)
 		} else if (move_value->move_value_type ==
 			   MOVE_VALUE_TYPE_TYPING) {
 			bfree(move_value->text_from);
-			move_value->text_from = bstrdup(text_from);
-			move_value->text_from_len = strlen(text_from);
+			move_value->text_from_len =
+				os_utf8_to_wcs_ptr(text_from, strlen(text_from),
+						   &move_value->text_from);
 			move_value->text_step = 0;
 			move_value->text_same = 0;
 			while (move_value->text_same <
@@ -551,10 +553,15 @@ void move_value_update(void *data, obs_data_t *settings)
 	}
 
 	const char *text_to = obs_data_get_string(settings, S_SETTING_TEXT);
-	if (!move_value->text_to || strcmp(move_value->text_to, text_to) != 0) {
+	wchar_t *wtext_to = NULL;
+	size_t wlen = os_utf8_to_wcs_ptr(text_to, strlen(text_to), &wtext_to);
+	if (!move_value->text_to ||
+	    wcscmp(move_value->text_to, wtext_to) != 0) {
 		bfree(move_value->text_to);
-		move_value->text_to = bstrdup(text_to);
-		move_value->text_to_len = strlen(text_to);
+		move_value->text_to = wtext_to;
+		move_value->text_to_len = wlen;
+	} else {
+		bfree(wtext_to);
 	}
 
 	if (move_value->move_filter.start_trigger == START_TRIGGER_LOAD) {
@@ -1650,15 +1657,26 @@ void move_value_tick(void *data, float seconds)
 		char *text = NULL;
 		if (move_value->text_step <
 		    move_value->text_from_len - move_value->text_same) {
-			text = bstrdup_n(move_value->text_from,
-					 move_value->text_from_len -
-						 move_value->text_step);
+			os_wcs_to_utf8_ptr(move_value->text_from,
+					   move_value->text_from_len -
+						   move_value->text_step,
+					   &text);
 		} else {
-			text = bstrdup_n(move_value->text_to,
-					 move_value->text_same +
-						 move_value->text_step -
-						 (move_value->text_from_len -
-						  move_value->text_same));
+			size_t len = move_value->text_same +
+				     move_value->text_step -
+				     (move_value->text_from_len -
+				      move_value->text_same);
+			if (len) {
+				os_wcs_to_utf8_ptr(
+					move_value->text_to,
+					move_value->text_same +
+						move_value->text_step -
+						(move_value->text_from_len -
+						 move_value->text_same),
+					&text);
+			} else {
+				text = bstrdup("");
+			}
 		}
 		obs_data_set_string(ss, move_value->setting_name, text);
 		bfree(text);
