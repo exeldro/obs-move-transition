@@ -43,6 +43,8 @@ struct move_source_info {
 	long long mute_action;
 };
 
+void move_source_scene_remove(void *data, calldata_t *call_data);
+
 void move_source_item_remove(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
@@ -66,6 +68,26 @@ void move_source_item_remove(void *data, calldata_t *call_data)
 		return;
 	signal_handler_disconnect(sh, "item_remove", move_source_item_remove,
 				  move_source);
+	signal_handler_disconnect(sh, "remove", move_source_scene_remove,
+			       move_source);
+	signal_handler_disconnect(sh, "destroy", move_source_scene_remove,
+			       move_source);
+}
+
+void move_source_scene_remove(void *data, calldata_t *call_data) {
+	struct move_source_info *move_source = data;
+	obs_source_t *source =
+		(obs_source_t *)calldata_ptr(call_data, "source");
+
+	signal_handler_t *sh = obs_source_get_signal_handler(source);
+	if (!sh)
+		return;
+	signal_handler_disconnect(sh, "item_remove", move_source_item_remove,
+				  move_source);
+	signal_handler_disconnect(sh, "remove", move_source_scene_remove,
+				  move_source);
+	signal_handler_disconnect(sh, "destroy", move_source_scene_remove,
+				  move_source);
 }
 
 bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
@@ -82,9 +104,14 @@ bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void *data)
 		return false;
 
 	signal_handler_t *sh = obs_source_get_signal_handler(parent);
-	if (sh)
+	if (sh) {
 		signal_handler_connect(sh, "item_remove",
 				       move_source_item_remove, move_source);
+		signal_handler_connect(sh, "remove", move_source_scene_remove,
+				       move_source);
+		signal_handler_connect(sh, "destroy", move_source_scene_remove,
+				       move_source);
+	}
 
 	return false;
 }
@@ -548,10 +575,17 @@ void move_source_source_changed(struct move_source_info *move_source,
 		obs_filter_get_parent(move_source->move_filter.source);
 	if (parent) {
 		signal_handler_t *sh = obs_source_get_signal_handler(parent);
-		if (sh)
+		if (sh) {
 			signal_handler_disconnect(sh, "item_remove",
 						  move_source_item_remove,
 						  move_source);
+			signal_handler_disconnect(sh, "remove",
+						  move_source_scene_remove,
+						  move_source);
+			signal_handler_disconnect(sh, "destroy",
+						  move_source_scene_remove,
+						  move_source);
+		}
 	}
 	obs_scene_t *scene = obs_scene_from_source(parent);
 	if (!scene)
@@ -801,6 +835,10 @@ static void move_source_destroy(void *data)
 		signal_handler_t *sh = obs_source_get_signal_handler(parent);
 		signal_handler_disconnect(sh, "item_remove",
 					  move_source_item_remove, move_source);
+		signal_handler_disconnect(sh, "remove", move_source_scene_remove,
+					  move_source);
+		signal_handler_disconnect(sh, "destroy",
+					  move_source_scene_remove, move_source);
 	}
 
 	obs_source_t *source = NULL;
