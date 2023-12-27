@@ -19,4 +19,7 @@ Or enter `flatpak install com.obsproject.Studio.Plugin.MoveTransition` on your t
     - Check out this repository and run `cmake -S . -B build -DBUILD_OUT_OF_TREE=On && cmake --build build`
 
 # Donations
-https://www.paypal.me/exeldro
+- [GitHub Sponsor](https://github.com/sponsors/exeldro)
+- [Ko-fi](https://ko-fi.com/exeldro)
+- [Patreon](https://www.patreon.com/Exeldro)
+- [PayPal](https://www.paypal.me/exeldro)
