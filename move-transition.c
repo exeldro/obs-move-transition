@@ -1334,7 +1334,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				if (!move->first_frame) {
 					obs_source_video_render(
 						item->transition);
-				} else if (item->item_a) {
+				} else if (item->item_a || item->move_scene) {
 					obs_source_video_render(source);
 				}
 			} else {
