@@ -1875,8 +1875,10 @@ bool match_item_nested_all_match(obs_scene_t *obs_scene,
 	if (!source)
 		return true;
 	obs_scene_t *scene = obs_scene_from_source(mi->check_source);
-	obs_sceneitem_t *item =
-		obs_scene_find_source(scene, obs_source_get_name(source));
+	if (!scene)
+		scene = obs_group_from_source(mi->check_source);
+	const char *source_name = obs_source_get_name(source);
+	obs_sceneitem_t *item = obs_scene_find_source(scene, source_name);
 	if (!item) {
 		mi->matched = false;
 		return false;
@@ -2044,9 +2046,10 @@ bool match_item_nested_any_match(obs_scene_t *obs_scene,
 	if (!source)
 		return true;
 	obs_scene_t *scene = obs_scene_from_source(mi->check_source);
-
-	obs_sceneitem_t *item =
-		obs_scene_find_source(scene, obs_source_get_name(source));
+	if (!scene)
+		scene = obs_group_from_source(mi->check_source);
+	const char *source_name = obs_source_get_name(source);
+	obs_sceneitem_t *item = obs_scene_find_source(scene, source_name);
 	if (item && obs_sceneitem_visible(item)) {
 		mi->matched = true;
 		return false;
@@ -2269,7 +2272,21 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			obs_sceneitem_t *scene_item = items.array[i - 1];
 			if (obs_sceneitem_get_source(scene_item) ==
 			    move->scene_source_a) {
-				item = create_move_item();
+
+				struct move_item *item = NULL;
+				for (size_t i = 0; i < MATCH_FUNCTION_COUNT;
+				     i++) {
+					size_t old_pos = 0;
+					item = match_functions[i](
+						move, scene_item, &old_pos);
+					if (item)
+						break;
+				}
+				if (item) {
+					move->matched_items++;
+				} else {
+					item = create_move_item();
+				}
 
 				item->move_scene = true;
 				move->matched_scene_a = true;
