@@ -1453,12 +1453,37 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 	struct dstr name = {0};
 	long long actions = obs_data_get_int(settings, "actions");
 	bool changed = false;
+	obs_property_t *show = obs_properties_get(props, "show");
+	long long f = obs_data_get_int(settings, "show");
 	for (long long i = 1; i <= MAX_ACTIONS; i++) {
 		dstr_printf(&name, "action_%lld_group", i);
 		obs_property_t *group = obs_properties_get(props, name.array);
-		if (obs_property_visible(group) == (i <= actions))
+
+		if (i > actions) {
+			obs_property_list_item_remove(show, (size_t)i);
+		} else {
+			const char *od =
+				obs_property_list_item_name(show, (size_t)i);
+			dstr_printf(&name, "action_%lld_description", i);
+			const char *nd =
+				obs_data_get_string(settings, name.array);
+			if (strlen(nd)) {
+				dstr_copy(&name, nd);
+			} else {
+				dstr_printf(&name, "%s %lld",
+					    obs_module_text("Action"), i);
+			}
+			if (!od || strcmp(od, name.array) != 0) {
+				obs_property_list_item_remove(show, (size_t)i);
+				obs_property_list_insert_int(show, (size_t)i,
+							     name.array, i);
+				changed = true;
+			}
+		}
+		bool visible = (i <= actions) && (f > 0 ? i == f : true);
+		if (obs_property_visible(group) == visible)
 			continue;
-		obs_property_set_visible(group, i <= actions);
+		obs_property_set_visible(group, visible);
 		changed = true;
 	}
 	dstr_free(&name);
@@ -1858,7 +1883,7 @@ static obs_properties_t *nv_move_properties(void *data)
 	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
 	obs_properties_t *props = obs_properties_create();
 
-	if (filter->last_error) {
+	if (filter && filter->last_error) {
 		obs_property_text_set_info_type(
 			obs_properties_add_text(props, "last_error",
 						filter->last_error,
@@ -1869,6 +1894,13 @@ static obs_properties_t *nv_move_properties(void *data)
 	obs_property_t *p = obs_properties_add_int(props, "actions",
 						   obs_module_text("Actions"),
 						   1, MAX_ACTIONS, 1);
+
+	obs_property_set_modified_callback2(p, nv_move_actions_changed, data);
+
+	p = obs_properties_add_list(props, "show", obs_module_text("Show"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("All"), 0);
 
 	obs_property_set_modified_callback2(p, nv_move_actions_changed, data);
 
