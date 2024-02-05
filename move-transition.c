@@ -48,6 +48,9 @@ struct move_info {
 	size_t transition_pool_in_index;
 	DARRAY(obs_source_t *) transition_pool_out;
 	size_t transition_pool_out_index;
+
+	bool scene_flip_horizontal;
+	bool scene_flip_vertical;
 };
 
 struct move_item {
@@ -67,6 +70,8 @@ struct move_item {
 	int end_percentage;
 	obs_scene_t *release_scene_a;
 	obs_scene_t *release_scene_b;
+	bool scene_flip_horizontal;
+	bool scene_flip_vertical;
 };
 
 static const struct {
@@ -818,6 +823,210 @@ float rot_diff(float rot_a, float rot_b)
 	return diff;
 }
 
+static inline bool crop_to_bounds(const struct obs_scene_item *item,
+				  enum obs_bounds_type bt)
+{
+#if LIBOBS_API_VER >= MAKE_SEMANTIC_VERSION(30, 1, 0)
+	return obs_sceneitem_get_bounds_crop(item) &&
+	       (bt == OBS_BOUNDS_SCALE_OUTER ||
+		bt == OBS_BOUNDS_SCALE_TO_HEIGHT ||
+		bt == OBS_BOUNDS_SCALE_TO_WIDTH);
+#else
+	UNUSED_PARAMETER(item);
+	UNUSED_PARAMETER(bt);
+	return false;
+#endif
+}
+
+static void calculate_bounds_item(const obs_sceneitem_t *item,
+				  struct vec2 *origin, struct vec2 *scale,
+				  uint32_t *cx, uint32_t *cy,
+				  struct obs_sceneitem_crop *bounds_crop,
+				  enum obs_bounds_type bt)
+{
+	float width = (float)(*cx) * fabsf(scale->x);
+	float height = (float)(*cy) * fabsf(scale->y);
+	float item_aspect = width / height;
+	struct vec2 bounds;
+	obs_sceneitem_get_bounds(item, &bounds);
+
+	float bounds_aspect = bounds.x / bounds.y;
+
+	float width_diff, height_diff;
+
+	if (bt == OBS_BOUNDS_MAX_ONLY)
+		if (width > bounds.x || height > bounds.y)
+			bt = OBS_BOUNDS_SCALE_INNER;
+
+	if (bt == OBS_BOUNDS_SCALE_INNER || bt == OBS_BOUNDS_SCALE_OUTER) {
+		bool use_width = (bounds_aspect < item_aspect);
+		float mul;
+
+		if (bt == OBS_BOUNDS_SCALE_OUTER)
+			use_width = !use_width;
+
+		mul = use_width ? bounds.x / width : bounds.y / height;
+
+		vec2_mulf(scale, scale, mul);
+
+	} else if (bt == OBS_BOUNDS_SCALE_TO_WIDTH) {
+		vec2_mulf(scale, scale, bounds.x / width);
+
+	} else if (bt == OBS_BOUNDS_SCALE_TO_HEIGHT) {
+		vec2_mulf(scale, scale, bounds.y / height);
+
+	} else if (bt == OBS_BOUNDS_STRETCH) {
+		scale->x = copysignf(bounds.x / (float)(*cx), scale->x);
+		scale->y = copysignf(bounds.y / (float)(*cy), scale->y);
+	}
+
+	width = (float)(*cx) * scale->x;
+	height = (float)(*cy) * scale->y;
+
+	/* Disregards flip when calculating size diff */
+	width_diff = bounds.x - fabsf(width);
+	height_diff = bounds.y - fabsf(height);
+	*cx = (uint32_t)bounds.x;
+	*cy = (uint32_t)bounds.y;
+
+	add_alignment(origin, obs_sceneitem_get_bounds_alignment(item),
+		      (int)-width_diff, (int)-height_diff);
+
+	/* Set cropping if enabled and large enough size difference exists */
+	if (crop_to_bounds(item, bt) &&
+	    (width_diff < -0.1 || height_diff < -0.1)) {
+		bool crop_width = width_diff < -0.1;
+		bool crop_flipped = crop_width ? width < 0.0f : height < 0.0f;
+
+		float crop_diff = crop_width ? width_diff : height_diff;
+		float crop_scale = crop_width ? scale->x : scale->y;
+		float crop_origin = crop_width ? origin->x : origin->y;
+
+		/* Only get alignment for relevant axis */
+		uint32_t crop_align_mask =
+			crop_width ? OBS_ALIGN_LEFT | OBS_ALIGN_RIGHT
+				   : OBS_ALIGN_TOP | OBS_ALIGN_BOTTOM;
+		uint32_t crop_align = obs_sceneitem_get_bounds_alignment(item) &
+				      crop_align_mask;
+
+		/* Cropping values need to scaled to input source */
+		float overdraw = fabsf(crop_diff / crop_scale);
+
+		/* tl = top / left, br = bottom / right */
+		float overdraw_tl;
+		if (crop_align & (OBS_ALIGN_TOP | OBS_ALIGN_LEFT))
+			overdraw_tl = 0;
+		else if (crop_align & (OBS_ALIGN_BOTTOM | OBS_ALIGN_RIGHT))
+			overdraw_tl = overdraw;
+		else
+			overdraw_tl = overdraw / 2;
+
+		float overdraw_br = overdraw - overdraw_tl;
+
+		int crop_br, crop_tl;
+		if (crop_flipped) {
+			/* Adjust origin for flips */
+			if (crop_align == OBS_ALIGN_CENTER)
+				crop_origin *= 2;
+			else if (crop_align & (OBS_ALIGN_TOP | OBS_ALIGN_LEFT))
+				crop_origin -= crop_diff;
+
+			/* Note that crops are swapped if the axis is flipped */
+			crop_br = (int)roundf(overdraw_tl);
+			crop_tl = (int)roundf(overdraw_br);
+		} else {
+			crop_origin = 0;
+			crop_br = (int)roundf(overdraw_br);
+			crop_tl = (int)roundf(overdraw_tl);
+		}
+
+		if (crop_width) {
+			bounds_crop->right = crop_br;
+			bounds_crop->left = crop_tl;
+			origin->x = crop_origin;
+		} else {
+			bounds_crop->bottom = crop_br;
+			bounds_crop->top = crop_tl;
+			origin->y = crop_origin;
+		}
+	}
+
+	/* Makes the item stay in-place in the box if flipped */
+	origin->x += (width < 0.0f) ? width : 0.0f;
+	origin->y += (height < 0.0f) ? height : 0.0f;
+}
+
+void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
+			     bool flip_vertical, struct matrix4 *transform)
+{
+	uint32_t width = obs_source_get_width(obs_sceneitem_get_source(item));
+	uint32_t height = obs_source_get_height(obs_sceneitem_get_source(item));
+	uint32_t cx = width;
+	uint32_t cy = height;
+	struct vec2 origin;
+	struct vec2 scale;
+	obs_sceneitem_get_scale(item, &scale);
+
+	//vec2_zero(&base_origin);
+	vec2_zero(&origin);
+
+	struct obs_sceneitem_crop crop;
+	obs_sceneitem_get_crop(item, &crop);
+	uint32_t crop_cx = crop.left + crop.right;
+	// + bounds_crop.left + bounds_crop.right;
+	cx = (crop_cx > width) ? 2 : (width - crop_cx);
+
+	uint32_t crop_cy = crop.top + crop.bottom;
+	// + bounds_crop.top + bounds_crop.bottom;
+	cy = (crop_cy > height) ? 2 : (height - crop_cy);
+
+	enum obs_bounds_type bt = obs_sceneitem_get_bounds_type(item);
+
+	if (bt != OBS_BOUNDS_NONE) {
+		struct obs_sceneitem_crop bounds_crop = {0};
+		calculate_bounds_item(item, &origin, &scale, &cx, &cy,
+				      &bounds_crop, bt);
+
+	} else {
+		cx = (uint32_t)((float)cx * fabs(scale.x));
+		cy = (uint32_t)((float)cy * fabs(scale.y));
+	}
+	uint32_t align = obs_sceneitem_get_alignment(item);
+
+	add_alignment(&origin, align, (int)cx, (int)cy);
+
+	struct vec2 pos;
+	obs_sceneitem_get_pos(item, &pos);
+
+	if (scale.x < 0.0f && flip_horizontal) {
+		scale.x = scale.x * -1.0f;
+		if (bt != OBS_BOUNDS_NONE)
+			origin.x += (float)cx;
+		else if (align & OBS_ALIGN_RIGHT)
+			origin.x -= (float)cx;
+		else if (align & OBS_ALIGN_LEFT)
+			origin.x += (float)cx;
+	}
+
+	if (scale.y < 0.0f && flip_vertical) {
+		scale.y = scale.y * -1.0f;
+		if (bt != OBS_BOUNDS_NONE)
+			origin.y += (float)cy;
+		else if (align & OBS_ALIGN_BOTTOM)
+			origin.y -= (float)cy;
+		else if ((align & OBS_ALIGN_TOP) == 0)
+			origin.y += (float)cy;
+	}
+
+	matrix4_identity(transform);
+	matrix4_scale3f(transform, transform, scale.x, scale.y, 1.0f);
+	matrix4_translate3f(transform, transform, -origin.x, -origin.y, 0.0f);
+	matrix4_rotate_aa4f(transform, transform, 0.0f, 0.0f, 1.0f,
+			    RAD(obs_sceneitem_get_rot(item)));
+
+	matrix4_translate3f(transform, transform, pos.x, pos.y, 0.0f);
+}
+
 bool render2_item(struct move_info *move, struct move_item *item)
 {
 	obs_sceneitem_t *scene_item = NULL;
@@ -844,6 +1053,15 @@ bool render2_item(struct move_info *move, struct move_item *item)
 					&move->transition_pool_move,
 					&move->transition_pool_move_index,
 					move->cache_transitions);
+				struct move_info *mt =
+					(struct move_info *)obs_obj_get_data(
+						item->transition);
+				if (mt) {
+					mt->scene_flip_horizontal =
+						item->scene_flip_horizontal;
+					mt->scene_flip_vertical =
+						item->scene_flip_vertical;
+				}
 			} else {
 				item->transition = get_transition(
 					item->transition_name,
@@ -972,7 +1190,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		ot = 0.0f;
 
 	if (item->item_a && item->item_b && item->transition &&
-	    !move->first_frame) {
+	    (!move->first_frame || item->scene_flip_horizontal ||
+	     item->scene_flip_vertical)) {
 		uint32_t width_a = obs_source_get_width(
 			obs_sceneitem_get_source(item->item_a));
 		uint32_t width_b = obs_source_get_width(
@@ -997,9 +1216,46 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	struct obs_sceneitem_crop crop;
 	if (item->item_a && item->item_b) {
 		struct obs_sceneitem_crop crop_a;
-		obs_sceneitem_get_crop(item->item_a, &crop_a);
 		struct obs_sceneitem_crop crop_b;
-		obs_sceneitem_get_crop(item->item_b, &crop_b);
+		if (item->scene_flip_horizontal || item->scene_flip_vertical) {
+			struct vec2 scale_a;
+			obs_sceneitem_get_scale(item->item_a, &scale_a);
+			obs_sceneitem_get_crop(item->item_a, &crop);
+			if (scale_a.x < 0.0f && item->scene_flip_horizontal) {
+				crop_a.left = crop.right;
+				crop_a.right = crop.left;
+			} else {
+				crop_a.left = crop.left;
+				crop_a.right = crop.right;
+			}
+			if (scale_a.y < 0.0f && item->scene_flip_vertical) {
+				crop_a.top = crop.bottom;
+				crop_a.bottom = crop.top;
+			} else {
+				crop_a.top = crop.top;
+				crop_a.bottom = crop.bottom;
+			}
+			struct vec2 scale_b;
+			obs_sceneitem_get_scale(item->item_b, &scale_b);
+			obs_sceneitem_get_crop(item->item_b, &crop);
+			if (scale_b.x < 0.0f && item->scene_flip_horizontal) {
+				crop_b.left = crop.right;
+				crop_b.right = crop.left;
+			} else {
+				crop_b.left = crop.left;
+				crop_b.right = crop.right;
+			}
+			if (scale_b.y < 0.0f && item->scene_flip_vertical) {
+				crop_b.top = crop.bottom;
+				crop_b.bottom = crop.top;
+			} else {
+				crop_b.top = crop.top;
+				crop_b.bottom = crop.bottom;
+			}
+		} else {
+			obs_sceneitem_get_crop(item->item_a, &crop_a);
+			obs_sceneitem_get_crop(item->item_b, &crop_b);
+		}
 		crop.left =
 			(int)roundf((float)(1.0f - ot) * (float)crop_a.left +
 				    ot * (float)crop_b.left);
@@ -1331,7 +1587,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			if (item->transition) {
 				obs_transition_set_manual_time(item->transition,
 							       ot);
-				if (!move->first_frame) {
+				if (!move->first_frame ||
+				    item->scene_flip_horizontal ||
+				    item->scene_flip_vertical) {
 					obs_source_video_render(
 						item->transition);
 				} else if (item->item_a || item->move_scene) {
@@ -1345,28 +1603,45 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 	}
 	if (item->item_a && item->item_b &&
-	    (fabs((double)rd) <= 90.0 ||
+	    (fabs((double)rd) <= 90.0 || item->scene_flip_horizontal ||
+	     item->scene_flip_vertical ||
 	     (obs_sceneitem_get_bounds_type(item->item_a) == OBS_BOUNDS_NONE &&
 	      obs_sceneitem_get_bounds_type(item->item_b) != OBS_BOUNDS_NONE) ||
 	     (obs_sceneitem_get_bounds_type(item->item_a) != OBS_BOUNDS_NONE &&
 	      obs_sceneitem_get_bounds_type(item->item_b) == OBS_BOUNDS_NONE))) {
 		struct matrix4 transform_a;
-		obs_sceneitem_get_draw_transform(item->item_a, &transform_a);
-		if (isnan(transform_a.x.x) || isinf(transform_a.x.x)) {
-			obs_sceneitem_set_rot(
-				item->item_a,
-				obs_sceneitem_get_rot(item->item_a));
+		if (item->scene_flip_horizontal || item->scene_flip_vertical) {
+			move_get_draw_transform(item->item_a,
+						item->scene_flip_horizontal,
+						item->scene_flip_vertical,
+						&transform_a);
+		} else {
 			obs_sceneitem_get_draw_transform(item->item_a,
 							 &transform_a);
+			if (isnan(transform_a.x.x) || isinf(transform_a.x.x)) {
+				obs_sceneitem_set_rot(
+					item->item_a,
+					obs_sceneitem_get_rot(item->item_a));
+				obs_sceneitem_get_draw_transform(item->item_a,
+								 &transform_a);
+			}
 		}
 		struct matrix4 transform_b;
-		obs_sceneitem_get_draw_transform(item->item_b, &transform_b);
-		if (isnan(transform_b.x.x) || isinf(transform_b.x.x)) {
-			obs_sceneitem_set_rot(
-				item->item_b,
-				obs_sceneitem_get_rot(item->item_b));
+		if (item->scene_flip_horizontal || item->scene_flip_vertical) {
+			move_get_draw_transform(item->item_b,
+						item->scene_flip_horizontal,
+						item->scene_flip_vertical,
+						&transform_b);
+		} else {
 			obs_sceneitem_get_draw_transform(item->item_b,
 							 &transform_b);
+			if (isnan(transform_b.x.x) || isinf(transform_b.x.x)) {
+				obs_sceneitem_set_rot(
+					item->item_b,
+					obs_sceneitem_get_rot(item->item_b));
+				obs_sceneitem_get_draw_transform(item->item_b,
+								 &transform_b);
+			}
 		}
 
 		draw_transform.x.x =
@@ -1495,7 +1770,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	} else {
 		if (item->transition) {
 			obs_transition_set_manual_time(item->transition, ot);
-			if (!move->first_frame) {
+			if (!move->first_frame || item->scene_flip_horizontal ||
+			    item->scene_flip_vertical) {
 				obs_source_video_render(item->transition);
 			} else if (item->item_a) {
 				obs_source_video_render(source);
@@ -1862,6 +2138,8 @@ struct move_item *match_item_name_part(struct move_info *move,
 struct match_item_nested_match {
 	obs_source_t *check_source;
 	bool matched;
+	bool scene_flip_horizontal;
+	bool scene_flip_vertical;
 };
 
 bool match_item_nested_all_match(obs_scene_t *obs_scene,
@@ -1945,6 +2223,12 @@ bool match_item_nested_match(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem,
 		return true;
 	if (source == mi->check_source) {
 		mi->matched = true;
+		struct vec2 scale;
+		obs_sceneitem_get_scale(sceneitem, &scale);
+		mi->scene_flip_horizontal = mi->scene_flip_horizontal &&
+					    scale.x < 0.0f;
+		mi->scene_flip_vertical = mi->scene_flip_vertical &&
+					  scale.y < 0.0f;
 		return false;
 	}
 	const char *name_a = obs_source_get_name(mi->check_source);
@@ -1952,6 +2236,12 @@ bool match_item_nested_match(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem,
 	if (name_a && name_b && strlen(name_a) && strlen(name_b) &&
 	    strcmp(name_a, name_b) == 0) {
 		mi->matched = true;
+		struct vec2 scale;
+		obs_sceneitem_get_scale(sceneitem, &scale);
+		mi->scene_flip_horizontal = mi->scene_flip_horizontal &&
+					    scale.x < 0.0f;
+		mi->scene_flip_vertical = mi->scene_flip_vertical &&
+					  scale.y < 0.0f;
 		return false;
 	}
 	return true;
@@ -1980,11 +2270,19 @@ struct move_item *match_item_nested(struct move_info *move,
 			struct match_item_nested_match mi;
 			mi.check_source = check_source;
 			mi.matched = false;
+			struct vec2 scale;
+			obs_sceneitem_get_scale(check_item->item_a, &scale);
+			mi.scene_flip_horizontal = scale.x < 0.0f;
+			mi.scene_flip_vertical = scale.y < 0.0f;
 			obs_scene_enum_items(scene, match_item_nested_match,
 					     &mi);
 			if (mi.matched) {
 				item = check_item;
 				item->move_scene = true;
+				item->scene_flip_horizontal =
+					mi.scene_flip_horizontal;
+				item->scene_flip_vertical =
+					mi.scene_flip_vertical;
 				*found_pos = i;
 				break;
 			}
@@ -1993,11 +2291,19 @@ struct move_item *match_item_nested(struct move_info *move,
 			struct match_item_nested_match mi;
 			mi.check_source = check_source;
 			mi.matched = false;
+			struct vec2 scale;
+			obs_sceneitem_get_scale(check_item->item_a, &scale);
+			mi.scene_flip_horizontal = scale.x < 0.0f;
+			mi.scene_flip_vertical = scale.y < 0.0f;
 			obs_scene_enum_items(scene, match_item_nested_match,
 					     &mi);
 			if (mi.matched) {
 				item = check_item;
 				item->move_scene = true;
+				item->scene_flip_horizontal =
+					mi.scene_flip_horizontal;
+				item->scene_flip_vertical =
+					mi.scene_flip_vertical;
 				*found_pos = i;
 				break;
 			}
@@ -2008,11 +2314,19 @@ struct move_item *match_item_nested(struct move_info *move,
 			struct match_item_nested_match mi;
 			mi.check_source = source;
 			mi.matched = false;
+			struct vec2 scale;
+			obs_sceneitem_get_scale(scene_item, &scale);
+			mi.scene_flip_horizontal = scale.x < 0.0f;
+			mi.scene_flip_vertical = scale.y < 0.0f;
 			obs_scene_enum_items(scene, match_item_nested_match,
 					     &mi);
 			if (mi.matched) {
 				item = check_item;
 				item->move_scene = true;
+				item->scene_flip_horizontal =
+					mi.scene_flip_horizontal;
+				item->scene_flip_vertical =
+					mi.scene_flip_vertical;
 				*found_pos = i;
 				break;
 			}
@@ -2022,11 +2336,19 @@ struct move_item *match_item_nested(struct move_info *move,
 			struct match_item_nested_match mi;
 			mi.check_source = source;
 			mi.matched = false;
+			struct vec2 scale;
+			obs_sceneitem_get_scale(scene_item, &scale);
+			mi.scene_flip_horizontal = scale.x < 0.0f;
+			mi.scene_flip_vertical = scale.y < 0.0f;
 			obs_scene_enum_items(scene, match_item_nested_match,
 					     &mi);
 			if (mi.matched) {
 				item = check_item;
 				item->move_scene = true;
+				item->scene_flip_horizontal =
+					mi.scene_flip_horizontal;
+				item->scene_flip_vertical =
+					mi.scene_flip_vertical;
 				*found_pos = i;
 				break;
 			}
@@ -2223,6 +2545,10 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 		return;
 	move->start_init = false;
 	move->first_frame = true;
+
+	struct move_item *scene_flip_item = NULL;
+	obs_sceneitem_t *scene_flip_sceneitem = NULL;
+
 	obs_source_t *old_scene_a = move->scene_source_a;
 	move->scene_source_a = obs_transition_get_source(
 		move->source, OBS_TRANSITION_SOURCE_A);
@@ -2248,10 +2574,22 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 		obs_scene_enum_items(scene_a, add_item, move);
 	} else if (move->scene_source_a) {
 		const char *n = obs_source_get_name(move->scene_source_a);
-		scene_a = obs_scene_create_private(n);
+		obs_data_t *sd = obs_data_create();
+		obs_data_set_bool(sd, "custom_size", true);
+		obs_data_set_int(sd, "cx",
+				 obs_source_get_width(move->scene_source_a));
+		obs_data_set_int(sd, "cy",
+				 obs_source_get_height(move->scene_source_a));
+		obs_source_t *ss = obs_source_create_private("scene", n, sd);
+		obs_source_load(ss);
+		obs_data_release(sd);
+		scene_a = obs_scene_from_source(ss);
 		obs_sceneitem_t *scene_item =
 			obs_scene_add(scene_a, move->scene_source_a);
 		struct move_item *item = create_move_item();
+		scene_flip_item = item;
+		scene_flip_sceneitem = scene_item;
+
 		da_push_back(move->items_a, &item);
 		obs_sceneitem_addref(scene_item);
 		item->item_a = scene_item;
@@ -2372,7 +2710,16 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 		}
 	} else if (move->scene_source_b) {
 		const char *n = obs_source_get_name(move->scene_source_b);
-		scene_b = obs_scene_create_private(n);
+		obs_data_t *sd = obs_data_create();
+		obs_data_set_bool(sd, "custom_size", true);
+		obs_data_set_int(sd, "cx",
+				 obs_source_get_width(move->scene_source_b));
+		obs_data_set_int(sd, "cy",
+				 obs_source_get_height(move->scene_source_b));
+		obs_source_t *ss = obs_source_create_private("scene", n, sd);
+		obs_source_load(ss);
+		obs_data_release(sd);
+		scene_b = obs_scene_from_source(ss);
 		obs_sceneitem_t *scene_item =
 			obs_scene_add(scene_b, move->scene_source_b);
 		size_t old_pos = 0;
@@ -2391,6 +2738,8 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			da_insert(move->items_a, move->item_pos, &item);
 			move->item_pos++;
 		}
+		scene_flip_item = item;
+		scene_flip_sceneitem = scene_item;
 		obs_sceneitem_addref(scene_item);
 		item->item_b = scene_item;
 		item->release_scene_b = scene_b;
@@ -2449,6 +2798,64 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			}
 		}
 	}
+
+	if (move->scene_flip_horizontal || move->scene_flip_vertical) {
+		obs_sceneitem_t *other_sceneitem = NULL;
+		if (scene_flip_item->item_a == scene_flip_sceneitem) {
+			other_sceneitem = scene_flip_item->item_b;
+		} else if (scene_flip_item->item_b == scene_flip_sceneitem) {
+			other_sceneitem = scene_flip_item->item_a;
+		}
+
+		enum obs_bounds_type bt =
+			obs_sceneitem_get_bounds_type(other_sceneitem);
+
+		obs_sceneitem_set_bounds_type(scene_flip_sceneitem, bt);
+
+		float width = (float)obs_source_get_width(
+			obs_sceneitem_get_source(scene_flip_sceneitem));
+		float height = (float)obs_source_get_height(
+			obs_sceneitem_get_source(scene_flip_sceneitem));
+
+		struct obs_sceneitem_crop crop;
+		obs_sceneitem_get_crop(scene_flip_sceneitem, &crop);
+
+		uint32_t crop_cx = crop.left + crop.right;
+		// + bounds_crop.left + bounds_crop.right;
+		//cx = (crop_cx > width) ? 2 : (width - crop_cx);
+		width = (crop_cx > width) ? 2 : (width - crop_cx);
+
+		uint32_t crop_cy = crop.top + crop.bottom;
+		// + bounds_crop.top + bounds_crop.bottom;
+		//cy = (crop_cy > height) ? 2 : (height - crop_cy);
+		height = (crop_cy > height) ? 2 : (height - crop_cy);
+
+		struct vec2 scale;
+		obs_sceneitem_get_scale(scene_flip_sceneitem, &scale);
+		struct vec2 pos;
+		obs_sceneitem_get_pos(scene_flip_sceneitem, &pos);
+		if (move->scene_flip_horizontal) {
+			if (bt == OBS_BOUNDS_NONE) {
+				pos.x += width * scale.x;
+			}
+			scale.x *= -1.0f;
+		}
+		if (move->scene_flip_vertical) {
+			if (bt == OBS_BOUNDS_NONE) {
+				pos.y += height * scale.y;
+			}
+			scale.y *= -1.0f;
+		}
+
+		obs_sceneitem_set_scale(scene_flip_sceneitem, &scale);
+		obs_sceneitem_set_pos(scene_flip_sceneitem, &pos);
+
+		struct vec2 bounds;
+		bounds.x = width;
+		bounds.y = height;
+		obs_sceneitem_set_bounds(scene_flip_sceneitem, &bounds);
+	}
+
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
 		if ((item->item_a && item->item_b) || item->move_scene) {
