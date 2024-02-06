@@ -1624,6 +1624,11 @@ bool render2_item(struct move_info *move, struct move_item *item)
 					obs_sceneitem_get_rot(item->item_a));
 				obs_sceneitem_get_draw_transform(item->item_a,
 								 &transform_a);
+				if (isnan(transform_a.x.x) ||
+				    isinf(transform_a.x.x))
+					move_get_draw_transform(item->item_a,
+								false, false,
+								&transform_a);
 			}
 		}
 		struct matrix4 transform_b;
@@ -1641,6 +1646,11 @@ bool render2_item(struct move_info *move, struct move_item *item)
 					obs_sceneitem_get_rot(item->item_b));
 				obs_sceneitem_get_draw_transform(item->item_b,
 								 &transform_b);
+				if (isnan(transform_b.x.x) ||
+				    isinf(transform_b.x.x))
+					move_get_draw_transform(item->item_b,
+								false, false,
+								&transform_b);
 			}
 		}
 
