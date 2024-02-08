@@ -873,7 +873,8 @@ static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
 
 static void calculate_bounds_item(const obs_sceneitem_t *item,
 				  struct vec2 *origin, struct vec2 *scale,
-				  uint32_t *cx, uint32_t *cy,
+				  uint32_t *cx, uint32_t *cy, float *calc_width,
+				  float *calc_height,
 				  struct obs_sceneitem_crop *bounds_crop,
 				  enum obs_bounds_type bt)
 {
@@ -915,10 +916,12 @@ static void calculate_bounds_item(const obs_sceneitem_t *item,
 
 	width = (float)(*cx) * scale->x;
 	height = (float)(*cy) * scale->y;
+	*calc_width = fabsf(width);
+	*calc_height = fabsf(height);
 
 	/* Disregards flip when calculating size diff */
-	width_diff = bounds.x - fabsf(width);
-	height_diff = bounds.y - fabsf(height);
+	width_diff = bounds.x - *calc_width;
+	height_diff = bounds.y - *calc_height;
 	*cx = (uint32_t)bounds.x;
 	*cy = (uint32_t)bounds.y;
 
@@ -1017,10 +1020,12 @@ void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
 	cy = (crop_cy > height) ? 2 : (height - crop_cy);
 
 	enum obs_bounds_type bt = obs_sceneitem_get_bounds_type(item);
+	float width_diff, height_diff = 0.0f;
 
 	if (bt != OBS_BOUNDS_NONE) {
 		calculate_bounds_item(item, &origin, &scale, &cx, &cy,
-				      bounds_crop, bt);
+				      &width_diff, &height_diff, bounds_crop,
+				      bt);
 
 	} else {
 		cx = (uint32_t)((float)cx * fabs(scale.x));
@@ -1036,7 +1041,7 @@ void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
 	if (scale.x < 0.0f && flip_horizontal) {
 		scale.x = scale.x * -1.0f;
 		if (bt != OBS_BOUNDS_NONE)
-			origin.x += (float)cx;
+			origin.x += width_diff;
 		else if (align & OBS_ALIGN_RIGHT)
 			origin.x -= (float)cx;
 		else if (align & OBS_ALIGN_LEFT)
@@ -1046,7 +1051,7 @@ void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
 	if (scale.y < 0.0f && flip_vertical) {
 		scale.y = scale.y * -1.0f;
 		if (bt != OBS_BOUNDS_NONE)
-			origin.y += (float)cy;
+			origin.y += height_diff;
 		else if (align & OBS_ALIGN_BOTTOM)
 			origin.y -= (float)cy;
 		else if ((align & OBS_ALIGN_TOP) == 0)
