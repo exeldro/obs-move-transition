@@ -72,6 +72,11 @@ struct move_item {
 	obs_scene_t *release_scene_b;
 	bool scene_flip_horizontal;
 	bool scene_flip_vertical;
+	bool has_transform;
+	struct matrix4 transform_a;
+	struct matrix4 transform_b;
+	struct obs_sceneitem_crop bounds_crop_a;
+	struct obs_sceneitem_crop bounds_crop_b;
 };
 
 static const struct {
@@ -434,14 +439,15 @@ static inline bool default_blending_enabled(struct obs_scene_item *item)
 	return obs_sceneitem_get_blending_mode(item) == OBS_BLEND_NORMAL;
 }
 
-static inline bool item_texture_enabled(struct obs_scene_item *item)
+static inline bool item_texture_enabled(struct obs_scene_item *item,
+					struct obs_sceneitem_crop *bounds_crop)
 {
 	if (!item)
 		false;
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
-	return crop_enabled(&crop) || scale_filter_enabled(item) ||
-	       !default_blending_enabled(item) ||
+	return crop_enabled(&crop) || crop_enabled(bounds_crop) ||
+	       scale_filter_enabled(item) || !default_blending_enabled(item) ||
 	       (item_is_scene(item) && !obs_sceneitem_is_group(item));
 }
 
@@ -823,18 +829,45 @@ float rot_diff(float rot_a, float rot_b)
 	return diff;
 }
 
-static inline bool crop_to_bounds(const struct obs_scene_item *item,
-				  enum obs_bounds_type bt)
+static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
 {
+	if (bt != OBS_BOUNDS_SCALE_OUTER && bt != OBS_BOUNDS_SCALE_TO_HEIGHT &&
+	    bt != OBS_BOUNDS_SCALE_TO_WIDTH)
+		return false;
 #if LIBOBS_API_VER >= MAKE_SEMANTIC_VERSION(30, 1, 0)
-	return obs_sceneitem_get_bounds_crop(item) &&
-	       (bt == OBS_BOUNDS_SCALE_OUTER ||
-		bt == OBS_BOUNDS_SCALE_TO_HEIGHT ||
-		bt == OBS_BOUNDS_SCALE_TO_WIDTH);
+	return obs_sceneitem_get_bounds_crop(item);
 #else
-	UNUSED_PARAMETER(item);
-	UNUSED_PARAMETER(bt);
-	return false;
+	if (obs_get_version() < MAKE_SEMANTIC_VERSION(30, 1, 0))
+		return false;
+	obs_source_t *item_source = obs_sceneitem_get_source(item);
+	if (!item_source)
+		return false;
+	obs_scene_t *scene = obs_sceneitem_get_scene(item);
+	obs_source_t *scene_source = obs_scene_get_source(scene);
+	if (!scene_source)
+		return false;
+	obs_data_t *settings = obs_source_get_settings(scene_source);
+	obs_data_array_t *items = obs_data_get_array(settings, "items");
+	obs_data_release(settings);
+	if (!items)
+		return false;
+	size_t count = obs_data_array_count(items);
+	bool crop_to_bounds = false;
+	for (size_t i = 0; i < count; i++) {
+		obs_data_t *item_data = obs_data_array_item(items, i);
+		if (obs_sceneitem_get_id(item) ==
+			    obs_data_get_int(item_data, "id") &&
+		    strcmp(obs_data_get_string(item_data, "name"),
+			   obs_source_get_name(item_source)) == 0) {
+			crop_to_bounds =
+				obs_data_get_bool(item_data, "bounds_crop");
+			obs_data_release(item_data);
+			break;
+		}
+		obs_data_release(item_data);
+	}
+	obs_data_array_release(items);
+	return crop_to_bounds;
 #endif
 }
 
@@ -957,7 +990,8 @@ static void calculate_bounds_item(const obs_sceneitem_t *item,
 }
 
 void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
-			     bool flip_vertical, struct matrix4 *transform)
+			     bool flip_vertical, struct matrix4 *transform,
+			     struct obs_sceneitem_crop *bounds_crop)
 {
 	uint32_t width = obs_source_get_width(obs_sceneitem_get_source(item));
 	uint32_t height = obs_source_get_height(obs_sceneitem_get_source(item));
@@ -966,26 +1000,27 @@ void move_get_draw_transform(const obs_sceneitem_t *item, bool flip_horizontal,
 	struct vec2 origin;
 	struct vec2 scale;
 	obs_sceneitem_get_scale(item, &scale);
+	struct vec2 scale2;
+	obs_sceneitem_get_scale(item, &scale2);
 
 	//vec2_zero(&base_origin);
 	vec2_zero(&origin);
 
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
-	uint32_t crop_cx = crop.left + crop.right;
-	// + bounds_crop.left + bounds_crop.right;
+	uint32_t crop_cx =
+		crop.left + crop.right + bounds_crop->left + bounds_crop->right;
 	cx = (crop_cx > width) ? 2 : (width - crop_cx);
 
-	uint32_t crop_cy = crop.top + crop.bottom;
-	// + bounds_crop.top + bounds_crop.bottom;
+	uint32_t crop_cy =
+		crop.top + crop.bottom + bounds_crop->top + bounds_crop->bottom;
 	cy = (crop_cy > height) ? 2 : (height - crop_cy);
 
 	enum obs_bounds_type bt = obs_sceneitem_get_bounds_type(item);
 
 	if (bt != OBS_BOUNDS_NONE) {
-		struct obs_sceneitem_crop bounds_crop = {0};
 		calculate_bounds_item(item, &origin, &scale, &cx, &cy,
-				      &bounds_crop, bt);
+				      bounds_crop, bt);
 
 	} else {
 		cx = (uint32_t)((float)cx * fabs(scale.x));
@@ -1341,6 +1376,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	uint32_t canvas_width = obs_source_get_width(move->source);
 	uint32_t canvas_height = obs_source_get_height(move->source);
 
+	enum obs_bounds_type bt_a = obs_sceneitem_get_bounds_type(item->item_a);
+	enum obs_bounds_type bt_b = obs_sceneitem_get_bounds_type(item->item_b);
+
 	if (obs_sceneitem_get_bounds_type(scene_item) != OBS_BOUNDS_NONE) {
 		struct vec2 bounds;
 		if (item->item_a && item->item_b) {
@@ -1378,8 +1416,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		if (item->item_a && item->item_b &&
 		    (obs_sceneitem_get_bounds_alignment(item->item_a) !=
 			     obs_sceneitem_get_bounds_alignment(item->item_b) ||
-		     obs_sceneitem_get_bounds_type(item->item_a) !=
-			     obs_sceneitem_get_bounds_type(item->item_b))) {
+		     bt_a != bt_b)) {
 			calculate_move_bounds_data(item->item_a, item->item_b,
 						   t, &origin, &scale, &cx, &cy,
 						   &bounds);
@@ -1550,13 +1587,17 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	struct vec2 output_scale = scale;
 
-	if (item->item_render && !item_texture_enabled(item->item_a) &&
-	    !item_texture_enabled(item->item_b)) {
+	if (item->item_render &&
+	    !item_texture_enabled(item->item_a, &item->bounds_crop_a) &&
+	    !item_texture_enabled(item->item_b, &item->bounds_crop_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
 	} else if (!item->item_render &&
-		   ((item->item_a && item_texture_enabled(item->item_a)) ||
-		    (item->item_b && item_texture_enabled(item->item_b)))) {
+		   ((item->item_a &&
+		     item_texture_enabled(item->item_a, &item->bounds_crop_a)) ||
+		    (item->item_b &&
+		     item_texture_enabled(item->item_b,
+					  &item->bounds_crop_b)))) {
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	} else if (item->item_render) {
 		gs_texrender_reset(item->item_render);
@@ -1567,12 +1608,61 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		move->point_sampler =
 			gs_samplerstate_create(&point_sampler_info);
 	}
+	if (!item->has_transform) {
+		if (item->item_a) {
+			move_get_draw_transform(item->item_a,
+						item->scene_flip_horizontal,
+						item->scene_flip_vertical,
+						&item->transform_a,
+						&item->bounds_crop_a);
+		}
+		if (item->item_b) {
+			move_get_draw_transform(item->item_b,
+						item->scene_flip_horizontal,
+						item->scene_flip_vertical,
+						&item->transform_b,
+						&item->bounds_crop_b);
+		}
+		item->has_transform = true;
+	}
+	struct obs_sceneitem_crop bounds_crop;
+	if ((item->item_a && item->item_b) || item->move_scene) {
+		bounds_crop.left = (int)roundf(
+			(float)(1.0f - ot) * (float)item->bounds_crop_a.left +
+			ot * (float)item->bounds_crop_b.left);
+		bounds_crop.top = (int)roundf(
+			(float)(1.0f - ot) * (float)item->bounds_crop_a.top +
+			ot * (float)item->bounds_crop_b.top);
+		bounds_crop.right = (int)roundf(
+			(float)(1.0f - ot) * (float)item->bounds_crop_a.right +
+			ot * (float)item->bounds_crop_b.right);
+		bounds_crop.bottom = (int)roundf(
+			(float)(1.0f - ot) * (float)item->bounds_crop_a.bottom +
+			ot * (float)item->bounds_crop_b.bottom);
+	} else if (item->item_a) {
+		bounds_crop.left = item->bounds_crop_a.left;
+		bounds_crop.top = item->bounds_crop_a.top;
+		bounds_crop.right = item->bounds_crop_a.right;
+		bounds_crop.bottom = item->bounds_crop_a.bottom;
+	} else if (item->item_b) {
+		bounds_crop.left = item->bounds_crop_b.left;
+		bounds_crop.top = item->bounds_crop_b.top;
+		bounds_crop.right = item->bounds_crop_b.right;
+		bounds_crop.bottom = item->bounds_crop_b.bottom;
+	}
 
 	if (item->item_render) {
 		if (width && height &&
-		    gs_texrender_begin(item->item_render, width, height)) {
-			float cx_scale = (float)original_width / (float)width;
-			float cy_scale = (float)original_height / (float)height;
+		    gs_texrender_begin(
+			    item->item_render,
+			    width - (bounds_crop.left + bounds_crop.right),
+			    height - (bounds_crop.top + bounds_crop.bottom))) {
+			float cx_scale = (float)original_width /
+					 (float)(width - (bounds_crop.left +
+							  bounds_crop.right));
+			float cy_scale = (float)original_height /
+					 (float)(height - (bounds_crop.top +
+							   bounds_crop.bottom));
 			struct vec4 clear_color;
 
 			vec4_zero(&clear_color);
@@ -1581,8 +1671,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				 (float)original_height, -100.0f, 100.0f);
 
 			gs_matrix_scale3f(cx_scale, cy_scale, 1.0f);
-			gs_matrix_translate3f(-(float)crop.left,
-					      -(float)crop.top, 0.0f);
+			gs_matrix_translate3f(
+				-(float)(crop.left + bounds_crop.left),
+				-(float)(crop.top + bounds_crop.top), 0.0f);
 
 			if (item->transition) {
 				obs_transition_set_manual_time(item->transition,
@@ -1605,87 +1696,40 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	if (item->item_a && item->item_b &&
 	    (fabs((double)rd) <= 90.0 || item->scene_flip_horizontal ||
 	     item->scene_flip_vertical ||
-	     (obs_sceneitem_get_bounds_type(item->item_a) == OBS_BOUNDS_NONE &&
-	      obs_sceneitem_get_bounds_type(item->item_b) != OBS_BOUNDS_NONE) ||
-	     (obs_sceneitem_get_bounds_type(item->item_a) != OBS_BOUNDS_NONE &&
-	      obs_sceneitem_get_bounds_type(item->item_b) == OBS_BOUNDS_NONE))) {
-		struct matrix4 transform_a;
-		if (item->scene_flip_horizontal || item->scene_flip_vertical) {
-			move_get_draw_transform(item->item_a,
-						item->scene_flip_horizontal,
-						item->scene_flip_vertical,
-						&transform_a);
-		} else {
-			obs_sceneitem_get_draw_transform(item->item_a,
-							 &transform_a);
-			if (isnan(transform_a.x.x) || isinf(transform_a.x.x)) {
-				obs_sceneitem_set_rot(
-					item->item_a,
-					obs_sceneitem_get_rot(item->item_a));
-				obs_sceneitem_get_draw_transform(item->item_a,
-								 &transform_a);
-				if (isnan(transform_a.x.x) ||
-				    isinf(transform_a.x.x))
-					move_get_draw_transform(item->item_a,
-								false, false,
-								&transform_a);
-			}
-		}
-		struct matrix4 transform_b;
-		if (item->scene_flip_horizontal || item->scene_flip_vertical) {
-			move_get_draw_transform(item->item_b,
-						item->scene_flip_horizontal,
-						item->scene_flip_vertical,
-						&transform_b);
-		} else {
-			obs_sceneitem_get_draw_transform(item->item_b,
-							 &transform_b);
-			if (isnan(transform_b.x.x) || isinf(transform_b.x.x)) {
-				obs_sceneitem_set_rot(
-					item->item_b,
-					obs_sceneitem_get_rot(item->item_b));
-				obs_sceneitem_get_draw_transform(item->item_b,
-								 &transform_b);
-				if (isnan(transform_b.x.x) ||
-				    isinf(transform_b.x.x))
-					move_get_draw_transform(item->item_b,
-								false, false,
-								&transform_b);
-			}
-		}
-
-		draw_transform.x.x =
-			(1.0f - t) * transform_a.x.x + t * transform_b.x.x;
-		draw_transform.x.y =
-			(1.0f - t) * transform_a.x.y + t * transform_b.x.y;
-		draw_transform.x.z =
-			(1.0f - t) * transform_a.x.z + t * transform_b.x.z;
-		draw_transform.x.w =
-			(1.0f - t) * transform_a.x.w + t * transform_b.x.w;
-		draw_transform.y.x =
-			(1.0f - t) * transform_a.y.x + t * transform_b.y.x;
-		draw_transform.y.y =
-			(1.0f - t) * transform_a.y.y + t * transform_b.y.y;
-		draw_transform.y.z =
-			(1.0f - t) * transform_a.y.z + t * transform_b.y.z;
-		draw_transform.y.w =
-			(1.0f - t) * transform_a.y.w + t * transform_b.y.w;
-		draw_transform.z.x =
-			(1.0f - t) * transform_a.z.x + t * transform_b.z.x;
-		draw_transform.z.y =
-			(1.0f - t) * transform_a.z.y + t * transform_b.z.y;
-		draw_transform.z.z =
-			(1.0f - t) * transform_a.z.z + t * transform_b.z.z;
-		draw_transform.z.w =
-			(1.0f - t) * transform_a.z.w + t * transform_b.z.w;
-		draw_transform.t.x =
-			(1.0f - t) * transform_a.t.x + t * transform_b.t.x;
-		draw_transform.t.y =
-			(1.0f - t) * transform_a.t.y + t * transform_b.t.y;
-		draw_transform.t.z =
-			(1.0f - t) * transform_a.t.z + t * transform_b.t.z;
-		draw_transform.t.w =
-			(1.0f - t) * transform_a.t.w + t * transform_b.t.w;
+	     (bt_a == OBS_BOUNDS_NONE && bt_b != OBS_BOUNDS_NONE) ||
+	     (bt_a != OBS_BOUNDS_NONE && bt_b == OBS_BOUNDS_NONE))) {
+		draw_transform.x.x = (1.0f - t) * item->transform_a.x.x +
+				     t * item->transform_b.x.x;
+		draw_transform.x.y = (1.0f - t) * item->transform_a.x.y +
+				     t * item->transform_b.x.y;
+		draw_transform.x.z = (1.0f - t) * item->transform_a.x.z +
+				     t * item->transform_b.x.z;
+		draw_transform.x.w = (1.0f - t) * item->transform_a.x.w +
+				     t * item->transform_b.x.w;
+		draw_transform.y.x = (1.0f - t) * item->transform_a.y.x +
+				     t * item->transform_b.y.x;
+		draw_transform.y.y = (1.0f - t) * item->transform_a.y.y +
+				     t * item->transform_b.y.y;
+		draw_transform.y.z = (1.0f - t) * item->transform_a.y.z +
+				     t * item->transform_b.y.z;
+		draw_transform.y.w = (1.0f - t) * item->transform_a.y.w +
+				     t * item->transform_b.y.w;
+		draw_transform.z.x = (1.0f - t) * item->transform_a.z.x +
+				     t * item->transform_b.z.x;
+		draw_transform.z.y = (1.0f - t) * item->transform_a.z.y +
+				     t * item->transform_b.z.y;
+		draw_transform.z.z = (1.0f - t) * item->transform_a.z.z +
+				     t * item->transform_b.z.z;
+		draw_transform.z.w = (1.0f - t) * item->transform_a.z.w +
+				     t * item->transform_b.z.w;
+		draw_transform.t.x = (1.0f - t) * item->transform_a.t.x +
+				     t * item->transform_b.t.x;
+		draw_transform.t.y = (1.0f - t) * item->transform_a.t.y +
+				     t * item->transform_b.t.y;
+		draw_transform.t.z = (1.0f - t) * item->transform_a.t.z +
+				     t * item->transform_b.t.z;
+		draw_transform.t.w = (1.0f - t) * item->transform_a.t.w +
+				     t * item->transform_b.t.w;
 	}
 
 	gs_matrix_push();
