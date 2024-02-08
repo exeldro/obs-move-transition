@@ -339,6 +339,48 @@ void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b,
 		v->y += (float)(cy >> 1) * t;
 }
 
+static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
+{
+	if (bt != OBS_BOUNDS_SCALE_OUTER && bt != OBS_BOUNDS_SCALE_TO_HEIGHT &&
+	    bt != OBS_BOUNDS_SCALE_TO_WIDTH)
+		return false;
+#if LIBOBS_API_VER >= MAKE_SEMANTIC_VERSION(30, 1, 0)
+	return obs_sceneitem_get_bounds_crop(item);
+#else
+	if (obs_get_version() < MAKE_SEMANTIC_VERSION(30, 1, 0))
+		return false;
+	obs_source_t *item_source = obs_sceneitem_get_source(item);
+	if (!item_source)
+		return false;
+	obs_scene_t *scene = obs_sceneitem_get_scene(item);
+	obs_source_t *scene_source = obs_scene_get_source(scene);
+	if (!scene_source)
+		return false;
+	obs_data_t *settings = obs_source_get_settings(scene_source);
+	obs_data_array_t *items = obs_data_get_array(settings, "items");
+	obs_data_release(settings);
+	if (!items)
+		return false;
+	size_t count = obs_data_array_count(items);
+	bool crop_to_bounds = false;
+	for (size_t i = 0; i < count; i++) {
+		obs_data_t *item_data = obs_data_array_item(items, i);
+		if (obs_sceneitem_get_id(item) ==
+			    obs_data_get_int(item_data, "id") &&
+		    strcmp(obs_data_get_string(item_data, "name"),
+			   obs_source_get_name(item_source)) == 0) {
+			crop_to_bounds =
+				obs_data_get_bool(item_data, "bounds_crop");
+			obs_data_release(item_data);
+			break;
+		}
+		obs_data_release(item_data);
+	}
+	obs_data_array_release(items);
+	return crop_to_bounds;
+#endif
+}
+
 static void calculate_bounds_data(struct obs_scene_item *item,
 				  struct vec2 *origin, struct vec2 *scale,
 				  int32_t *cx, int32_t *cy, struct vec2 *bounds)
@@ -357,8 +399,7 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 	    bounds_type == OBS_BOUNDS_SCALE_OUTER) {
 		bool use_width = (bounds_aspect < item_aspect);
 
-		if (obs_sceneitem_get_bounds_type(item) ==
-		    OBS_BOUNDS_SCALE_OUTER)
+		if (bounds_type == OBS_BOUNDS_SCALE_OUTER)
 			use_width = !use_width;
 
 		const float mul = use_width ? bounds->x / width
@@ -373,20 +414,59 @@ static void calculate_bounds_data(struct obs_scene_item *item,
 		vec2_mulf(scale, scale, bounds->y / height);
 
 	} else if (bounds_type == OBS_BOUNDS_STRETCH) {
-		scale->x = bounds->x / (float)(*cx);
-		scale->y = bounds->y / (float)(*cy);
+		scale->x = copysignf(bounds->x / (float)(*cx), scale->x);
+		scale->y = copysignf(bounds->y / (float)(*cy), scale->y);
 	}
 
 	width = (float)(*cx) * scale->x;
 	height = (float)(*cy) * scale->y;
+
+	/* Disregards flip when calculating size diff */
 	const float width_diff = bounds->x - width;
 	const float height_diff = bounds->y - height;
-	*cx = (int32_t)roundf(bounds->x);
-	*cy = (int32_t)roundf(bounds->y);
+	*cx = (uint32_t)bounds->x;
+	*cy = (uint32_t)bounds->y;
 
 	add_alignment(origin, obs_sceneitem_get_bounds_alignment(item),
 		      (int32_t)-roundf(width_diff),
 		      (int32_t)-roundf(height_diff));
+
+	/* Set cropping if enabled and large enough size difference exists */
+	if (crop_to_bounds(item, bounds_type) &&
+	    (width_diff < -0.1 || height_diff < -0.1)) {
+		bool crop_width = width_diff < -0.1;
+		bool crop_flipped = crop_width ? width < 0.0f : height < 0.0f;
+
+		float crop_diff = crop_width ? width_diff : height_diff;
+		float crop_origin = crop_width ? origin->x : origin->y;
+
+		/* Only get alignment for relevant axis */
+		uint32_t crop_align_mask =
+			crop_width ? OBS_ALIGN_LEFT | OBS_ALIGN_RIGHT
+				   : OBS_ALIGN_TOP | OBS_ALIGN_BOTTOM;
+		uint32_t crop_align = obs_sceneitem_get_bounds_alignment(item) &
+				      crop_align_mask;
+
+		if (crop_flipped) {
+			/* Adjust origin for flips */
+			if (crop_align == OBS_ALIGN_CENTER)
+				crop_origin *= 2;
+			else if (crop_align & (OBS_ALIGN_TOP | OBS_ALIGN_LEFT))
+				crop_origin -= crop_diff;
+		} else {
+			crop_origin = 0;
+		}
+
+		if (crop_width) {
+			origin->x = crop_origin;
+		} else {
+			origin->y = crop_origin;
+		}
+	}
+
+	/* Makes the item stay in-place in the box if flipped */
+	origin->x += (width < 0.0f) ? width : 0.0f;
+	origin->y += (height < 0.0f) ? height : 0.0f;
 }
 
 static void calculate_move_bounds_data(struct obs_scene_item *item_a,
@@ -827,48 +907,6 @@ float rot_diff(float rot_a, float rot_b)
 	while (diff > 180.0f)
 		diff -= 360.0f;
 	return diff;
-}
-
-static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
-{
-	if (bt != OBS_BOUNDS_SCALE_OUTER && bt != OBS_BOUNDS_SCALE_TO_HEIGHT &&
-	    bt != OBS_BOUNDS_SCALE_TO_WIDTH)
-		return false;
-#if LIBOBS_API_VER >= MAKE_SEMANTIC_VERSION(30, 1, 0)
-	return obs_sceneitem_get_bounds_crop(item);
-#else
-	if (obs_get_version() < MAKE_SEMANTIC_VERSION(30, 1, 0))
-		return false;
-	obs_source_t *item_source = obs_sceneitem_get_source(item);
-	if (!item_source)
-		return false;
-	obs_scene_t *scene = obs_sceneitem_get_scene(item);
-	obs_source_t *scene_source = obs_scene_get_source(scene);
-	if (!scene_source)
-		return false;
-	obs_data_t *settings = obs_source_get_settings(scene_source);
-	obs_data_array_t *items = obs_data_get_array(settings, "items");
-	obs_data_release(settings);
-	if (!items)
-		return false;
-	size_t count = obs_data_array_count(items);
-	bool crop_to_bounds = false;
-	for (size_t i = 0; i < count; i++) {
-		obs_data_t *item_data = obs_data_array_item(items, i);
-		if (obs_sceneitem_get_id(item) ==
-			    obs_data_get_int(item_data, "id") &&
-		    strcmp(obs_data_get_string(item_data, "name"),
-			   obs_source_get_name(item_source)) == 0) {
-			crop_to_bounds =
-				obs_data_get_bool(item_data, "bounds_crop");
-			obs_data_release(item_data);
-			break;
-		}
-		obs_data_release(item_data);
-	}
-	obs_data_array_release(items);
-	return crop_to_bounds;
-#endif
 }
 
 static void calculate_bounds_item(const obs_sceneitem_t *item,
