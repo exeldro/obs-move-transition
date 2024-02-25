@@ -14,7 +14,6 @@ struct directshow_property {
 	long int_from;
 	long int_to;
 	long flags;
-	bool move_enabled;
 };
 
 struct move_directshow_info {
@@ -153,17 +152,27 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 	pthread_mutex_lock(&move_directshow->mutex);
 	if (move_directshow->camControl) {
 		for (int i = 0; i < PROP_MAX; i++) {
+			char number[4];
+			snprintf(number, 4, "%i", i);
+			std::string prop_id = "camera_control_";
+			prop_id += number;
+			std::string prop_enabled = prop_id;
+			prop_enabled += "_enabled";
+			auto m = move_directshow->camControlProps->find(i);
+
+			if (!obs_data_get_bool(settings,
+					       prop_enabled.c_str())) {
+				if (m !=
+				    move_directshow->camControlProps->end())
+					move_directshow->camControlProps->erase(
+						m);
+				continue;
+			}
+
 			long val, flags;
 			HRESULT hr = move_directshow->camControl->Get(i, &val,
 								      &flags);
-			auto m = move_directshow->camControlProps->find(i);
 			if (hr == S_OK) {
-				char number[4];
-				snprintf(number, 4, "%i", i);
-				std::string prop_id = "camera_control_";
-				prop_id += number;
-				std::string prop_enabled = prop_id;
-				prop_enabled += "_enabled";
 				if (m ==
 				    move_directshow->camControlProps->end()) {
 					struct directshow_property p;
@@ -173,9 +182,6 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-						p.move_enabled = obs_data_get_bool(
-							settings,
-							prop_enabled.c_str());
 					} else {
 						p.int_to = val;
 					}
@@ -189,11 +195,6 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-						m->second.move_enabled =
-							obs_data_get_bool(
-								settings,
-								prop_enabled
-									.c_str());
 					}
 				}
 			} else if (m !=
@@ -204,17 +205,26 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 	}
 	if (move_directshow->procAmp) {
 		for (int i = 0; i < PROP_MAX; i++) {
+			char number[4];
+			snprintf(number, 4, "%i", i);
+			std::string prop_id = "video_proc_amp_";
+			prop_id += number;
+			std::string prop_enabled = prop_id;
+			prop_enabled += "_enabled";
+
+			auto m = move_directshow->procAmpProps->find(i);
+
+			if (!obs_data_get_bool(settings,
+					       prop_enabled.c_str())) {
+				if (m != move_directshow->procAmpProps->end())
+					move_directshow->procAmpProps->erase(m);
+				continue;
+			}
+
 			long val, flags;
 			HRESULT hr =
 				move_directshow->procAmp->Get(i, &val, &flags);
-			auto m = move_directshow->procAmpProps->find(i);
 			if (hr == S_OK) {
-				char number[4];
-				snprintf(number, 4, "%i", i);
-				std::string prop_id = "video_proc_amp_";
-				prop_id += number;
-				std::string prop_enabled = prop_id;
-				prop_enabled += "_enabled";
 				if (m == move_directshow->procAmpProps->end()) {
 					struct directshow_property p;
 					p.int_from = val;
@@ -223,9 +233,6 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-						p.move_enabled = obs_data_get_bool(
-							settings,
-							prop_enabled.c_str());
 					} else {
 						p.int_to = val;
 					}
@@ -241,11 +248,6 @@ void LoadProperties(move_directshow_info *move_directshow, obs_data_t *settings,
 							(long)obs_data_get_int(
 								settings,
 								prop_id.c_str());
-						m->second.move_enabled =
-							obs_data_get_bool(
-								settings,
-								prop_enabled
-									.c_str());
 					}
 				}
 			} else if (m != move_directshow->procAmpProps->end()) {
@@ -315,7 +317,10 @@ void move_directshow_start(void *data)
 		return;
 
 	if (move_directshow->move_value_type == MOVE_VALUE_TYPE_SETTINGS) {
-		LoadProperties(move_directshow, nullptr, true);
+		obs_data_t *settings = obs_source_get_settings(
+			move_directshow->move_filter.source);
+		LoadProperties(move_directshow, settings, true);
+		obs_data_release(settings);
 	} else if (move_directshow->single_setting_name) {
 		long i;
 		pthread_mutex_lock(&move_directshow->mutex);
@@ -395,13 +400,89 @@ void move_directshow_start(void *data)
 	os_event_signal(move_directshow->start_event);
 }
 
+static void
+move_directshow_to_time(struct move_directshow_info *move_directshow, float t)
+{
+	pthread_mutex_lock(&move_directshow->mutex);
+	if (move_directshow->move_value_type == MOVE_VALUE_TYPE_SETTINGS) {
+		if (move_directshow->camControl) {
+			for (auto prop =
+				     move_directshow->camControlProps->begin();
+			     prop != move_directshow->camControlProps->end();
+			     ++prop) {
+				const long value_int =
+					(long long)((1.0f -
+						     t) * (float)(prop->second
+									  .int_from) +
+						    t * (float)prop->second
+								    .int_to);
+				long val, flags;
+				HRESULT hr = move_directshow->camControl->Get(
+					prop->first, &val, &flags);
+				if (hr == S_OK && val != value_int) {
+					move_directshow->camControl->Set(
+						prop->first, value_int, flags);
+				}
+			}
+		}
+		if (move_directshow->procAmp) {
+			for (auto prop = move_directshow->procAmpProps->begin();
+			     prop != move_directshow->procAmpProps->end();
+			     ++prop) {
+				const long value_int =
+					(long long)((1.0f -
+						     t) * (float)(prop->second
+									  .int_from) +
+						    t * (float)prop->second
+								    .int_to);
+				long val, flags;
+				HRESULT hr = move_directshow->procAmp->Get(
+					prop->first, &val, &flags);
+				if (hr == S_OK && val != value_int) {
+					move_directshow->procAmp->Set(
+						prop->first, value_int, flags);
+				}
+			}
+		}
+	} else if (move_directshow->single_setting_name) {
+		const long value_int =
+			(long long)((1.0f - t) *
+					    (float)move_directshow->int_from +
+				    t * (float)move_directshow->int_to);
+		long i;
+		if (move_directshow->camControl &&
+		    1 == sscanf(move_directshow->single_setting_name,
+				"camera_control_%i", &i)) {
+			long val, flags;
+			HRESULT hr = move_directshow->camControl->Get(i, &val,
+								      &flags);
+			if (hr == S_OK && val != value_int) {
+				move_directshow->camControl->Set(i, value_int,
+								 flags);
+			}
+		} else if (move_directshow->procAmp &&
+			   1 == sscanf(move_directshow->single_setting_name,
+				       "video_proc_amp_%i", &i)) {
+			long val, flags;
+			HRESULT hr =
+				move_directshow->procAmp->Get(i, &val, &flags);
+			if (hr == S_OK && val != value_int) {
+				move_directshow->procAmp->Set(i, value_int,
+							      flags);
+			}
+		}
+	}
+	pthread_mutex_unlock(&move_directshow->mutex);
+}
+
+extern "C" {
+float get_eased(float f, long long easing, long long easing_function);
+}
+
 static void *move_directshow_thread(void *data)
 {
 	struct move_directshow_info *move_directshow =
 		(struct move_directshow_info *)data;
-	float seconds = 0;
-	uint64_t cur_time = obs_get_video_frame_time();
-	uint64_t last_time = cur_time;
 
 	os_set_thread_name("move_directshow_thread");
 
@@ -411,125 +492,30 @@ static void *move_directshow_thread(void *data)
 		if (!move_directshow->run)
 			break;
 
-		cur_time = obs_get_video_frame_time();
-		last_time = cur_time;
-		seconds = 0;
-		float t;
 		while (move_directshow->run &&
-		       move_filter_tick(&move_directshow->move_filter, seconds,
-					&t)) {
-			pthread_mutex_lock(&move_directshow->mutex);
-			if (move_directshow->move_value_type ==
-			    MOVE_VALUE_TYPE_SETTINGS) {
-				if (move_directshow->camControl) {
-					for (auto prop =
-						     move_directshow
-							     ->camControlProps
-							     ->begin();
-					     prop !=
-					     move_directshow->camControlProps
-						     ->end();
-					     ++prop) {
-						if (!prop->second.move_enabled)
-							continue;
-						const long value_int =
-							(long long)((1.0f -
-								     t) * (float)(prop->second
-											  .int_from) +
-								    t * (float)prop->second
-										    .int_to);
-						long val, flags;
-						HRESULT hr =
-							move_directshow
-								->camControl
-								->Get(prop->first,
-								      &val,
-								      &flags);
-						if (hr == S_OK) {
-							move_directshow
-								->camControl
-								->Set(prop->first,
-								      value_int,
-								      flags);
-						}
-					}
-				}
-				if (move_directshow->procAmp) {
-					for (auto prop = move_directshow
-								 ->procAmpProps
-								 ->begin();
-					     prop !=
-					     move_directshow->procAmpProps
-						     ->end();
-					     ++prop) {
-						if (!prop->second.move_enabled)
-							continue;
-						const long value_int =
-							(long long)((1.0f -
-								     t) * (float)(prop->second
-											  .int_from) +
-								    t * (float)prop->second
-										    .int_to);
-						long val, flags;
-						HRESULT hr =
-							move_directshow->procAmp
-								->Get(prop->first,
-								      &val,
-								      &flags);
-						if (hr == S_OK) {
-							move_directshow->procAmp
-								->Set(prop->first,
-								      value_int,
-								      flags);
-						}
-					}
-				}
-			} else if (move_directshow->single_setting_name) {
-				const long value_int =
-					(long long)((1.0f -
-						     t) * (float)move_directshow
-								    ->int_from +
-						    t * (float)move_directshow
-								    ->int_to);
-				long i;
-				if (move_directshow->camControl &&
-				    1 == sscanf(move_directshow
-							->single_setting_name,
-						"camera_control_%i", &i)) {
-					long val, flags;
-					HRESULT hr =
-						move_directshow->camControl->Get(
-							i, &val, &flags);
-					if (hr == S_OK && val != value_int) {
-						move_directshow->camControl->Set(
-							i, value_int, flags);
-					}
-				} else if (move_directshow->procAmp &&
-					   1 == sscanf(move_directshow
-							       ->single_setting_name,
-						       "video_proc_amp_%i",
-						       &i)) {
-					long val, flags;
-					HRESULT hr =
-						move_directshow->procAmp->Get(
-							i, &val, &flags);
-					if (hr == S_OK && val != value_int) {
-						move_directshow->procAmp->Set(
-							i, value_int, flags);
-					}
-				}
+		       move_directshow->move_filter.moving) {
+			float t =
+				(move_directshow->move_filter.running_duration *
+					 1000.0f -
+				 (float)(move_directshow->move_filter.reverse
+						 ? move_directshow->move_filter
+							   .end_delay
+						 : move_directshow->move_filter
+							   .start_delay)) /
+				(float)move_directshow->move_filter.duration;
+			if (t >= 1.0f) {
+				t = 1.0f;
 			}
-			pthread_mutex_unlock(&move_directshow->mutex);
-
-			if (!move_directshow->move_filter.moving)
-				move_filter_ended(
-					&move_directshow->move_filter);
-
-			cur_time = obs_get_video_frame_time();
-			uint64_t delta_time = cur_time - last_time;
-			seconds = (float)((double)delta_time / 1000000000.0);
-			last_time = cur_time;
+			if (move_directshow->move_filter.reverse) {
+				t = 1.0f - t;
+			}
+			t = get_eased(
+				t, move_directshow->move_filter.easing,
+				move_directshow->move_filter.easing_function);
+			move_directshow_to_time(move_directshow, t);
+			Sleep(0);
 		}
+		move_directshow_to_time(move_directshow, 1.0f);
 	}
 	return NULL;
 }
@@ -676,10 +662,9 @@ static bool device_modified(void *priv, obs_properties_t *props,
 	    strcmp(move_directshow->device, device) != 0) {
 		bfree(move_directshow->device);
 		move_directshow->device = bstrdup(device);
+		LoadDevice(move_directshow);
 		changed = true;
 	}
-
-	LoadDevice(move_directshow);
 
 	if (!device || !strlen(device)) {
 		if (single)
@@ -1178,12 +1163,12 @@ void move_directshow_tick(void *data, float seconds)
 				move_directshow->move_filter.filter_name,
 				move_directshow_start_hotkey, data);
 	}
+
 	float t;
-	if (!move_directshow->move_filter.moving &&
-	    move_filter_tick(&move_directshow->move_filter, seconds, &t)) {
-		if (!move_directshow->move_filter.moving)
-			move_filter_ended(&move_directshow->move_filter);
-	}
+	if (!move_filter_tick(&move_directshow->move_filter, seconds, &t))
+		return;
+	if (!move_directshow->move_filter.moving)
+		move_filter_ended(&move_directshow->move_filter);
 }
 
 extern "C" {
