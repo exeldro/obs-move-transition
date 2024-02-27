@@ -1668,7 +1668,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		}
 		item->has_transform = true;
 	}
-	struct obs_sceneitem_crop bounds_crop;
+	struct obs_sceneitem_crop bounds_crop = {0};
 	if ((item->item_a && item->item_b) || item->move_scene) {
 		bounds_crop.left = (int)roundf(
 			(float)(1.0f - ot) * (float)item->bounds_crop_a.left +
