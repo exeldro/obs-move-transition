@@ -229,6 +229,8 @@ struct move_filter {
 	char *filter_name;
 
 	obs_hotkey_id move_start_hotkey;
+	obs_hotkey_id move_hold_hotkey;
+	bool holding;
 
 	bool custom_duration;
 	uint64_t duration;

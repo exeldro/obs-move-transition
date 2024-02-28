@@ -1,5 +1,6 @@
 #include "move-transition.h"
 #include "obs-frontend-api.h"
+#include <util/dstr.h>
 
 bool is_move_filter(const char *filter_id)
 {
@@ -18,6 +19,7 @@ void move_filter_init(struct move_filter *move_filter, obs_source_t *source,
 {
 	move_filter->source = source;
 	move_filter->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
+	move_filter->move_hold_hotkey = OBS_INVALID_HOTKEY_ID;
 	move_filter->move_start = move_start;
 }
 
@@ -29,6 +31,8 @@ void move_filter_destroy(struct move_filter *move_filter)
 
 	if (move_filter->move_start_hotkey != OBS_INVALID_HOTKEY_ID)
 		obs_hotkey_unregister(move_filter->move_start_hotkey);
+	if (move_filter->move_hold_hotkey != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(move_filter->move_hold_hotkey);
 }
 
 void move_filter_start_hotkey(void *data, obs_hotkey_id id,
@@ -143,6 +147,24 @@ void move_filter_start_hotkey(void *data, obs_hotkey_id id,
 	da_push_back(move_filter->filters_done, &filter);
 }
 
+void move_filter_hold_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
+			     bool pressed)
+{
+	UNUSED_PARAMETER(id);
+	UNUSED_PARAMETER(hotkey);
+	struct move_filter *move_filter = data;
+	if (pressed) {
+		move_filter_start(move_filter);
+		move_filter->holding = true;
+		return;
+	}
+	move_filter->running_duration =
+		(float)(move_filter->start_delay + move_filter->duration) /
+		1000.0f;
+
+	move_filter->holding = false;
+}
+
 void move_filter_update(struct move_filter *move_filter, obs_data_t *settings)
 {
 	const char *filter_name = obs_source_get_name(move_filter->source);
@@ -154,14 +176,32 @@ void move_filter_update(struct move_filter *move_filter, obs_data_t *settings)
 			obs_hotkey_unregister(move_filter->move_start_hotkey);
 			move_filter->move_start_hotkey = OBS_INVALID_HOTKEY_ID;
 		}
+		if (move_filter->move_hold_hotkey != OBS_INVALID_HOTKEY_ID) {
+			obs_hotkey_unregister(move_filter->move_hold_hotkey);
+			move_filter->move_hold_hotkey = OBS_INVALID_HOTKEY_ID;
+		}
 	}
 	obs_source_t *parent = obs_filter_get_parent(move_filter->source);
-	if (parent && move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID &&
-	    move_filter->filter_name) {
-		move_filter->move_start_hotkey = obs_hotkey_register_source(
-			parent, move_filter->filter_name,
-			move_filter->filter_name, move_filter_start_hotkey,
-			move_filter);
+	if (parent && move_filter->filter_name) {
+		if (move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID) {
+			move_filter->move_start_hotkey =
+				obs_hotkey_register_source(
+					parent, move_filter->filter_name,
+					move_filter->filter_name,
+					move_filter_start_hotkey, move_filter);
+		}
+		if (move_filter->move_hold_hotkey == OBS_INVALID_HOTKEY_ID) {
+			struct dstr hotkey_name = {0};
+			dstr_init_copy(&hotkey_name, move_filter->filter_name);
+			dstr_cat(&hotkey_name, " ");
+			dstr_cat(&hotkey_name, obs_module_text("Hold"));
+			move_filter->move_hold_hotkey =
+				obs_hotkey_register_source(
+					parent, hotkey_name.array,
+					hotkey_name.array,
+					move_filter_hold_hotkey, move_filter);
+			dstr_free(&hotkey_name);
+		}
 	}
 	move_filter->enabled_match_moving =
 		obs_data_get_bool(settings, S_ENABLED_MATCH_MOVING);
@@ -214,7 +254,8 @@ bool move_filter_start_internal(struct move_filter *move_filter)
 {
 	if (!move_filter->custom_duration)
 		move_filter->duration = obs_frontend_get_transition_duration();
-	if (move_filter->moving && obs_source_enabled(move_filter->source)) {
+	if (move_filter->moving && !move_filter->holding &&
+	    obs_source_enabled(move_filter->source)) {
 		if (move_filter->next_move_on == NEXT_MOVE_ON_HOTKEY &&
 		    move_filter->next_move_name &&
 		    strcmp(move_filter->next_move_name, NEXT_MOVE_REVERSE) ==
@@ -276,6 +317,8 @@ bool move_filter_start_internal(struct move_filter *move_filter)
 
 void move_filter_stop(struct move_filter *move_filter)
 {
+	if (move_filter->holding)
+		return;
 	move_filter->moving = false;
 	if (move_filter->enabled_match_moving &&
 	    obs_source_enabled(move_filter->source)) {
@@ -354,15 +397,31 @@ float get_eased(float f, long long easing, long long easing_function);
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *tp)
 {
 	if (move_filter->filter_name &&
-	    move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID) {
+	    (move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID ||
+	     move_filter->move_hold_hotkey == OBS_INVALID_HOTKEY_ID)) {
 		obs_source_t *parent =
 			obs_filter_get_parent(move_filter->source);
-		if (parent)
+		if (parent &&
+		    move_filter->move_start_hotkey == OBS_INVALID_HOTKEY_ID) {
 			move_filter->move_start_hotkey =
 				obs_hotkey_register_source(
 					parent, move_filter->filter_name,
 					move_filter->filter_name,
 					move_filter_start_hotkey, move_filter);
+		}
+		if (parent &&
+		    move_filter->move_hold_hotkey == OBS_INVALID_HOTKEY_ID) {
+			struct dstr hotkey_name = {0};
+			dstr_init_copy(&hotkey_name, move_filter->filter_name);
+			dstr_cat(&hotkey_name, " ");
+			dstr_cat(&hotkey_name, obs_module_text("Hold"));
+			move_filter->move_hold_hotkey =
+				obs_hotkey_register_source(
+					parent, hotkey_name.array,
+					hotkey_name.array,
+					move_filter_hold_hotkey, move_filter);
+			dstr_free(&hotkey_name);
+		}
 	}
 
 	const bool enabled = obs_source_enabled(move_filter->source);
@@ -395,6 +454,17 @@ bool move_filter_tick(struct move_filter *move_filter, float seconds, float *tp)
 				  : move_filter->start_delay)) {
 		return false;
 	}
+	if (move_filter->holding) {
+		move_filter_start(move_filter);
+		move_filter->running_duration =
+			(float)(move_filter->start_delay +
+				move_filter->duration) /
+			1000.0f;
+
+		*tp = 1.0f;
+		return true;
+	}
+
 	if (move_filter->running_duration * 1000.0f >=
 	    (float)(move_filter->start_delay + move_filter->duration +
 		    move_filter->end_delay)) {

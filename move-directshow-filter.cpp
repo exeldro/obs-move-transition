@@ -1136,34 +1136,10 @@ static obs_properties_t *move_directshow_properties(void *data)
 	return ppts;
 }
 
-void move_directshow_start_hotkey(void *data, obs_hotkey_id id,
-				  obs_hotkey_t *hotkey, bool pressed)
-{
-	if (!pressed)
-		return;
-	struct move_directshow_info *move_directshow =
-		(struct move_directshow_info *)data;
-}
-
 void move_directshow_tick(void *data, float seconds)
 {
 	struct move_directshow_info *move_directshow =
 		(struct move_directshow_info *)data;
-
-	if (move_directshow->move_filter.filter_name &&
-	    move_directshow->move_filter.move_start_hotkey ==
-		    OBS_INVALID_HOTKEY_ID) {
-		obs_source_t *parent = obs_filter_get_parent(
-			move_directshow->move_filter.source);
-		if (parent)
-			move_directshow->move_filter
-				.move_start_hotkey = obs_hotkey_register_source(
-				parent,
-				move_directshow->move_filter.filter_name,
-				move_directshow->move_filter.filter_name,
-				move_directshow_start_hotkey, data);
-	}
-
 	float t;
 	if (!move_filter_tick(&move_directshow->move_filter, seconds, &t))
 		return;
