@@ -311,6 +311,24 @@ typedef struct NvAR_Vector2f {
 	float x, y;
 } NvAR_Vector2f;
 
+typedef struct NvAR_Vector3f {
+	union {
+		struct {
+			float x, y, z;
+		};
+		float vec[3];
+	};
+} NvAR_Vector3f;
+
+typedef struct NvAR_Vector3u16 {
+	union {
+		struct {
+			unsigned short x, y, z;
+		};
+		unsigned short vec[3];
+	};
+} NvAR_Vector3u16;
+
 typedef struct NvAR_Rect {
 	float x, y, width, height;
 } NvAR_Rect;
@@ -320,6 +338,24 @@ typedef struct NvAR_BBoxes {
 	uint8_t num_boxes;
 	uint8_t max_boxes;
 } NvAR_BBoxes;
+
+typedef struct NvAR_TrackingBBox {
+	NvAR_Rect bbox;
+	uint16_t tracking_id;
+} NvAR_TrackingBBox;
+
+typedef struct NvAR_TrackingBBoxes {
+	NvAR_TrackingBBox *boxes;
+	uint8_t num_boxes;
+	uint8_t max_boxes;
+} NvAR_TrackingBBoxes;
+
+typedef struct NvAR_FaceMesh {
+	NvAR_Vector3f *vertices; ///< Mesh 3D vertex positions.
+	size_t num_vertices;
+	NvAR_Vector3u16 *tvi; ///< Mesh triangle's vertex indices
+	size_t num_triangles; ///< The number of triangles (previously num_tri_idx)
+} NvAR_FaceMesh;
 
 typedef struct CUstream_st *CUstream;
 typedef const char *NvAR_ParameterSelector;

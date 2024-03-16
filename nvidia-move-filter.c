@@ -12,6 +12,24 @@
 #define ACTION_MOVE_VALUE 1
 #define ACTION_ENABLE_FILTER 2
 #define ACTION_SOURCE_VISIBILITY 3
+#define ACTION_ATTACH_SOURCE 4
+
+#define ATTACH_EYES 0
+#define ATTACH_LEFT_EYE 1
+#define ATTACH_RIGHT_EYE 2
+#define ATTACH_EYEBROWS 3
+#define ATTACH_LEFT_EYEBROW 4
+#define ATTACH_RIGHT_EYEBROW 5
+#define ATTACH_EARS 6
+#define ATTACH_LEFT_EAR 7
+#define ATTACH_RIGHT_EAR 8
+#define ATTACH_NOSE 9
+#define ATTACH_MOUTH 10
+#define ATTACH_UPPER_LIP 11
+#define ATTACH_LOWER_LIP 12
+#define ATTACH_CHIN 13
+#define ATTACH_JAW 14
+#define ATTACH_FOREHEAD 15
 
 #define SCENEITEM_PROPERTY_ALL 0
 #define SCENEITEM_PROPERTY_POS 1
@@ -125,9 +143,10 @@ struct nvidia_move_action {
 	uint32_t property;
 	float diff;
 	float factor;
+	float factor2;
 	uint32_t feature;
 	uint32_t feature_property;
-	uint32_t feature_number[3];
+	uint32_t feature_number[4];
 	float threshold;
 	float required_confidence;
 	float easing;
@@ -281,8 +300,9 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 	bool success = false;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
 	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
-		if (filter->bboxes_confidence.array[0] <
-		    action->required_confidence) {
+		if (filter->bboxes_confidence.array &&
+		    filter->bboxes_confidence.array[0] <
+			    action->required_confidence) {
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_LEFT) {
 			value = filter->bboxes.boxes[0].x;
@@ -616,8 +636,9 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	value->y = 0.0f;
 	if (action->feature == FEATURE_BOUNDINGBOX &&
 	    filter->bboxes.max_boxes && filter->bboxes.num_boxes) {
-		if (filter->bboxes_confidence.array[0] <
-		    action->required_confidence) {
+		if (filter->bboxes_confidence.array &&
+		    filter->bboxes_confidence.array[0] <
+			    action->required_confidence) {
 		} else if (action->feature_property ==
 			   FEATURE_BOUNDINGBOX_TOP_LEFT) {
 			value->x = filter->bboxes.boxes[0].x;
@@ -752,7 +773,7 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	}
 	value->x *= action->factor;
 	value->x += action->diff;
-	value->y *= action->factor;
+	value->y *= action->factor2;
 	value->y += action->diff;
 
 	if (success && easing) {
@@ -796,7 +817,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		bfree(action->name);
 		action->name = NULL;
 		if (action->action == ACTION_MOVE_SOURCE ||
-		    action->action == ACTION_SOURCE_VISIBILITY) {
+		    action->action == ACTION_SOURCE_VISIBILITY ||
+		    action->action == ACTION_ATTACH_SOURCE) {
 			dstr_printf(&name, "action_%lld_scene", i);
 			const char *scene_name =
 				obs_data_get_string(settings, name.array);
@@ -826,6 +848,10 @@ static void nv_move_update(void *data, obs_data_t *settings)
 
 			dstr_printf(&name, "action_%lld_threshold", i);
 			action->threshold = (float)obs_data_get_double(
+				settings, name.array);
+		} else if (action->action == ACTION_ATTACH_SOURCE) {
+			dstr_printf(&name, "action_%lld_attach", i);
+			action->property = (uint32_t)obs_data_get_int(
 				settings, name.array);
 		}
 		if (action->action == ACTION_MOVE_VALUE ||
@@ -871,9 +897,13 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			}
 		}
 
-		dstr_printf(&name, "action_%lld_feature", i);
-		action->feature =
-			(uint32_t)obs_data_get_int(settings, name.array);
+		if (action->action == ACTION_ATTACH_SOURCE) {
+			action->feature = FEATURE_LANDMARK;
+		} else {
+			dstr_printf(&name, "action_%lld_feature", i);
+			action->feature = (uint32_t)obs_data_get_int(
+				settings, name.array);
+		}
 
 		feature_flags |= (1ull << action->feature);
 
@@ -940,29 +970,39 @@ static void nv_move_update(void *data, obs_data_t *settings)
 				(float)obs_data_get_double(settings,
 							   name.array);
 		}
+		dstr_printf(&name, "action_%lld_factor2", i);
+		obs_data_set_default_double(settings, name.array, 100.0f);
 		dstr_printf(&name, "action_%lld_factor", i);
 		obs_data_set_default_double(settings, name.array, 100.0f);
 
 		if (action->action == ACTION_MOVE_SOURCE ||
-		    action->action == ACTION_MOVE_VALUE) {
+		    action->action == ACTION_MOVE_VALUE ||
+		    action->action == ACTION_ATTACH_SOURCE) {
 			action->factor = (float)obs_data_get_double(
 						 settings, name.array) /
 					 100.0f;
+			dstr_printf(&name, "action_%lld_factor2", i);
+			action->factor2 = (float)obs_data_get_double(
+						  settings, name.array) /
+					  100.0f;
 			dstr_printf(&name, "action_%lld_diff", i);
 			action->diff = (float)obs_data_get_double(settings,
 								  name.array);
 		} else {
 			action->factor = 1.0f;
+			action->factor2 = 1.0f;
 			action->diff = 0.0f;
 		}
 		dstr_printf(&name, "action_%lld_easing", i);
 		action->easing = ExponentialEaseOut(
 			(float)obs_data_get_double(settings, name.array) /
 			100.0f);
-		nv_move_action_get_float(filter, action, false,
-					 &action->previous_float);
-		nv_move_action_get_vec2(filter, action, false,
-					&action->previous_vec2);
+		if (action->action != ACTION_ATTACH_SOURCE) {
+			nv_move_action_get_float(filter, action, false,
+						 &action->previous_float);
+			nv_move_action_get_vec2(filter, action, false,
+						&action->previous_vec2);
+		}
 	}
 	dstr_free(&name);
 
@@ -1238,6 +1278,8 @@ static void nv_move_actual_destroy(void *data)
 				  NvAR_CudaStreamDestroy(filter->stream),
 				  "Destroy Cuda Stream");
 
+	bfree(filter->bboxes.boxes);
+
 	da_free(filter->bboxes_confidence);
 	da_free(filter->landmarks_confidence);
 	da_free(filter->landmarks);
@@ -1265,6 +1307,14 @@ static void nv_move_actual_destroy(void *data)
 static void nv_move_destroy(void *data)
 {
 	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
+	for (size_t i = 0; i < filter->actions.num; i++) {
+		struct nvidia_move_action *action = filter->actions.array + i;
+		obs_weak_source_release(action->target);
+		action->target = NULL;
+		bfree(action->name);
+		action->name = NULL;
+	}
+	da_free(filter->actions);
 	obs_queue_task(OBS_TASK_GRAPHICS, nv_move_actual_destroy, data, false);
 }
 
@@ -1330,8 +1380,10 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 		return false;
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_feature", action_number);
-	if (obs_data_get_int(settings, name.array) != FEATURE_LANDMARK)
+	if (obs_data_get_int(settings, name.array) != FEATURE_LANDMARK) {
+		dstr_free(&name);
 		return false;
+	}
 	dstr_printf(&name, "action_%lld_landmark_1", action_number);
 	obs_property_t *landmark1 = obs_properties_get(props, name.array);
 	obs_property_set_visible(landmark1, true);
@@ -1344,6 +1396,7 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 					 landmark >= FEATURE_LANDMARK_DISTANCE);
 	obs_property_int_set_limits(landmark2, 1, (int)filter->landmarks.num,
 				    1);
+	dstr_free(&name);
 	return true;
 }
 
@@ -1358,8 +1411,10 @@ bool nv_move_body_changed(void *priv, obs_properties_t *props,
 		return false;
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_feature", action_number);
-	if (obs_data_get_int(settings, name.array) != FEATURE_BODY)
+	if (obs_data_get_int(settings, name.array) != FEATURE_BODY) {
+		dstr_free(&name);
 		return false;
+	}
 	dstr_printf(&name, "action_%lld_body_1", action_number);
 	obs_property_t *body1 = obs_properties_get(props, name.array);
 	obs_property_set_visible(body1, true);
@@ -1372,6 +1427,8 @@ bool nv_move_body_changed(void *priv, obs_properties_t *props,
 			body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
 			body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
 			body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF);
+
+	dstr_free(&name);
 
 	return true;
 }
@@ -1386,6 +1443,9 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 	    !action_number)
 		return false;
 	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_action", action_number);
+	long long action = obs_data_get_int(settings, name.array);
+
 	dstr_printf(&name, "action_%lld_bounding_box", action_number);
 	obs_property_t *bounding_box = obs_properties_get(props, name.array);
 	obs_property_set_visible(bounding_box, false);
@@ -1426,9 +1486,12 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(bounding_box, true);
 		obs_property_set_visible(required_confidence, true);
 	} else if (feature == FEATURE_LANDMARK) {
-		obs_property_set_visible(landmark, true);
 		obs_property_set_visible(required_confidence, true);
-		nv_move_landmark_changed(priv, props, landmark, settings);
+		if (action != ACTION_ATTACH_SOURCE) {
+			obs_property_set_visible(landmark, true);
+			nv_move_landmark_changed(priv, props, landmark,
+						 settings);
+		}
 	} else if (feature == FEATURE_POSE) {
 		obs_property_set_visible(pose, true);
 	} else if (feature == FEATURE_EXPRESSION) {
@@ -1444,6 +1507,7 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(required_confidence, true);
 		nv_move_body_changed(priv, props, body, settings);
 	}
+	dstr_free(&name);
 	return true;
 }
 
@@ -1569,6 +1633,7 @@ static void nv_move_prop_number_floats(uint32_t number, long long action_number,
 	obs_property_list_item_disable(body, BODY_ANGLE_X, number != 1);
 	obs_property_list_item_disable(body, BODY_ANGLE_Y, number != 1);
 	obs_property_list_item_disable(body, BODY_ANGLE_Z, number != 1);
+	dstr_free(&name);
 }
 
 bool nv_move_action_changed(void *priv, obs_properties_t *props,
@@ -1594,6 +1659,8 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_sceneitem_property", action_number);
 	obs_property_t *sceneitem_property =
 		obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_attach", action_number);
+	obs_property_t *attach = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_enable", action_number);
 	obs_property_t *enable = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_threshold", action_number);
@@ -1602,25 +1669,36 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	obs_property_t *p = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_factor", action_number);
 	obs_property_t *factor = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_factor2", action_number);
+	obs_property_t *factor2 = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_diff", action_number);
 	obs_property_t *diff = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_feature", action_number);
+	obs_property_t *feature = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_get_value", action_number);
+	obs_property_t *get_value = obs_properties_get(props, name.array);
 
 	obs_property_set_visible(scene, false);
 	obs_property_set_visible(sceneitem, false);
 	obs_property_set_visible(source, false);
 	obs_property_set_visible(filter, false);
 	obs_property_set_visible(sceneitem_property, false);
+	obs_property_set_visible(attach, false);
 	obs_property_set_visible(enable, false);
 	obs_property_set_visible(threshold, false);
 	obs_property_set_visible(p, false);
 	obs_property_set_visible(factor, false);
+	obs_property_set_visible(factor2, false);
 	obs_property_set_visible(diff, false);
+	obs_property_set_visible(feature, true);
+	obs_property_set_visible(get_value, true);
 
 	if (action == ACTION_MOVE_SOURCE) {
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(sceneitem_property, true);
 		obs_property_set_visible(factor, true);
+		obs_property_set_visible(factor2, true);
 		obs_property_set_visible(diff, true);
 	} else {
 		nv_move_prop_number_floats(1, action_number, props);
@@ -1641,6 +1719,21 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(enable, true);
 		obs_property_set_visible(threshold, true);
+	} else if (action == ACTION_ATTACH_SOURCE) {
+		obs_property_set_visible(attach, true);
+		obs_property_set_visible(scene, true);
+		obs_property_set_visible(sceneitem, true);
+		obs_property_set_visible(feature, false);
+		obs_property_set_visible(get_value, false);
+		obs_property_set_visible(factor, true);
+		obs_property_set_visible(factor2, true);
+		dstr_printf(&name, "action_%lld_feature", action_number);
+		if (obs_data_get_int(settings, name.array) !=
+		    FEATURE_LANDMARK) {
+			obs_data_set_int(settings, name.array,
+					 FEATURE_LANDMARK);
+			nv_move_feature_changed(priv, props, feature, settings);
+		}
 	}
 	if (obs_property_visible(scene) &&
 	    !obs_property_list_item_count(scene)) {
@@ -1657,6 +1750,52 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	dstr_free(&name);
 	//
 	return true;
+}
+
+bool nv_move_attach_changed(void *priv, obs_properties_t *props,
+			    obs_property_t *property, obs_data_t *settings)
+{
+	const char *action_prop = obs_property_name(property);
+	long long attach = obs_data_get_int(settings, action_prop);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_attach", &action_number) != 1 ||
+	    !action_number)
+		return false;
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_scene", action_number);
+	obs_source_t *scene_source = obs_get_source_by_name(obs_data_get_string(settings, name.array));
+	if (!scene_source) {
+		dstr_free(&name);
+		return false;
+	}
+	obs_scene_t *scene = obs_scene_from_source(scene_source);
+	if (!scene)
+		scene = obs_group_from_source(scene_source);
+	obs_source_release(scene_source);
+	if (!scene) {
+		dstr_free(&name);
+		return false;
+	}
+	
+	dstr_printf(&name, "action_%lld_sceneitem", action_number);
+	obs_sceneitem_t *item = obs_scene_find_source(scene, obs_data_get_string(settings, name.array));
+	dstr_free(&name);
+	if (!item)
+		return false;
+
+	if (attach == ATTACH_LEFT_EAR) {
+		obs_sceneitem_set_alignment(item, OBS_ALIGN_LEFT);
+	} else if (attach == ATTACH_RIGHT_EAR) {
+		obs_sceneitem_set_alignment(item, OBS_ALIGN_RIGHT);
+	} else if (attach == ATTACH_NOSE || attach == ATTACH_UPPER_LIP ||
+		   attach == ATTACH_FOREHEAD) {
+		obs_sceneitem_set_alignment(item, OBS_ALIGN_BOTTOM);
+	} else if (attach == ATTACH_LOWER_LIP || attach == ATTACH_JAW) {
+		obs_sceneitem_set_alignment(item, OBS_ALIGN_TOP);
+	} else {
+		obs_sceneitem_set_alignment(item, OBS_ALIGN_CENTER);
+	}
+	return false;
 }
 
 bool nv_move_add_sceneitems(obs_scene_t *scene, obs_sceneitem_t *sceneitem,
@@ -1682,6 +1821,7 @@ bool nv_move_scene_changed(void *priv, obs_properties_t *props,
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_sceneitem", action_number);
 	obs_property_t *sceneitem = obs_properties_get(props, name.array);
+	dstr_free(&name);
 	if (!sceneitem)
 		return false;
 
@@ -1692,6 +1832,8 @@ bool nv_move_scene_changed(void *priv, obs_properties_t *props,
 	if (!scene_source)
 		return true;
 	obs_scene_t *scene = obs_scene_from_source(scene_source);
+	if (!scene)
+		scene = obs_group_from_source(scene_source);
 	obs_scene_enum_items(scene, nv_move_add_sceneitems, sceneitem);
 	obs_source_release(scene_source);
 	return true;
@@ -1755,14 +1897,16 @@ bool nv_move_filter_changed(void *priv, obs_properties_t *props,
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_property", action_number);
 	obs_property_t *prop = obs_properties_get(props, name.array);
-	if (!prop)
+	if (!prop) {
+		dstr_free(&name);
 		return false;
-
+	}
 	obs_property_list_clear(prop);
 	obs_property_list_add_string(prop, "", "");
 
 	dstr_printf(&name, "action_%lld_source", action_number);
 	const char *source_name = obs_data_get_string(settings, name.array);
+	dstr_free(&name);
 	obs_source_t *source = obs_get_source_by_name(source_name);
 	if (!source)
 		return true;
@@ -1796,6 +1940,7 @@ bool nv_move_source_changed(void *priv, obs_properties_t *props,
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_filter", action_number);
 	obs_property_t *filter = obs_properties_get(props, name.array);
+	dstr_free(&name);
 	if (!filter)
 		return false;
 
@@ -1927,9 +2072,53 @@ static obs_properties_t *nv_move_properties(void *data)
 		obs_property_list_add_int(p,
 					  obs_module_text("SourceVisibility"),
 					  ACTION_SOURCE_VISIBILITY);
+		obs_property_list_add_int(p, obs_module_text("AttachSource"),
+					  ACTION_ATTACH_SOURCE);
 
 		obs_property_set_modified_callback2(p, nv_move_action_changed,
 						    data);
+		dstr_printf(&name, "action_%lld_attach", i);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("Attach"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+
+		obs_property_list_add_int(p, obs_module_text("Eyes"),
+					  ATTACH_EYES);
+		obs_property_list_add_int(p, obs_module_text("LeftEye"),
+					  ATTACH_LEFT_EYE);
+		obs_property_list_add_int(p, obs_module_text("RightEye"),
+					  ATTACH_RIGHT_EYE);
+		obs_property_list_add_int(p, obs_module_text("Eyebrows"),
+					  ATTACH_EYEBROWS);
+		obs_property_list_add_int(p, obs_module_text("LeftEyebrow"),
+					  ATTACH_LEFT_EYEBROW);
+		obs_property_list_add_int(p, obs_module_text("RightEyebrow"),
+					  ATTACH_RIGHT_EYEBROW);
+		obs_property_list_add_int(p, obs_module_text("Ears"),
+					  ATTACH_EARS);
+		obs_property_list_add_int(p, obs_module_text("LeftEar"),
+					  ATTACH_LEFT_EAR);
+		obs_property_list_add_int(p, obs_module_text("RightEar"),
+					  ATTACH_RIGHT_EAR);
+		obs_property_list_add_int(p, obs_module_text("Nose"),
+					  ATTACH_NOSE);
+		obs_property_list_add_int(p, obs_module_text("Mouth"),
+					  ATTACH_MOUTH);
+		obs_property_list_add_int(p, obs_module_text("UpperLip"),
+					  ATTACH_UPPER_LIP);
+		obs_property_list_add_int(p, obs_module_text("LowerLip"),
+					  ATTACH_LOWER_LIP);
+		obs_property_list_add_int(p, obs_module_text("Chin"),
+					  ATTACH_CHIN);
+		obs_property_list_add_int(p, obs_module_text("Jaw"),
+					  ATTACH_JAW);
+		obs_property_list_add_int(p, obs_module_text("Forehead"),
+					  ATTACH_FOREHEAD);
+
+		obs_property_set_modified_callback2(p, nv_move_attach_changed,
+						    data);
+
 		dstr_printf(&name, "action_%lld_scene", i);
 		p = obs_properties_add_list(group, name.array,
 					    obs_module_text("Scene"),
@@ -2280,6 +2469,11 @@ static obs_properties_t *nv_move_properties(void *data)
 			25.0, 0.01);
 
 		dstr_printf(&name, "action_%lld_factor", i);
+		p = obs_properties_add_float(group, name.array,
+					     obs_module_text("Factor"),
+					     -1000000.0, 1000000.0, 1.0);
+		obs_property_float_set_suffix(p, "%");
+		dstr_printf(&name, "action_%lld_factor2", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Factor"),
 					     -1000000.0, 1000000.0, 1.0);
@@ -2649,7 +2843,8 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 
 	for (size_t i = 0; i < filter->actions.num; i++) {
 		struct nvidia_move_action *action = filter->actions.array + i;
-		if (action->action == ACTION_MOVE_SOURCE) {
+		if (action->action == ACTION_MOVE_SOURCE ||
+		    action->action == ACTION_ATTACH_SOURCE) {
 			if (!action->name)
 				continue;
 			obs_source_t *scene_source =
@@ -2658,6 +2853,8 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				continue;
 			obs_scene_t *scene =
 				obs_scene_from_source(scene_source);
+			if (!scene)
+				scene = obs_group_from_source(scene_source);
 			obs_source_release(scene_source);
 			if (!scene)
 				continue;
@@ -2667,7 +2864,295 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				continue;
 
 			// SCENEITEM_PROPERTY_ALL
-			if (action->property == SCENEITEM_PROPERTY_POS) {
+			if (action->action == ACTION_ATTACH_SOURCE) {
+				if (!filter->bboxes.num_boxes) {
+					if (obs_sceneitem_visible(item)) {
+						obs_sceneitem_set_visible(
+							item, false);
+					}
+					continue;
+				}
+				bool vert = false;
+				bool flip = false;
+				bool height_to_pos = false;
+				if (action->property == ATTACH_EYES) {
+					action->feature_number[0] = 37 - 1;
+					action->feature_number[1] = 46 - 1;
+					action->feature_number[2] = 44 - 1;
+					action->feature_number[3] = 39 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_RIGHT_EYE) {
+					action->feature_number[0] = 37 - 1;
+					action->feature_number[1] = 40 - 1;
+					action->feature_number[2] = 39 - 1;
+					action->feature_number[3] = 41 - 1;
+				} else if (action->property ==
+					   ATTACH_LEFT_EYE) {
+					action->feature_number[0] = 43 - 1;
+					action->feature_number[1] = 46 - 1;
+					action->feature_number[2] = 44 - 1;
+					action->feature_number[3] = 48 - 1;
+				} else if (action->property ==
+					   ATTACH_EYEBROWS) {
+					action->feature_number[0] = 18 - 1;
+					action->feature_number[1] = 27 - 1;
+					action->feature_number[2] = 20 - 1;
+					action->feature_number[3] = 25 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_RIGHT_EYEBROW) {
+					action->feature_number[0] = 18 - 1;
+					action->feature_number[1] = 22 - 1;
+					action->feature_number[2] = 20 - 1;
+					action->feature_number[3] = 20 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_LEFT_EYEBROW) {
+					action->feature_number[0] = 23 - 1;
+					action->feature_number[1] = 27 - 1;
+					action->feature_number[2] = 25 - 1;
+					action->feature_number[3] = 25 - 1;
+					height_to_pos = true;
+				} else if (action->property == ATTACH_EARS) {
+					action->feature_number[0] = 1 - 1;
+					action->feature_number[1] = 17 - 1;
+					action->feature_number[2] = 1 - 1;
+					action->feature_number[3] = 2 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_RIGHT_EAR) {
+					action->feature_number[0] = 1 - 1;
+					action->feature_number[1] = 2 - 1;
+					action->feature_number[2] = 1 - 1;
+					action->feature_number[3] = 2 - 1;
+					vert = true;
+				} else if (action->property ==
+					   ATTACH_LEFT_EAR) {
+					action->feature_number[0] = 17 - 1;
+					action->feature_number[1] = 16 - 1;
+					action->feature_number[2] = 17 - 1;
+					action->feature_number[3] = 16 - 1;
+					vert = true;
+				} else if (action->property == ATTACH_NOSE) {
+					action->feature_number[0] = 32 - 1;
+					action->feature_number[1] = 36 - 1;
+					action->feature_number[2] = 28 - 1;
+					action->feature_number[3] = 34 - 1;
+				} else if (action->property == ATTACH_MOUTH) {
+					action->feature_number[0] = 49 - 1;
+					action->feature_number[1] = 55 - 1;
+					action->feature_number[2] = 52 - 1;
+					action->feature_number[3] = 58 - 1;
+				} else if (action->property ==
+					   ATTACH_UPPER_LIP) {
+					action->feature_number[0] = 49 - 1;
+					action->feature_number[1] = 55 - 1;
+					action->feature_number[2] = 51 - 1;
+					action->feature_number[3] = 53 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_LOWER_LIP) {
+					action->feature_number[0] = 49 - 1;
+					action->feature_number[1] = 55 - 1;
+					action->feature_number[2] = 58 - 1;
+					action->feature_number[3] = 58 - 1;
+					height_to_pos = true;
+				} else if (action->property == ATTACH_CHIN) {
+					action->feature_number[0] = 8 - 1;
+					action->feature_number[1] = 10 - 1;
+					action->feature_number[2] = 9 - 1;
+					action->feature_number[3] = 9 - 1;
+					height_to_pos = true;
+				} else if (action->property == ATTACH_JAW) {
+					action->feature_number[0] = 1 - 1;
+					action->feature_number[1] = 17 - 1;
+					action->feature_number[2] = 9 - 1;
+					action->feature_number[3] = 9 - 1;
+					height_to_pos = true;
+				} else if (action->property ==
+					   ATTACH_FOREHEAD) {
+					action->feature_number[0] = 1 - 1;
+					action->feature_number[1] = 17 - 1;
+					action->feature_number[2] = 28 - 1;
+					action->feature_number[3] = 34 - 1;
+					//height_to_pos = true;
+				} else {
+					continue;
+				}
+				if (action->feature_number[0] >=
+					    filter->landmarks.num ||
+				    action->feature_number[1] >=
+					    filter->landmarks.num) {
+					continue;
+				}
+				if (filter->landmarks_confidence.array
+						    [action->feature_number[0]] <
+					    action->required_confidence ||
+				    filter->landmarks_confidence.array
+						    [action->feature_number[1]] <
+					    action->required_confidence) {
+					if (obs_sceneitem_visible(item)) {
+						obs_sceneitem_set_visible(
+							item, false);
+					}
+					continue;
+				}
+
+				struct vec2 pos;
+				if (vert) {
+					pos.x = filter->landmarks
+							.array[action->feature_number
+								       [0]]
+							.x;
+					pos.y = filter->landmarks
+							.array[action->feature_number
+								       [0]]
+							.y;
+				} else {
+					pos.x = (filter->landmarks
+							 .array[action->feature_number
+									[1]]
+							 .x +
+						 filter->landmarks
+							 .array[action->feature_number
+									[0]]
+							 .x) /
+						2.0f;
+					pos.y = (filter->landmarks
+							 .array[action->feature_number
+									[1]]
+							 .y +
+						 filter->landmarks
+							 .array[action->feature_number
+									[0]]
+							 .y) /
+						2.0f;
+				}
+				obs_sceneitem_set_pos(item, &pos);
+
+				float rot = DEG(atan2f(
+					(filter->landmarks
+						 .array[action->feature_number[1]]
+						 .y -
+					 filter->landmarks
+						 .array[action->feature_number[0]]
+						 .y),
+					(filter->landmarks
+						 .array[action->feature_number[1]]
+						 .x -
+					 filter->landmarks
+						 .array[action->feature_number[0]]
+						 .x)));
+
+				if (vert)
+					rot -= 90.0f;
+				obs_sceneitem_set_rot(item, rot);
+				obs_source_t *s =
+					obs_sceneitem_get_source(item);
+				float w = (float)obs_source_get_width(s);
+				float h = (float)obs_source_get_height(s);
+				if (w > 0.0f && h > 0.0f) {
+					float x =
+						filter->landmarks
+							.array[action->feature_number
+								       [0]]
+							.x -
+						filter->landmarks
+							.array[action->feature_number
+								       [1]]
+							.x;
+					float y =
+						filter->landmarks
+							.array[action->feature_number
+								       [0]]
+							.y -
+						filter->landmarks
+							.array[action->feature_number
+								       [1]]
+							.y;
+					float dist = sqrtf(x * x + y * y);
+					dist *= action->factor;
+					if (height_to_pos) {
+						x = (filter->landmarks
+							     .array[action->feature_number
+									    [3]]
+							     .x +
+						     filter->landmarks
+							     .array[action->feature_number
+									    [2]]
+							     .x) /
+							    2.0f -
+						    pos.x;
+						y = (filter->landmarks
+							     .array[action->feature_number
+									    [3]]
+							     .y +
+						     filter->landmarks
+							     .array[action->feature_number
+									    [2]]
+							     .y) /
+							    2.0f -
+						    pos.y;
+					} else {
+						x = filter->landmarks
+							    .array[action->feature_number
+									   [3]]
+							    .x -
+						    filter->landmarks
+							    .array[action->feature_number
+									   [2]]
+							    .x;
+						y = filter->landmarks
+							    .array[action->feature_number
+									   [3]]
+							    .y -
+						    filter->landmarks
+							    .array[action->feature_number
+									   [2]]
+							    .y;
+					}
+					float dist2 = sqrtf(x * x + y * y);
+					dist2 *= action->factor2;
+
+					dist = action->previous_vec2.x *
+						       action->easing +
+					       dist * (1.0f - action->easing);
+					action->previous_vec2.x = dist;
+					dist2 = action->previous_vec2.y *
+							action->easing +
+						dist2 * (1.0f - action->easing);
+					action->previous_vec2.y = dist2;
+
+					if (obs_sceneitem_get_bounds_type(
+						    item) == OBS_BOUNDS_NONE) {
+						struct vec2 scale = {0};
+						if (vert) {
+							scale.y = dist / h;
+							scale.x = dist2 / w;
+						} else {
+							scale.x = dist / w;
+							scale.y = dist2 / h;
+						}
+						obs_sceneitem_set_scale(item,
+									&scale);
+					} else {
+						struct vec2 bounds = {0};
+						if (vert) {
+							bounds.y = dist;
+							bounds.x = dist2;
+						} else {
+							bounds.x = dist;
+							bounds.y = dist2;
+						}
+						obs_sceneitem_set_bounds(
+							item, &bounds);
+					}
+				}
+				if (!obs_sceneitem_visible(item)) {
+					obs_sceneitem_set_visible(item, true);
+				}
+			} else if (action->property == SCENEITEM_PROPERTY_POS) {
 				struct vec2 pos;
 				if (nv_move_action_get_vec2(filter, action,
 							    true, &pos))
@@ -2878,6 +3363,8 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				continue;
 			obs_scene_t *scene =
 				obs_scene_from_source(scene_source);
+			if (!scene)
+				scene = obs_group_from_source(scene_source);
 			obs_source_release(scene_source);
 			if (!scene)
 				continue;
