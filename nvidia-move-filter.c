@@ -1769,7 +1769,8 @@ bool nv_move_attach_changed(void *priv, obs_properties_t *props,
 	}
 
 	dstr_printf(&name, "action_%lld_scene", action_number);
-	obs_source_t *scene_source = obs_get_source_by_name(obs_data_get_string(settings, name.array));
+	obs_source_t *scene_source = obs_get_source_by_name(
+		obs_data_get_string(settings, name.array));
 	if (!scene_source) {
 		dstr_free(&name);
 		return false;
@@ -1782,9 +1783,10 @@ bool nv_move_attach_changed(void *priv, obs_properties_t *props,
 		dstr_free(&name);
 		return false;
 	}
-	
+
 	dstr_printf(&name, "action_%lld_sceneitem", action_number);
-	obs_sceneitem_t *item = obs_scene_find_source(scene, obs_data_get_string(settings, name.array));
+	obs_sceneitem_t *item = obs_scene_find_source(
+		scene, obs_data_get_string(settings, name.array));
 	dstr_free(&name);
 	if (!item)
 		return false;
@@ -2882,106 +2884,346 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 				bool flip = false;
 				bool height_to_pos = false;
 				if (action->property == ATTACH_EYES) {
-					action->feature_number[0] = 37 - 1;
-					action->feature_number[1] = 46 - 1;
-					action->feature_number[2] = 44 - 1;
-					action->feature_number[3] = 39 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							65 - 1;
+						action->feature_number[1] =
+							86 - 1;
+						action->feature_number[2] =
+							83 - 1;
+						action->feature_number[3] =
+							68 - 1;
+					} else {
+						action->feature_number[0] =
+							37 - 1;
+						action->feature_number[1] =
+							46 - 1;
+						action->feature_number[2] =
+							44 - 1;
+						action->feature_number[3] =
+							39 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_RIGHT_EYE) {
-					action->feature_number[0] = 37 - 1;
-					action->feature_number[1] = 40 - 1;
-					action->feature_number[2] = 39 - 1;
-					action->feature_number[3] = 41 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							65 - 1;
+						action->feature_number[1] =
+							69 - 1;
+						action->feature_number[2] =
+							68 - 1;
+						action->feature_number[3] =
+							70 - 1;
+					} else {
+						action->feature_number[0] =
+							37 - 1;
+						action->feature_number[1] =
+							40 - 1;
+						action->feature_number[2] =
+							39 - 1;
+						action->feature_number[3] =
+							41 - 1;
+					}
 				} else if (action->property ==
 					   ATTACH_LEFT_EYE) {
-					action->feature_number[0] = 43 - 1;
-					action->feature_number[1] = 46 - 1;
-					action->feature_number[2] = 44 - 1;
-					action->feature_number[3] = 48 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							82 - 1;
+						action->feature_number[1] =
+							86 - 1;
+						action->feature_number[2] =
+							84 - 1;
+						action->feature_number[3] =
+							88 - 1;
+					} else {
+						action->feature_number[0] =
+							43 - 1;
+						action->feature_number[1] =
+							46 - 1;
+						action->feature_number[2] =
+							44 - 1;
+						action->feature_number[3] =
+							48 - 1;
+					}
 				} else if (action->property ==
 					   ATTACH_EYEBROWS) {
-					action->feature_number[0] = 18 - 1;
-					action->feature_number[1] = 27 - 1;
-					action->feature_number[2] = 20 - 1;
-					action->feature_number[3] = 25 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							34 - 1;
+						action->feature_number[1] =
+							47 - 1;
+						action->feature_number[2] =
+							36 - 1;
+						action->feature_number[3] =
+							45 - 1;
+					} else {
+						action->feature_number[0] =
+							18 - 1;
+						action->feature_number[1] =
+							27 - 1;
+						action->feature_number[2] =
+							20 - 1;
+						action->feature_number[3] =
+							25 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_RIGHT_EYEBROW) {
-					action->feature_number[0] = 18 - 1;
-					action->feature_number[1] = 22 - 1;
-					action->feature_number[2] = 20 - 1;
-					action->feature_number[3] = 20 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							34 - 1;
+						action->feature_number[1] =
+							38 - 1;
+						action->feature_number[2] =
+							36 - 1;
+						action->feature_number[3] =
+							36 - 1;
+					} else {
+						action->feature_number[0] =
+							18 - 1;
+						action->feature_number[1] =
+							22 - 1;
+						action->feature_number[2] =
+							20 - 1;
+						action->feature_number[3] =
+							20 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_LEFT_EYEBROW) {
-					action->feature_number[0] = 23 - 1;
-					action->feature_number[1] = 27 - 1;
-					action->feature_number[2] = 25 - 1;
-					action->feature_number[3] = 25 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							43 - 1;
+						action->feature_number[1] =
+							47 - 1;
+						action->feature_number[2] =
+							45 - 1;
+						action->feature_number[3] =
+							45 - 1;
+					} else {
+						action->feature_number[0] =
+							23 - 1;
+						action->feature_number[1] =
+							27 - 1;
+						action->feature_number[2] =
+							25 - 1;
+						action->feature_number[3] =
+							25 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property == ATTACH_EARS) {
-					action->feature_number[0] = 1 - 1;
-					action->feature_number[1] = 17 - 1;
-					action->feature_number[2] = 1 - 1;
-					action->feature_number[3] = 2 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							33 - 1;
+						action->feature_number[2] =
+							1 - 1;
+						action->feature_number[3] =
+							2 - 1;
+					} else {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							17 - 1;
+						action->feature_number[2] =
+							1 - 1;
+						action->feature_number[3] =
+							2 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_RIGHT_EAR) {
-					action->feature_number[0] = 1 - 1;
-					action->feature_number[1] = 2 - 1;
-					action->feature_number[2] = 1 - 1;
-					action->feature_number[3] = 2 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							2 - 1;
+						action->feature_number[2] =
+							1 - 1;
+						action->feature_number[3] =
+							2 - 1;
+					} else {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							2 - 1;
+						action->feature_number[2] =
+							1 - 1;
+						action->feature_number[3] =
+							2 - 1;
+					}
 					vert = true;
 				} else if (action->property ==
 					   ATTACH_LEFT_EAR) {
-					action->feature_number[0] = 17 - 1;
-					action->feature_number[1] = 16 - 1;
-					action->feature_number[2] = 17 - 1;
-					action->feature_number[3] = 16 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							33 - 1;
+						action->feature_number[1] =
+							32 - 1;
+						action->feature_number[2] =
+							33 - 1;
+						action->feature_number[3] =
+							32 - 1;
+					} else {
+						action->feature_number[0] =
+							17 - 1;
+						action->feature_number[1] =
+							16 - 1;
+						action->feature_number[2] =
+							17 - 1;
+						action->feature_number[3] =
+							16 - 1;
+					}
 					vert = true;
 				} else if (action->property == ATTACH_NOSE) {
-					action->feature_number[0] = 32 - 1;
-					action->feature_number[1] = 36 - 1;
-					action->feature_number[2] = 28 - 1;
-					action->feature_number[3] = 34 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							58 - 1;
+						action->feature_number[1] =
+							62 - 1;
+						action->feature_number[2] =
+							52 - 1;
+						action->feature_number[3] =
+							60 - 1;
+					} else {
+						action->feature_number[0] =
+							32 - 1;
+						action->feature_number[1] =
+							36 - 1;
+						action->feature_number[2] =
+							28 - 1;
+						action->feature_number[3] =
+							34 - 1;
+					}
 				} else if (action->property == ATTACH_MOUTH) {
-					action->feature_number[0] = 49 - 1;
-					action->feature_number[1] = 55 - 1;
-					action->feature_number[2] = 52 - 1;
-					action->feature_number[3] = 58 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							99 - 1;
+						action->feature_number[1] =
+							105 - 1;
+						action->feature_number[2] =
+							102 - 1;
+						action->feature_number[3] =
+							108 - 1;
+					} else {
+						action->feature_number[0] =
+							49 - 1;
+						action->feature_number[1] =
+							55 - 1;
+						action->feature_number[2] =
+							52 - 1;
+						action->feature_number[3] =
+							58 - 1;
+					}
 				} else if (action->property ==
 					   ATTACH_UPPER_LIP) {
-					action->feature_number[0] = 49 - 1;
-					action->feature_number[1] = 55 - 1;
-					action->feature_number[2] = 51 - 1;
-					action->feature_number[3] = 53 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							99 - 1;
+						action->feature_number[1] =
+							105 - 1;
+						action->feature_number[2] =
+							101 - 1;
+						action->feature_number[3] =
+							103 - 1;
+					} else {
+						action->feature_number[0] =
+							49 - 1;
+						action->feature_number[1] =
+							55 - 1;
+						action->feature_number[2] =
+							51 - 1;
+						action->feature_number[3] =
+							53 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_LOWER_LIP) {
-					action->feature_number[0] = 49 - 1;
-					action->feature_number[1] = 55 - 1;
-					action->feature_number[2] = 58 - 1;
-					action->feature_number[3] = 58 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							99 - 1;
+						action->feature_number[1] =
+							105 - 1;
+						action->feature_number[2] =
+							108 - 1;
+						action->feature_number[3] =
+							108 - 1;
+					} else {
+						action->feature_number[0] =
+							49 - 1;
+						action->feature_number[1] =
+							55 - 1;
+						action->feature_number[2] =
+							58 - 1;
+						action->feature_number[3] =
+							58 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property == ATTACH_CHIN) {
-					action->feature_number[0] = 8 - 1;
-					action->feature_number[1] = 10 - 1;
-					action->feature_number[2] = 9 - 1;
-					action->feature_number[3] = 9 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							15 - 1;
+						action->feature_number[1] =
+							19 - 1;
+						action->feature_number[2] =
+							17 - 1;
+						action->feature_number[3] =
+							17 - 1;
+					} else {
+						action->feature_number[0] =
+							8 - 1;
+						action->feature_number[1] =
+							10 - 1;
+						action->feature_number[2] =
+							9 - 1;
+						action->feature_number[3] =
+							9 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property == ATTACH_JAW) {
-					action->feature_number[0] = 1 - 1;
-					action->feature_number[1] = 17 - 1;
-					action->feature_number[2] = 9 - 1;
-					action->feature_number[3] = 9 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							33 - 1;
+						action->feature_number[2] =
+							17 - 1;
+						action->feature_number[3] =
+							17 - 1;
+					} else {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							17 - 1;
+						action->feature_number[2] =
+							9 - 1;
+						action->feature_number[3] =
+							9 - 1;
+					}
 					height_to_pos = true;
 				} else if (action->property ==
 					   ATTACH_FOREHEAD) {
-					action->feature_number[0] = 1 - 1;
-					action->feature_number[1] = 17 - 1;
-					action->feature_number[2] = 28 - 1;
-					action->feature_number[3] = 34 - 1;
+					if (filter->landmarks.num == 126) {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							33 - 1;
+						action->feature_number[2] =
+							52 - 1;
+						action->feature_number[3] =
+							60 - 1;
+					} else {
+						action->feature_number[0] =
+							1 - 1;
+						action->feature_number[1] =
+							17 - 1;
+						action->feature_number[2] =
+							28 - 1;
+						action->feature_number[3] =
+							34 - 1;
+					}
 					//height_to_pos = true;
 				} else {
 					continue;
