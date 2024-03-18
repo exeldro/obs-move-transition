@@ -1762,6 +1762,12 @@ bool nv_move_attach_changed(void *priv, obs_properties_t *props,
 	    !action_number)
 		return false;
 	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_action", action_number);
+	if (obs_data_get_int(settings, name.array) != ACTION_ATTACH_SOURCE) {
+		dstr_free(&name);
+		return false;
+	}
+
 	dstr_printf(&name, "action_%lld_scene", action_number);
 	obs_source_t *scene_source = obs_get_source_by_name(obs_data_get_string(settings, name.array));
 	if (!scene_source) {
