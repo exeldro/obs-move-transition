@@ -7,6 +7,7 @@
 #define MOVE_ACTION_SOURCE_VISIBILITY 3
 #define MOVE_ACTION_FILTER_ENABLE 4
 #define MOVE_ACTION_FRONTEND_HOTKEY 5
+#define MOVE_ACTION_SOURCE_MUTE 6
 
 #define MOVE_ACTION_ENABLE 0
 #define MOVE_ACTION_DISABLE 1
@@ -83,7 +84,8 @@ void move_action_update(void *data, obs_data_t *settings)
 	}
 
 	if (action == MOVE_ACTION_SOURCE_HOTKEY ||
-	    action == MOVE_ACTION_FILTER_ENABLE) {
+	    action == MOVE_ACTION_FILTER_ENABLE ||
+	    action == MOVE_ACTION_SOURCE_MUTE) {
 		const char *source_name =
 			obs_data_get_string(settings, "source");
 		if (!move_action->source_name ||
@@ -234,7 +236,7 @@ static bool add_source_hotkeys(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 static bool add_global_hotkeys(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 {
 	UNUSED_PARAMETER(id);
-	obs_property_t* prop = data;
+	obs_property_t *prop = data;
 	obs_hotkey_registerer_t type = obs_hotkey_get_registerer_type(key);
 	if (type == OBS_HOTKEY_REGISTERER_FRONTEND) {
 		obs_property_list_add_string(prop,
@@ -334,7 +336,8 @@ static bool move_action_action_changed(obs_properties_t *props,
 	obs_property_t *filter = obs_properties_get(props, "filter");
 	obs_property_t *hotkey = obs_properties_get(props, "hotkey");
 	if (action == MOVE_ACTION_FILTER_ENABLE ||
-	    action == MOVE_ACTION_SOURCE_HOTKEY) {
+	    action == MOVE_ACTION_SOURCE_HOTKEY ||
+	    action == MOVE_ACTION_SOURCE_MUTE) {
 		obs_property_list_clear(source);
 		obs_enum_sources(add_source_to_prop_list, source);
 		obs_enum_scenes(add_source_to_prop_list, source);
@@ -354,7 +357,6 @@ static bool move_action_action_changed(obs_properties_t *props,
 		obs_property_list_clear(hotkey);
 		obs_property_list_add_string(hotkey, "", "");
 		obs_enum_hotkeys(add_global_hotkeys, hotkey);
-
 	}
 	obs_property_t *frontend_action =
 		obs_properties_get(props, "frontend_action");
@@ -364,7 +366,8 @@ static bool move_action_action_changed(obs_properties_t *props,
 	obs_property_t *enable = obs_properties_get(props, "enable");
 	obs_property_set_visible(
 		enable, action == MOVE_ACTION_FILTER_ENABLE ||
-				action == MOVE_ACTION_SOURCE_VISIBILITY);
+				action == MOVE_ACTION_SOURCE_VISIBILITY ||
+				action == MOVE_ACTION_SOURCE_MUTE);
 
 	return true;
 }
@@ -414,6 +417,8 @@ static obs_properties_t *move_action_properties(void *data)
 
 	obs_property_list_add_int(p, obs_module_text("SourceVisibility"),
 				  MOVE_ACTION_SOURCE_VISIBILITY);
+	obs_property_list_add_int(p, obs_module_text("SourceMute"),
+				  MOVE_ACTION_SOURCE_MUTE);
 	obs_property_list_add_int(p, obs_module_text("SourceHotkey"),
 				  MOVE_ACTION_SOURCE_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("FilterEnable"),
@@ -527,8 +532,7 @@ void move_action_execute(void *data)
 			obs_hotkey_trigger_routed_callback(
 				move_action->hotkey_id,
 				!move_action->move_filter.reverse);
-	}
-	else if (move_action->action == MOVE_ACTION_FRONTEND) {
+	} else if (move_action->action == MOVE_ACTION_FRONTEND) {
 		if (move_action->frontend_action == 1) {
 			obs_frontend_streaming_start();
 		} else if (move_action->frontend_action == 2) {
@@ -621,6 +625,30 @@ void move_action_execute(void *data)
 				obs_source_release(filter);
 			}
 			obs_source_release(source);
+		}
+	} else if (move_action->action == MOVE_ACTION_SOURCE_MUTE) {
+		if (move_action->source_name &&
+		    strlen(move_action->source_name)) {
+			obs_source_t *source = obs_get_source_by_name(
+				move_action->source_name);
+			if (source) {
+				if (move_action->enable == MOVE_ACTION_TOGGLE) {
+					obs_source_set_muted(
+						source,
+						!obs_source_muted(source));
+				} else if (move_action->enable ==
+					   MOVE_ACTION_ENABLE) {
+					if (!obs_source_muted(source))
+						obs_source_set_muted(source,
+								     true);
+				} else if (move_action->enable ==
+					   MOVE_ACTION_DISABLE) {
+					if (obs_source_muted(source))
+						obs_source_set_muted(source,
+								     false);
+				}
+				obs_source_release(source);
+			}
 		}
 	}
 }
