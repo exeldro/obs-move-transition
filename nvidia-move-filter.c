@@ -2474,28 +2474,28 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_required_confidence", i);
 		p = obs_properties_add_float_slider(
 			group, name.array, obs_module_text("Confidence"), 0.0,
-			25.0, 0.01);
+			25.0, 0.001);
 
 		dstr_printf(&name, "action_%lld_factor", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Factor"),
-					     -1000000.0, 1000000.0, 1.0);
+					     -1000000.0, 1000000.0, 0.001);
 		obs_property_float_set_suffix(p, "%");
 		dstr_printf(&name, "action_%lld_factor2", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Factor"),
-					     -1000000.0, 1000000.0, 1.0);
+					     -1000000.0, 1000000.0, 0.001);
 		obs_property_float_set_suffix(p, "%");
 
 		dstr_printf(&name, "action_%lld_diff", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Difference"),
-					     -1000000.0, 1000000.0, 1.0);
+					     -1000000.0, 1000000.0, 0.001);
 
 		dstr_printf(&name, "action_%lld_threshold", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Threshold"),
-					     -1000000.0, 1000000, 1.0);
+					     -1000000.0, 1000000, 0.001);
 
 		dstr_printf(&name, "action_%lld_get_value", i);
 		obs_properties_add_button2(group, name.array,
@@ -2505,7 +2505,7 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_easing", i);
 		p = obs_properties_add_float_slider(group, name.array,
 						    obs_module_text("Easing"),
-						    0.0, 99.0, 1.0);
+						    0.0, 99.0, 0.001);
 		obs_property_float_set_suffix(p, "%");
 
 		dstr_printf(&name, "action_%lld_group", i);
