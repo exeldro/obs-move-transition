@@ -152,6 +152,7 @@ struct nvidia_move_action {
 	float easing;
 	float previous_float;
 	struct vec2 previous_vec2;
+	bool disabled;
 };
 
 struct nvidia_move_info {
@@ -863,6 +864,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 	for (size_t i = 1; i <= actions; i++) {
 		struct nvidia_move_action *action =
 			filter->actions.array + i - 1;
+		dstr_printf(&name, "action_%lld_disabled", i);
+		action->disabled = obs_data_get_bool(settings, name.array);
 		dstr_printf(&name, "action_%lld_action", i);
 		action->action =
 			(uint32_t)obs_data_get_int(settings, name.array);
@@ -2115,6 +2118,10 @@ static obs_properties_t *nv_move_properties(void *data)
 	struct dstr description = {0};
 	for (long long i = 1; i <= MAX_ACTIONS; i++) {
 		obs_properties_t *group = obs_properties_create();
+		dstr_printf(&name, "action_%lld_disabled", i);
+		obs_properties_add_bool(group, name.array,
+					obs_module_text("Disabled"));
+		
 		dstr_printf(&name, "action_%lld_description", i);
 		obs_properties_add_text(group, name.array,
 					obs_module_text("ActionDescription"),
@@ -2994,6 +3001,8 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 
 	for (size_t i = 0; i < filter->actions.num; i++) {
 		struct nvidia_move_action *action = filter->actions.array + i;
+		if (action->disabled)
+			continue;
 		if (action->action == ACTION_MOVE_SOURCE ||
 		    action->action == ACTION_ATTACH_SOURCE) {
 			if (!action->name)
