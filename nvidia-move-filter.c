@@ -145,7 +145,7 @@ struct nvidia_move_action {
 	float factor;
 	float factor2;
 	uint32_t feature;
-	uint32_t feature_property;
+	int32_t feature_property;
 	uint32_t feature_number[4];
 	float threshold;
 	float required_confidence;
@@ -429,9 +429,63 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 			success = true;
 		}
 	} else if (action->feature == FEATURE_EXPRESSION &&
-		   action->feature_property < filter->expressions.num) {
-		value = filter->expressions.array[action->feature_property];
+		   filter->expressions.num &&
+		   action->feature_property <
+			   (int32_t)filter->expressions.num) {
 		success = true;
+		if (action->feature_property >= 0) {
+			value = filter->expressions
+					.array[action->feature_property];
+			success = true;
+		} else if (action->feature_property == -1) {
+			success = false;
+		} else if (action->feature_property > -14) {
+			int p = action->feature_property * -2 - 4;
+			value = (filter->expressions.array[p] +
+				 filter->expressions.array[p + 1]) /
+				2.0f;
+		} else if (action->feature_property == -14) { // jawSideways
+			value = filter->expressions.array[25] -
+				filter->expressions.array[27];
+		} else if (action->feature_property == -15) { // mouthSideways
+			value = filter->expressions.array[34] -
+				filter->expressions.array[40];
+		} else if (action->feature_property == -18) {   // eyeLookLeft
+			value = filter->expressions.array[16] + // eyeLookOut_L
+				filter->expressions.array[15];  // eyeLookIn_R
+		} else if (action->feature_property == -21) {   // eyeLookRight
+			value = filter->expressions.array[17] + // eyeLookOut_R
+				filter->expressions.array[14];  // eyeLookIn_L
+		} else if (action->feature_property > -28) {
+			int p = action->feature_property * -2 - 3;
+			value = (filter->expressions.array[p] +
+				 filter->expressions.array[p + 1]) /
+				2.0f;
+		} else if (action->feature_property == -28) { // eyeLookSideways
+			value = (filter->expressions.array[16] + // eyeLookOut_L
+				 filter->expressions.array[15]) - // eyeLookIn_R
+				(filter->expressions.array[17] + // eyeLookOut_R
+				 filter->expressions.array[14]); // eyeLookIn_L
+		} else if (action->feature_property == -29) { // eyeLookUpDown
+			value = (filter->expressions.array[18] +  // eyeLookUp_L
+				 filter->expressions.array[19]) - // eyeLookUp_R
+				(filter->expressions.array[12] + // eyeLookDown_L
+				 filter->expressions.array[13]); // eyeLookDown_R
+		} else if (action->feature_property == -30) { // eyeLookSideways_L
+			value = filter->expressions.array[16] - // eyeLookOut_L
+				 filter->expressions.array[14]; // eyeLookIn_L
+		} else if (action->feature_property == -31) { // eyeLookSideways_R
+			value = filter->expressions.array[17] - // eyeLookOut_R
+				filter->expressions.array[15];  // eyeLookIn_R
+		} else if (action->feature_property == -32) {   //eyeLookUpDown_L
+			value = filter->expressions.array[18] - // eyeLookUp_L
+				filter->expressions.array[12];  // eyeLookDown_L
+		} else if (action->feature_property == -33) {   // eyeLookUpDown_R
+			value = filter->expressions.array[19] - // eyeLookUp_R
+				 filter->expressions.array[13]; // eyeLookDown_R
+		} else {
+			success = false;
+		}
 	} else if (action->feature == FEATURE_GAZE) {
 		if (action->feature_property == FEATURE_GAZE_VECTOR_PITCH) {
 			value = DEG(filter->gaze_angles_vector[0]);
@@ -909,8 +963,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 
 		if (action->feature == FEATURE_BOUNDINGBOX) {
 			dstr_printf(&name, "action_%lld_bounding_box", i);
-			action->feature_property = (uint32_t)obs_data_get_int(
-				settings, name.array);
+			action->feature_property =
+				(int32_t)obs_data_get_int(settings, name.array);
 			dstr_printf(&name, "action_%lld_required_confidence",
 				    i);
 			action->required_confidence =
@@ -918,8 +972,8 @@ static void nv_move_update(void *data, obs_data_t *settings)
 							   name.array);
 		} else if (action->feature == FEATURE_LANDMARK) {
 			dstr_printf(&name, "action_%lld_landmark", i);
-			action->feature_property = (uint32_t)obs_data_get_int(
-				settings, name.array);
+			action->feature_property =
+				(int32_t)obs_data_get_int(settings, name.array);
 
 			dstr_printf(&name, "action_%lld_landmark_1", i);
 			if (obs_data_get_int(settings, name.array))
@@ -940,23 +994,23 @@ static void nv_move_update(void *data, obs_data_t *settings)
 							   name.array);
 		} else if (action->feature == FEATURE_POSE) {
 			dstr_printf(&name, "action_%lld_pose", i);
-			action->feature_property = (uint32_t)obs_data_get_int(
-				settings, name.array);
+			action->feature_property =
+				(int32_t)obs_data_get_int(settings, name.array);
 		} else if (action->feature == FEATURE_EXPRESSION) {
 			dstr_printf(&name, "action_%lld_expression", i);
 			if (obs_data_get_int(settings, name.array))
 				action->feature_property =
-					(uint32_t)obs_data_get_int(settings,
-								   name.array) -
+					(int32_t)obs_data_get_int(settings,
+								  name.array) -
 					1;
 		} else if (action->feature == FEATURE_GAZE) {
 			dstr_printf(&name, "action_%lld_gaze", i);
-			action->feature_property = (uint32_t)obs_data_get_int(
-				settings, name.array);
+			action->feature_property =
+				(int32_t)obs_data_get_int(settings, name.array);
 		} else if (action->feature == FEATURE_BODY) {
 			dstr_printf(&name, "action_%lld_body", i);
-			action->feature_property = (uint32_t)obs_data_get_int(
-				settings, name.array);
+			action->feature_property =
+				(int32_t)obs_data_get_int(settings, name.array);
 
 			dstr_printf(&name, "action_%lld_body_1", i);
 			action->feature_number[0] = (uint32_t)obs_data_get_int(
@@ -2353,9 +2407,98 @@ static obs_properties_t *nv_move_properties(void *data)
 					  FEATURE_POSE_W);
 
 		dstr_printf(&name, "action_%lld_expression", i);
-		obs_properties_add_int_slider(group, name.array,
-					      obs_module_text("Expression"), 1,
-					      (int)filter->expressions.num, 1);
+		p = obs_properties_add_list(group, name.array,
+					    obs_module_text("Expression"),
+					    OBS_COMBO_TYPE_LIST,
+					    OBS_COMBO_FORMAT_INT);
+		obs_property_list_add_int(p, "", 0);
+		obs_property_list_add_int(p, "browDown", -1);
+		obs_property_list_add_int(p, "browDown_L", 1);
+		obs_property_list_add_int(p, "browDown_R", 2);
+		obs_property_list_add_int(p, "browInnerUp", -2);
+		obs_property_list_add_int(p, "browInnerUp_L", 3);
+		obs_property_list_add_int(p, "browInnerUp_R", 4);
+		obs_property_list_add_int(p, "browOuterUp", -3);
+		obs_property_list_add_int(p, "browOuterUp_L", 5);
+		obs_property_list_add_int(p, "browOuterUp_R", 6);
+		obs_property_list_add_int(p, "cheekPuff", -4);
+		obs_property_list_add_int(p, "cheekPuff_L", 7);
+		obs_property_list_add_int(p, "cheekPuff_R", 8);
+		obs_property_list_add_int(p, "cheekSquint", -5);
+		obs_property_list_add_int(p, "cheekSquint_L", 9);
+		obs_property_list_add_int(p, "cheekSquint_R", 10);
+		obs_property_list_add_int(p, "eyeBlink", -6);
+		obs_property_list_add_int(p, "eyeBlink_L", 11);
+		obs_property_list_add_int(p, "eyeBlink_R", 12);
+		obs_property_list_add_int(p, "eyeLookLeft", -17);
+		obs_property_list_add_int(p, "eyeLookRight", -20);
+		obs_property_list_add_int(p, "eyeLookSideways", -27);
+		obs_property_list_add_int(p, "eyeLookUpDown", -28);
+		obs_property_list_add_int(p, "eyeLookSideways_L", -29);
+		obs_property_list_add_int(p, "eyeLookSideways_R", -30);
+		obs_property_list_add_int(p, "eyeLookUpDown_L", -31);
+		obs_property_list_add_int(p, "eyeLookUpDown_R", -32);
+		obs_property_list_add_int(p, "eyeLookDown", -7);
+		obs_property_list_add_int(p, "eyeLookDown_L", 13);
+		obs_property_list_add_int(p, "eyeLookDown_R", 14);
+		obs_property_list_add_int(p, "eyeLookIn", -8);
+		obs_property_list_add_int(p, "eyeLookIn_L", 15);
+		obs_property_list_add_int(p, "eyeLookIn_R", 16);
+		obs_property_list_add_int(p, "eyeLookOut", -9);
+		obs_property_list_add_int(p, "eyeLookOut_L", 17);
+		obs_property_list_add_int(p, "eyeLookOut_R", 18);
+		obs_property_list_add_int(p, "eyeLookUp", -10);
+		obs_property_list_add_int(p, "eyeLookUp_L", 19);
+		obs_property_list_add_int(p, "eyeLookUp_R", 20);
+		obs_property_list_add_int(p, "eyeSquint", -11);
+		obs_property_list_add_int(p, "eyeSquint_L", 21);
+		obs_property_list_add_int(p, "eyeSquint_R", 22);
+		obs_property_list_add_int(p, "eyeWide", -12);
+		obs_property_list_add_int(p, "eyeWide_L", 23);
+		obs_property_list_add_int(p, "eyeWide_R", 24);
+		obs_property_list_add_int(p, "jawSideways", -13);
+		obs_property_list_add_int(p, "jawForward", 25);
+		obs_property_list_add_int(p, "jawLeft", 26);
+		obs_property_list_add_int(p, "jawOpen", 27);
+		obs_property_list_add_int(p, "jawRight", 28);
+		obs_property_list_add_int(p, "mouthSideways", -14);
+		obs_property_list_add_int(p, "mouthClose", 29);
+		obs_property_list_add_int(p, "mouthDimple", -15);
+		obs_property_list_add_int(p, "mouthDimple_L", 30);
+		obs_property_list_add_int(p, "mouthDimple_R", 31);
+		obs_property_list_add_int(p, "mouthFrown", -16);
+		obs_property_list_add_int(p, "mouthFrown_L", 32);
+		obs_property_list_add_int(p, "mouthFrown_R", 33);
+
+		obs_property_list_add_int(p, "mouthFunnel", 34);
+		obs_property_list_add_int(p, "mouthLeft", 35);
+		obs_property_list_add_int(p, "mouthLowerDown", -18);
+		obs_property_list_add_int(p, "mouthLowerDown_L", 36);
+		obs_property_list_add_int(p, "mouthLowerDown_R", 37);
+		obs_property_list_add_int(p, "mouthPress", -19);
+		obs_property_list_add_int(p, "mouthPress_L", 38);
+		obs_property_list_add_int(p, "mouthPress_R", 39);
+
+		obs_property_list_add_int(p, "mouthPucker", 40);
+		obs_property_list_add_int(p, "mouthRight", 41);
+		obs_property_list_add_int(p, "mouthRoll", -21);
+		obs_property_list_add_int(p, "mouthRollLower", 42);
+		obs_property_list_add_int(p, "mouthRollUpper", 43);
+		obs_property_list_add_int(p, "mouthShrugLower", -22);
+		obs_property_list_add_int(p, "mouthShrugLower", 44);
+		obs_property_list_add_int(p, "mouthShrugUpper", 45);
+		obs_property_list_add_int(p, "mouthSmile", -23);
+		obs_property_list_add_int(p, "mouthSmile_L", 46);
+		obs_property_list_add_int(p, "mouthSmile_R", 47);
+		obs_property_list_add_int(p, "mouthStretch", -24);
+		obs_property_list_add_int(p, "mouthStretch_L", 48);
+		obs_property_list_add_int(p, "mouthStretch_R", 49);
+		obs_property_list_add_int(p, "mouthUpperUp", -25);
+		obs_property_list_add_int(p, "mouthUpperUp_L", 50);
+		obs_property_list_add_int(p, "mouthUpperUp_R", 51);
+		obs_property_list_add_int(p, "noseSneer", -26);
+		obs_property_list_add_int(p, "noseSneer_L", 52);
+		obs_property_list_add_int(p, "noseSneer_R", 53);
 
 		dstr_printf(&name, "action_%lld_gaze", i);
 		p = obs_properties_add_list(group, name.array,
