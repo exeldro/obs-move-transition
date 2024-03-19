@@ -6,7 +6,7 @@
 #include "move-transition.h"
 
 #define BBOXES_COUNT 25
-#define MAX_ACTIONS 20
+#define MAX_ACTIONS 40
 
 #define ACTION_MOVE_SOURCE 0
 #define ACTION_MOVE_VALUE 1
