@@ -472,18 +472,20 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 				 filter->expressions.array[19]) - // eyeLookUp_R
 				(filter->expressions.array[12] + // eyeLookDown_L
 				 filter->expressions.array[13]); // eyeLookDown_R
-		} else if (action->feature_property == -30) { // eyeLookSideways_L
+		} else if (action->feature_property ==
+			   -30) { // eyeLookSideways_L
 			value = filter->expressions.array[16] - // eyeLookOut_L
-				 filter->expressions.array[14]; // eyeLookIn_L
-		} else if (action->feature_property == -31) { // eyeLookSideways_R
+				filter->expressions.array[14];  // eyeLookIn_L
+		} else if (action->feature_property ==
+			   -31) { // eyeLookSideways_R
 			value = filter->expressions.array[17] - // eyeLookOut_R
 				filter->expressions.array[15];  // eyeLookIn_R
-		} else if (action->feature_property == -32) {   //eyeLookUpDown_L
+		} else if (action->feature_property == -32) { //eyeLookUpDown_L
 			value = filter->expressions.array[18] - // eyeLookUp_L
 				filter->expressions.array[12];  // eyeLookDown_L
-		} else if (action->feature_property == -33) {   // eyeLookUpDown_R
+		} else if (action->feature_property == -33) { // eyeLookUpDown_R
 			value = filter->expressions.array[19] - // eyeLookUp_R
-				 filter->expressions.array[13]; // eyeLookDown_R
+				filter->expressions.array[13];  // eyeLookDown_R
 		} else {
 			success = false;
 		}
@@ -1585,6 +1587,8 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 		} else {
 			const char *od =
 				obs_property_list_item_name(show, (size_t)i);
+			dstr_printf(&name, "action_%lld_disabled", i);
+			bool disabled = obs_data_get_bool(settings, name.array);
 			dstr_printf(&name, "action_%lld_description", i);
 			const char *nd =
 				obs_data_get_string(settings, name.array);
@@ -1593,6 +1597,11 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 			} else {
 				dstr_printf(&name, "%s %lld",
 					    obs_module_text("Action"), i);
+			}
+			if (disabled) {
+				dstr_cat(&name, " (");
+				dstr_cat(&name, obs_module_text("Disabled"));
+				dstr_cat(&name, ")");
 			}
 			if (!od || strcmp(od, name.array) != 0) {
 				obs_property_list_item_remove(show, (size_t)i);
@@ -2121,7 +2130,6 @@ static obs_properties_t *nv_move_properties(void *data)
 		dstr_printf(&name, "action_%lld_disabled", i);
 		obs_properties_add_bool(group, name.array,
 					obs_module_text("Disabled"));
-		
 		dstr_printf(&name, "action_%lld_description", i);
 		obs_properties_add_text(group, name.array,
 					obs_module_text("ActionDescription"),
