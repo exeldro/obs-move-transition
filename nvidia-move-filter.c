@@ -114,7 +114,7 @@
 #define FEATURE_EXPRESSION_ADD 2
 #define FEATURE_EXPRESSION_SUBSTRACT 3
 #define FEATURE_EXPRESSION_DISTANCE 4
-#define FEATURE_EXPRESSION_AVG 4
+#define FEATURE_EXPRESSION_AVG 5
 
 #define BODY_CONFIDENCE 0
 #define BODY_2D_POSX 1
@@ -1109,24 +1109,16 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		dstr_printf(&name, "action_%lld_factor", i);
 		obs_data_set_default_double(settings, name.array, 100.0f);
 
-		if (action->action == ACTION_MOVE_SOURCE ||
-		    action->action == ACTION_MOVE_VALUE ||
-		    action->action == ACTION_ATTACH_SOURCE) {
-			action->factor = (float)obs_data_get_double(
-						 settings, name.array) /
-					 100.0f;
-			dstr_printf(&name, "action_%lld_factor2", i);
-			action->factor2 = (float)obs_data_get_double(
-						  settings, name.array) /
-					  100.0f;
-			dstr_printf(&name, "action_%lld_diff", i);
-			action->diff = (float)obs_data_get_double(settings,
-								  name.array);
-		} else {
-			action->factor = 1.0f;
-			action->factor2 = 1.0f;
-			action->diff = 0.0f;
-		}
+		action->factor =
+			(float)obs_data_get_double(settings, name.array) /
+			100.0f;
+		dstr_printf(&name, "action_%lld_factor2", i);
+		action->factor2 =
+			(float)obs_data_get_double(settings, name.array) /
+			100.0f;
+		dstr_printf(&name, "action_%lld_diff", i);
+		action->diff = (float)obs_data_get_double(settings, name.array);
+
 		dstr_printf(&name, "action_%lld_easing", i);
 		action->easing = ExponentialEaseOut(
 			(float)obs_data_get_double(settings, name.array) /
@@ -1548,9 +1540,11 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 	    !action_number)
 		return false;
 	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_action", action_number);
+	long long action = obs_data_get_int(settings, name.array);
 	dstr_printf(&name, "action_%lld_feature", action_number);
-	bool visible = obs_data_get_int(settings, name.array) ==
-		       FEATURE_LANDMARK;
+	bool visible = (obs_data_get_int(settings, name.array) ==
+		       FEATURE_LANDMARK && action != ACTION_ATTACH_SOURCE);
 
 	bool changed = false;
 
@@ -1590,26 +1584,28 @@ bool nv_move_body_changed(void *priv, obs_properties_t *props,
 		return false;
 	struct dstr name = {0};
 	dstr_printf(&name, "action_%lld_feature", action_number);
-	if (obs_data_get_int(settings, name.array) != FEATURE_BODY) {
-		dstr_free(&name);
-		return false;
-	}
+	bool visible = obs_data_get_int(settings, name.array) == FEATURE_BODY;
+	bool changed = false;
 	dstr_printf(&name, "action_%lld_body_1", action_number);
 	obs_property_t *body1 = obs_properties_get(props, name.array);
-	obs_property_set_visible(body1, true);
+	if (obs_property_visible(body1) != visible) {
+		obs_property_set_visible(body1, visible);
+		changed = true;
+	}
 	dstr_printf(&name, "action_%lld_body_2", action_number);
 	obs_property_t *body2 = obs_properties_get(props, name.array);
-	obs_property_set_visible(
-		body2,
-		body == BODY_2D_DIFF || body == BODY_2D_DISTANCE ||
-			body == BODY_2D_ROT || body == BODY_2D_DIFF_X ||
-			body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
-			body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
-			body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF);
-
+	bool v2 = (visible &&
+		  (body == BODY_2D_DIFF || body == BODY_2D_DISTANCE ||
+		   body == BODY_2D_ROT || body == BODY_2D_DIFF_X ||
+		   body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
+		   body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
+		   body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF));
+	if (obs_property_visible(body2) != v2) {
+		obs_property_set_visible(body2, v2);
+		changed = true;
+	}
 	dstr_free(&name);
-
-	return true;
+	return changed;
 }
 
 bool nv_move_feature_changed(void *priv, obs_properties_t *props,
@@ -1667,28 +1663,27 @@ bool nv_move_feature_changed(void *priv, obs_properties_t *props,
 		obs_properties_get(props, name.array);
 	obs_property_set_visible(required_confidence, false);
 
-	if (feature == FEATURE_BOUNDINGBOX) {
+	if (action == ACTION_ATTACH_SOURCE) {
+		obs_property_set_visible(required_confidence, true);
+	} else if (feature == FEATURE_BOUNDINGBOX) {
 		obs_property_set_visible(bounding_box, true);
 		obs_property_set_visible(required_confidence, true);
 	} else if (feature == FEATURE_LANDMARK) {
 		obs_property_set_visible(required_confidence, true);
-		if (action != ACTION_ATTACH_SOURCE) {
-			obs_property_set_visible(landmark, true);
-			nv_move_landmark_changed(priv, props, landmark,
-						 settings);
-		}
+		obs_property_set_visible(landmark, true);
 	} else if (feature == FEATURE_POSE) {
 		obs_property_set_visible(pose, true);
 	} else if (feature == FEATURE_EXPRESSION) {
 		obs_property_set_visible(expression, true);
-		nv_move_expression_changed(priv, props, expression, settings);
 	} else if (feature == FEATURE_GAZE) {
 		obs_property_set_visible(gaze, true);
 	} else if (feature == FEATURE_BODY) {
 		obs_property_set_visible(body, true);
 		obs_property_set_visible(required_confidence, true);
-		nv_move_body_changed(priv, props, body, settings);
 	}
+	nv_move_expression_changed(priv, props, expression, settings);
+	nv_move_body_changed(priv, props, body, settings);
+	nv_move_landmark_changed(priv, props, landmark, settings);
 	dstr_free(&name);
 	return true;
 }
@@ -1701,6 +1696,8 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 	bool changed = false;
 	obs_property_t *show = obs_properties_get(props, "show");
 	long long f = obs_data_get_int(settings, "show");
+	if (obs_property_list_item_disabled(show, 0) != (actions > 10))
+		obs_property_list_item_disable(show, 0, actions > 10);
 	if (!f && actions > 10) {
 		f = 1;
 	}
@@ -1759,6 +1756,21 @@ static void nv_move_prop_number_floats(uint32_t number, long long action_number,
 	for (size_t i = FEATURE_LANDMARK_DIFF; i <= FEATURE_LANDMARK_POS; i++) {
 		obs_property_list_item_disable(landmark, i, number != 2);
 	}
+
+	dstr_printf(&name, "action_%lld_expression_property", action_number);
+	obs_property_t *expression = obs_properties_get(props, name.array);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_SINGLE,
+				       number != 1);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_VECTOR,
+				       number != 2);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_ADD,
+				       number != 1);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_SUBSTRACT,
+				       number != 1);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_DISTANCE,
+				       number != 1);
+	obs_property_list_item_disable(expression, FEATURE_EXPRESSION_AVG,
+				       number != 1);
 
 	dstr_printf(&name, "action_%lld_bounding_box", action_number);
 	obs_property_t *bbox = obs_properties_get(props, name.array);
@@ -1859,12 +1871,6 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	obs_property_t *threshold = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_property", action_number);
 	obs_property_t *p = obs_properties_get(props, name.array);
-	dstr_printf(&name, "action_%lld_factor", action_number);
-	obs_property_t *factor = obs_properties_get(props, name.array);
-	dstr_printf(&name, "action_%lld_factor2", action_number);
-	obs_property_t *factor2 = obs_properties_get(props, name.array);
-	dstr_printf(&name, "action_%lld_diff", action_number);
-	obs_property_t *diff = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_feature", action_number);
 	obs_property_t *feature = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_get_value", action_number);
@@ -1879,9 +1885,6 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 	obs_property_set_visible(enable, false);
 	obs_property_set_visible(threshold, false);
 	obs_property_set_visible(p, false);
-	obs_property_set_visible(factor, false);
-	obs_property_set_visible(factor2, false);
-	obs_property_set_visible(diff, false);
 	obs_property_set_visible(feature, true);
 	obs_property_set_visible(get_value, true);
 
@@ -1889,18 +1892,10 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(sceneitem_property, true);
-		obs_property_set_visible(factor, true);
-		obs_property_set_visible(factor2, true);
-		obs_property_set_visible(diff, true);
-	} else {
-		nv_move_prop_number_floats(1, action_number, props);
-	}
-	if (action == ACTION_MOVE_VALUE) {
+	} else if (action == ACTION_MOVE_VALUE) {
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
 		obs_property_set_visible(p, true);
-		obs_property_set_visible(factor, true);
-		obs_property_set_visible(diff, true);
 	} else if (action == ACTION_ENABLE_FILTER) {
 		obs_property_set_visible(source, true);
 		obs_property_set_visible(filter, true);
@@ -1917,8 +1912,6 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(feature, false);
 		obs_property_set_visible(get_value, false);
-		obs_property_set_visible(factor, true);
-		obs_property_set_visible(factor2, true);
 		dstr_printf(&name, "action_%lld_feature", action_number);
 		if (obs_data_get_int(settings, name.array) !=
 		    FEATURE_LANDMARK) {
@@ -1938,9 +1931,7 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props,
 		obs_enum_scenes(list_add_scene, source);
 		obs_enum_sources(list_add_scene, source);
 	}
-
 	dstr_free(&name);
-	//
 	return true;
 }
 
