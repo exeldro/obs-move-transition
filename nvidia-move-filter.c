@@ -2279,6 +2279,10 @@ static bool nv_move_move_up_clicked(obs_properties_t *props,
 		return false;
 	obs_data_t *settings = obs_source_get_settings(filter->source);
 	swap_action(settings, action_number, action_number - 1);
+	long long show = obs_data_get_int(settings, "show");
+	if (show == action_number) {
+		obs_data_set_int(settings, "show", show - 1);
+	}
 	nv_move_actions_changed(data, props,
 				obs_properties_get(props, "actions"), settings);
 	obs_data_release(settings);
@@ -2297,6 +2301,10 @@ static bool nv_move_move_down_clicked(obs_properties_t *props,
 
 	obs_data_t *settings = obs_source_get_settings(filter->source);
 	swap_action(settings, action_number, action_number + 1);
+	long long show = obs_data_get_int(settings, "show");
+	if (show == action_number) {
+		obs_data_set_int(settings, "show", show + 1);
+	}
 	nv_move_actions_changed(data, props,
 				obs_properties_get(props, "actions"), settings);
 	obs_data_release(settings);
