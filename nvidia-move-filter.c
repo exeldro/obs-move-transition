@@ -1543,8 +1543,9 @@ bool nv_move_landmark_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_action", action_number);
 	long long action = obs_data_get_int(settings, name.array);
 	dstr_printf(&name, "action_%lld_feature", action_number);
-	bool visible = (obs_data_get_int(settings, name.array) ==
-		       FEATURE_LANDMARK && action != ACTION_ATTACH_SOURCE);
+	bool visible =
+		(obs_data_get_int(settings, name.array) == FEATURE_LANDMARK &&
+		 action != ACTION_ATTACH_SOURCE);
 
 	bool changed = false;
 
@@ -1595,11 +1596,11 @@ bool nv_move_body_changed(void *priv, obs_properties_t *props,
 	dstr_printf(&name, "action_%lld_body_2", action_number);
 	obs_property_t *body2 = obs_properties_get(props, name.array);
 	bool v2 = (visible &&
-		  (body == BODY_2D_DIFF || body == BODY_2D_DISTANCE ||
-		   body == BODY_2D_ROT || body == BODY_2D_DIFF_X ||
-		   body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
-		   body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
-		   body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF));
+		   (body == BODY_2D_DIFF || body == BODY_2D_DISTANCE ||
+		    body == BODY_2D_ROT || body == BODY_2D_DIFF_X ||
+		    body == BODY_2D_DIFF_Y || body == BODY_3D_DISTANCE ||
+		    body == BODY_3D_DIFF_X || body == BODY_3D_DIFF_Y ||
+		    body == BODY_3D_DIFF_Z || body == BODY_3D_DIFF));
 	if (obs_property_visible(body2) != v2) {
 		obs_property_set_visible(body2, v2);
 		changed = true;
@@ -2263,6 +2264,8 @@ static void swap_action(obs_data_t *settings, long long a, long long b)
 		dstr_printf(&name2, actions[i], b);
 		swap_setting(settings, name1.array, name2.array);
 	}
+	dstr_free(&name1);
+	dstr_free(&name2);
 }
 
 static bool nv_move_move_up_clicked(obs_properties_t *props,
@@ -2276,6 +2279,8 @@ static bool nv_move_move_up_clicked(obs_properties_t *props,
 		return false;
 	obs_data_t *settings = obs_source_get_settings(filter->source);
 	swap_action(settings, action_number, action_number - 1);
+	nv_move_actions_changed(data, props,
+				obs_properties_get(props, "actions"), settings);
 	obs_data_release(settings);
 	return true;
 }
@@ -2292,6 +2297,8 @@ static bool nv_move_move_down_clicked(obs_properties_t *props,
 
 	obs_data_t *settings = obs_source_get_settings(filter->source);
 	swap_action(settings, action_number, action_number + 1);
+	nv_move_actions_changed(data, props,
+				obs_properties_get(props, "actions"), settings);
 	obs_data_release(settings);
 	return true;
 }
