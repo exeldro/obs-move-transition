@@ -500,6 +500,8 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 		if (action->feature_property == FEATURE_EXPRESSION_SINGLE) {
 			success = get_expression_value(
 				filter, action->feature_number[0], &value);
+			if (success)
+				value *= action->factor;
 		} else if (action->feature_property !=
 			   FEATURE_EXPRESSION_VECTOR) {
 			float a = 0.0f;
@@ -511,6 +513,8 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 				get_expression_value(
 					filter, action->feature_number[1], &b);
 			if (success) {
+				a *= action->factor;
+				b *= action->factor2;
 				if (action->feature_property ==
 				    FEATURE_EXPRESSION_ADD) {
 					value = a + b;
@@ -711,8 +715,8 @@ static bool nv_move_action_get_float(struct nvidia_move_info *filter,
 			success = true;
 		}
 	}
-
-	value *= action->factor;
+	if (action->feature != FEATURE_EXPRESSION)
+		value *= action->factor;
 	value += action->diff;
 	if (success && easing) {
 		value = action->previous_float * action->easing +
@@ -2968,10 +2972,10 @@ static void nv_move_render(void *data, gs_effect_t *effect)
 		gs_texrender_reset(filter->render);
 	}
 
-	//if (!filter->render) {
-	//	obs_source_skip_video_filter(filter->context);
-	//	return;
-	//}
+	if (!filter->render) {
+		obs_source_skip_video_filter(filter->source);
+		return;
+	}
 
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_ZERO);
