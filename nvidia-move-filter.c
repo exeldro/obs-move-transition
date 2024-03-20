@@ -1701,6 +1701,9 @@ bool nv_move_actions_changed(void *priv, obs_properties_t *props,
 	bool changed = false;
 	obs_property_t *show = obs_properties_get(props, "show");
 	long long f = obs_data_get_int(settings, "show");
+	if (!f && actions > 10) {
+		f = 1;
+	}
 	for (long long i = 1; i <= MAX_ACTIONS; i++) {
 		dstr_printf(&name, "action_%lld_group", i);
 		obs_property_t *group = obs_properties_get(props, name.array);
@@ -2190,6 +2193,116 @@ static void nv_move_fill_body_list(obs_property_t *p)
 	obs_property_list_add_int(p, obs_module_text("RightIndexKnuckle"), 31);
 	obs_property_list_add_int(p, obs_module_text("LeftThumbTip"), 32);
 	obs_property_list_add_int(p, obs_module_text("RightThumbTip"), 33);
+}
+
+static void swap_setting(obs_data_t *settings, char *setting1, char *setting2)
+{
+	obs_data_item_t *item = obs_data_item_byname(settings, setting1);
+	if (!item)
+		item = obs_data_item_byname(settings, setting2);
+	if (!item)
+		return;
+
+	enum obs_data_type t = obs_data_item_gettype(item);
+	if (t == OBS_DATA_STRING) {
+		char *temp = bstrdup(obs_data_get_string(settings, setting1));
+		obs_data_set_string(settings, setting1,
+				    obs_data_get_string(settings, setting2));
+		obs_data_set_string(settings, setting2, temp);
+		bfree(temp);
+	} else if (t == OBS_DATA_NUMBER) {
+		enum obs_data_number_type nt = obs_data_item_numtype(item);
+		if (nt == OBS_DATA_NUM_INT) {
+			long long temp = obs_data_get_int(settings, setting1);
+			obs_data_set_int(settings, setting1,
+					 obs_data_get_int(settings, setting2));
+			obs_data_set_int(settings, setting2, temp);
+		} else if (nt == OBS_DATA_NUM_DOUBLE) {
+			double temp = obs_data_get_double(settings, setting1);
+			obs_data_set_double(settings, setting1,
+					    obs_data_get_double(settings,
+								setting2));
+			obs_data_set_double(settings, setting2, temp);
+		}
+	} else if (t == OBS_DATA_BOOLEAN) {
+		bool temp = obs_data_get_bool(settings, setting1);
+		obs_data_set_bool(settings, setting1,
+				  obs_data_get_bool(settings, setting2));
+		obs_data_set_bool(settings, setting2, temp);
+	}
+	obs_data_item_release(&item);
+}
+
+static void swap_action(obs_data_t *settings, long long a, long long b)
+{
+	char *actions[] = {"action_%lld_disabled",
+			   "action_%lld_description",
+			   "action_%lld_action",
+			   "action_%lld_attach",
+			   "action_%lld_scene",
+			   "action_%lld_sceneitem",
+			   "action_%lld_source",
+			   "action_%lld_filter",
+			   "action_%lld_property",
+			   "action_%lld_sceneitem_property",
+			   "action_%lld_enable",
+			   "action_%lld_feature",
+			   "action_%lld_bounding_box",
+			   "action_%lld_landmark",
+			   "action_%lld_landmark_1",
+			   "action_%lld_landmark_2",
+			   "action_%lld_pose",
+			   "action_%lld_expression_property",
+			   "action_%lld_expression_1",
+			   "action_%lld_expression_2",
+			   "action_%lld_gaze",
+			   "action_%lld_body",
+			   "action_%lld_body_1",
+			   "action_%lld_body_2",
+			   "action_%lld_required_confidence",
+			   "action_%lld_factor",
+			   "action_%lld_factor2",
+			   "action_%lld_diff",
+			   "action_%lld_threshold",
+			   "action_%lld_easing"};
+	struct dstr name1 = {0};
+	struct dstr name2 = {0};
+	for (long long i = 0; i < sizeof(actions) / sizeof(char *); i++) {
+		dstr_printf(&name1, actions[i], a);
+		dstr_printf(&name2, actions[i], b);
+		swap_setting(settings, name1.array, name2.array);
+	}
+}
+
+static bool nv_move_move_up_clicked(obs_properties_t *props,
+				    obs_property_t *property, void *data)
+{
+	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
+	const char *action_prop = obs_property_name(property);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_move_up", &action_number) != 1 ||
+	    action_number <= 1)
+		return false;
+	obs_data_t *settings = obs_source_get_settings(filter->source);
+	swap_action(settings, action_number, action_number - 1);
+	obs_data_release(settings);
+	return true;
+}
+
+static bool nv_move_move_down_clicked(obs_properties_t *props,
+				      obs_property_t *property, void *data)
+{
+	struct nvidia_move_info *filter = (struct nvidia_move_info *)data;
+	const char *action_prop = obs_property_name(property);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_move_down", &action_number) != 1 ||
+	    !action_number || action_number >= (long long)filter->actions.num)
+		return false;
+
+	obs_data_t *settings = obs_source_get_settings(filter->source);
+	swap_action(settings, action_number, action_number + 1);
+	obs_data_release(settings);
+	return true;
 }
 
 static bool nv_move_get_value_clicked(obs_properties_t *props,
@@ -2821,6 +2934,16 @@ static obs_properties_t *nv_move_properties(void *data)
 						    obs_module_text("Easing"),
 						    0.0, 99.0, 0.001);
 		obs_property_float_set_suffix(p, "%");
+
+		dstr_printf(&name, "action_%lld_move_up", i);
+		obs_properties_add_button2(group, name.array,
+					   obs_module_text("MoveUp"),
+					   nv_move_move_up_clicked, filter);
+
+		dstr_printf(&name, "action_%lld_move_down", i);
+		obs_properties_add_button2(group, name.array,
+					   obs_module_text("MoveDown"),
+					   nv_move_move_down_clicked, filter);
 
 		dstr_printf(&name, "action_%lld_group", i);
 		dstr_printf(&description, "%s %lld", obs_module_text("Action"),
