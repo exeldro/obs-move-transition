@@ -149,6 +149,7 @@ struct nvidia_move_action {
 	bool is_int;
 	uint32_t property;
 	float diff;
+	float diff2;
 	float factor;
 	float factor2;
 	uint32_t feature;
@@ -889,7 +890,7 @@ static bool nv_move_action_get_vec2(struct nvidia_move_info *filter,
 	value->x *= action->factor;
 	value->x += action->diff;
 	value->y *= action->factor2;
-	value->y += action->diff;
+	value->y += action->diff2;
 
 	if (success && easing) {
 		value->x = action->previous_vec2.x * action->easing +
@@ -1118,6 +1119,9 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			100.0f;
 		dstr_printf(&name, "action_%lld_diff", i);
 		action->diff = (float)obs_data_get_double(settings, name.array);
+		dstr_printf(&name, "action_%lld_diff2", i);
+		action->diff2 =
+			(float)obs_data_get_double(settings, name.array);
 
 		dstr_printf(&name, "action_%lld_easing", i);
 		action->easing = ExponentialEaseOut(
@@ -2255,6 +2259,7 @@ static void swap_action(obs_data_t *settings, long long a, long long b)
 			   "action_%lld_factor",
 			   "action_%lld_factor2",
 			   "action_%lld_diff",
+			   "action_%lld_diff2",
 			   "action_%lld_threshold",
 			   "action_%lld_easing"};
 	struct dstr name1 = {0};
@@ -2921,6 +2926,10 @@ static obs_properties_t *nv_move_properties(void *data)
 		obs_property_float_set_suffix(p, "%");
 
 		dstr_printf(&name, "action_%lld_diff", i);
+		p = obs_properties_add_float(group, name.array,
+					     obs_module_text("Difference"),
+					     -1000000.0, 1000000.0, 0.001);
+		dstr_printf(&name, "action_%lld_diff2", i);
 		p = obs_properties_add_float(group, name.array,
 					     obs_module_text("Difference"),
 					     -1000000.0, 1000000.0, 0.001);
