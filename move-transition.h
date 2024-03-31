@@ -257,8 +257,7 @@ struct move_filter {
 };
 
 bool is_move_filter(const char *filter_id);
-void move_filter_init(struct move_filter *move_filter, obs_source_t *source,
-		      void (*move_start)(void *data));
+void move_filter_init(struct move_filter *move_filter, obs_source_t *source, void (*move_start)(void *data));
 void move_filter_destroy(struct move_filter *move_filter);
 void move_filter_update(struct move_filter *move_filter, obs_data_t *settings);
 void move_filter_start(struct move_filter *move_filter);
@@ -266,8 +265,7 @@ bool move_filter_start_internal(struct move_filter *move_filter);
 void move_filter_stop(struct move_filter *move_filter);
 void move_filter_ended(struct move_filter *move_filter);
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *t);
-void move_filter_properties(struct move_filter *move_filter,
-			    obs_properties_t *ppts);
+void move_filter_properties(struct move_filter *move_filter, obs_properties_t *ppts);
 void move_filter_defaults(obs_data_t *settings);
 void move_filter_activate(void *data);
 void move_filter_deactivate(void *data);
@@ -276,5 +274,4 @@ void move_filter_hide(void *data);
 
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
-void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child,
-				      void *data);
+void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child, void *data);

@@ -208,12 +208,9 @@ AHFloat ElasticEaseOut(AHFloat p)
 AHFloat ElasticEaseInOut(AHFloat p)
 {
 	if (p < 0.5) {
-		return (AHFloat)(0.5 * sin(13 * M_PI_2 * (2 * p)) *
-		       pow(2, 10 * ((2 * p) - 1)));
+		return (AHFloat)(0.5 * sin(13 * M_PI_2 * (2 * p)) * pow(2, 10 * ((2 * p) - 1)));
 	} else {
-		return (AHFloat)(0.5 * (sin(-13 * M_PI_2 * ((2 * p - 1) + 1)) *
-				      pow(2, -10 * (2 * p - 1)) +
-			      2));
+		return (AHFloat)(0.5 * (sin(-13 * M_PI_2 * ((2 * p - 1) + 1)) * pow(2, -10 * (2 * p - 1)) + 2));
 	}
 }
 
@@ -256,8 +253,7 @@ AHFloat BounceEaseOut(AHFloat p)
 	} else if (p < 8 / 11.0) {
 		return (363 / 40.0f * p * p) - (99 / 10.0f * p) + 17 / 5.0f;
 	} else if (p < 9 / 10.0) {
-		return (4356 / 361.0f * p * p) - (35442 / 1805.0f * p) +
-		       16061 / 1805.0f;
+		return (4356 / 361.0f * p * p) - (35442 / 1805.0f * p) + 16061 / 1805.0f;
 	} else {
 		return (54 / 5.0f * p * p) - (513 / 25.0f * p) + 268 / 25.0f;
 	}

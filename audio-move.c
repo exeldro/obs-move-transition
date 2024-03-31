@@ -64,25 +64,20 @@ static const char *audio_move_get_name(void *type_data)
 	return obs_module_text("AudioMoveFilter");
 }
 
-void audio_move_volmeter_updated(void *data,
-				 const float magnitude[MAX_AUDIO_CHANNELS],
-				 const float peak[MAX_AUDIO_CHANNELS],
+void audio_move_volmeter_updated(void *data, const float magnitude[MAX_AUDIO_CHANNELS], const float peak[MAX_AUDIO_CHANNELS],
 				 const float input_peak[MAX_AUDIO_CHANNELS])
 {
 	struct audio_move_info *audio_move = data;
 	float v = 0.0f;
 	if (audio_move->meter_type == METER_TYPE_MAGNITUDE) {
 		v = magnitude[0];
-	} else if (audio_move->meter_type == METER_TYPE_INPUT_PEAK_SAMPLE ||
-		   audio_move->meter_type == METER_TYPE_INPUT_PEAK_TRUE) {
+	} else if (audio_move->meter_type == METER_TYPE_INPUT_PEAK_SAMPLE || audio_move->meter_type == METER_TYPE_INPUT_PEAK_TRUE) {
 		v = input_peak[0];
-	} else if (audio_move->meter_type == METER_TYPE_PEAK_SAMPLE ||
-		   audio_move->meter_type == METER_TYPE_PEAK_TRUE) {
+	} else if (audio_move->meter_type == METER_TYPE_PEAK_SAMPLE || audio_move->meter_type == METER_TYPE_PEAK_TRUE) {
 		v = peak[0];
 	}
 	v = obs_db_to_mul(v);
-	audio_move->audio_value = audio_move->easing * audio_move->audio_value +
-				  (1.0 - audio_move->easing) * v;
+	audio_move->audio_value = audio_move->easing * audio_move->audio_value + (1.0 - audio_move->easing) * v;
 }
 
 void audio_move_source_destroy(void *data, calldata_t *call_data)
@@ -99,57 +94,34 @@ void audio_move_source_remove(void *data, calldata_t *call_data)
 {
 	UNUSED_PARAMETER(call_data);
 	struct audio_move_info *audio_move = data;
-	obs_source_t *source =
-		(obs_source_t *)calldata_ptr(call_data, "source");
+	obs_source_t *source = (obs_source_t *)calldata_ptr(call_data, "source");
 	signal_handler_t *sh = obs_source_get_signal_handler(source);
-	signal_handler_disconnect(sh, "remove", audio_move_source_remove,
-				  audio_move);
-	signal_handler_disconnect(sh, "destroy", audio_move_source_destroy,
-				  audio_move);
+	signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+	signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 	if (audio_move->target_source) {
-		if (!obs_weak_source_references_source(
-			    audio_move->target_source, source)) {
-			source = obs_weak_source_get_source(
-				audio_move->target_source);
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+		if (!obs_weak_source_references_source(audio_move->target_source, source)) {
+			source = obs_weak_source_get_source(audio_move->target_source);
+			signal_handler_t *sh = obs_source_get_signal_handler(source);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 			obs_source_release(source);
 		}
 		obs_weak_source_release(audio_move->target_source);
 	}
 	audio_move->target_source = NULL;
 	if (audio_move->sceneitem) {
-		obs_scene_t *scene =
-			obs_sceneitem_get_scene(audio_move->sceneitem);
-		signal_handler_t *sh = obs_source_get_signal_handler(
-			obs_scene_get_source(scene));
+		obs_scene_t *scene = obs_sceneitem_get_scene(audio_move->sceneitem);
+		signal_handler_t *sh = obs_source_get_signal_handler(obs_scene_get_source(scene));
 		if (sh) {
-			signal_handler_disconnect(sh, "item_remove",
-						  audio_move_item_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "item_remove", audio_move_item_remove, audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
-		obs_source_t *item_source =
-			obs_sceneitem_get_source(audio_move->sceneitem);
+		obs_source_t *item_source = obs_sceneitem_get_source(audio_move->sceneitem);
 		if (item_source) {
 			sh = obs_source_get_signal_handler(item_source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
 	}
 	audio_move->sceneitem = NULL;
@@ -166,18 +138,11 @@ void audio_move_item_remove(void *data, calldata_t *call_data)
 		audio_move->sceneitem = NULL;
 		obs_source_t *parent = obs_scene_get_source(scene);
 		if (parent) {
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(parent);
+			signal_handler_t *sh = obs_source_get_signal_handler(parent);
 			if (sh) {
-				signal_handler_disconnect(
-					sh, "item_remove",
-					audio_move_item_remove, audio_move);
-				signal_handler_disconnect(
-					sh, "remove", audio_move_source_remove,
-					audio_move);
-				signal_handler_disconnect(
-					sh, "destroy",
-					audio_move_source_destroy, audio_move);
+				signal_handler_disconnect(sh, "item_remove", audio_move_item_remove, audio_move);
+				signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+				signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 			}
 		}
 	}
@@ -194,14 +159,10 @@ void audio_move_update(void *data, obs_data_t *settings)
 	const long long meter_type = obs_data_get_int(settings, "meter_type");
 	if (meter_type != audio_move->meter_type) {
 		audio_move->meter_type = meter_type;
-		if (meter_type == METER_TYPE_INPUT_PEAK_SAMPLE ||
-		    meter_type == METER_TYPE_PEAK_SAMPLE) {
-			obs_volmeter_set_peak_meter_type(audio_move->volmeter,
-							 SAMPLE_PEAK_METER);
-		} else if (meter_type == METER_TYPE_INPUT_PEAK_TRUE ||
-			   meter_type == METER_TYPE_PEAK_TRUE) {
-			obs_volmeter_set_peak_meter_type(audio_move->volmeter,
-							 TRUE_PEAK_METER);
+		if (meter_type == METER_TYPE_INPUT_PEAK_SAMPLE || meter_type == METER_TYPE_PEAK_SAMPLE) {
+			obs_volmeter_set_peak_meter_type(audio_move->volmeter, SAMPLE_PEAK_METER);
+		} else if (meter_type == METER_TYPE_INPUT_PEAK_TRUE || meter_type == METER_TYPE_PEAK_TRUE) {
+			obs_volmeter_set_peak_meter_type(audio_move->volmeter, TRUE_PEAK_METER);
 		}
 	}
 	audio_move->easing = obs_data_get_double(settings, "easing") / 100.0;
@@ -222,74 +183,43 @@ void audio_move_update(void *data, obs_data_t *settings)
 	if (audio_move->sceneitem) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
-			signal_handler_disconnect(sh, "item_remove",
-						  audio_move_item_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "item_remove", audio_move_item_remove, audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
-		obs_source_t *item_source =
-			obs_sceneitem_get_source(audio_move->sceneitem);
+		obs_source_t *item_source = obs_sceneitem_get_source(audio_move->sceneitem);
 		if (item_source) {
 			sh = obs_source_get_signal_handler(item_source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
 	}
-	audio_move->sceneitem =
-		scene ? obs_scene_find_source_recursive(scene, sceneitem_name)
-		      : NULL;
-	if (audio_move->sceneitem &&
-	    obs_source_removed(
-		    obs_sceneitem_get_source(audio_move->sceneitem))) {
+	audio_move->sceneitem = scene ? obs_scene_find_source_recursive(scene, sceneitem_name) : NULL;
+	if (audio_move->sceneitem && obs_source_removed(obs_sceneitem_get_source(audio_move->sceneitem))) {
 		audio_move->sceneitem = NULL;
 	}
 
 	if (audio_move->sceneitem && source) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
 		if (sh) {
-			signal_handler_connect(sh, "item_remove",
-					       audio_move_item_remove,
-					       audio_move);
-			signal_handler_connect(sh, "remove",
-					       audio_move_source_remove,
-					       audio_move);
-			signal_handler_connect(sh, "destroy",
-					       audio_move_source_destroy,
-					       audio_move);
+			signal_handler_connect(sh, "item_remove", audio_move_item_remove, audio_move);
+			signal_handler_connect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_connect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
-		obs_source_t *item_source =
-			obs_sceneitem_get_source(audio_move->sceneitem);
+		obs_source_t *item_source = obs_sceneitem_get_source(audio_move->sceneitem);
 		if (item_source) {
 			sh = obs_source_get_signal_handler(item_source);
-			signal_handler_connect(sh, "remove",
-					       audio_move_source_remove,
-					       audio_move);
-			signal_handler_connect(sh, "destroy",
-					       audio_move_source_destroy,
-					       audio_move);
+			signal_handler_connect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_connect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
 	}
 
 	if (audio_move->target_source) {
 		source = obs_weak_source_get_source(audio_move->target_source);
 		if (source) {
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_t *sh = obs_source_get_signal_handler(source);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 			obs_source_release(source);
 		}
 		obs_weak_source_release(audio_move->target_source);
@@ -297,29 +227,21 @@ void audio_move_update(void *data, obs_data_t *settings)
 	audio_move->target_source = NULL;
 	obs_source_t *target_source = NULL;
 	if (audio_move->action == VALUE_ACTION_FILTER_ENABLE) {
-		source = obs_get_source_by_name(
-			obs_data_get_string(settings, "source"));
+		source = obs_get_source_by_name(obs_data_get_string(settings, "source"));
 		if (source) {
-			obs_source_t *filter = obs_source_get_filter_by_name(
-				source,
-				obs_data_get_string(settings, "filter"));
+			obs_source_t *filter = obs_source_get_filter_by_name(source, obs_data_get_string(settings, "filter"));
 			if (filter) {
 				target_source = filter;
 			}
 			obs_source_release(source);
 		}
 	} else if (audio_move->action == VALUE_ACTION_SETTING) {
-		source = obs_get_source_by_name(
-			obs_data_get_string(settings, "source"));
+		source = obs_get_source_by_name(obs_data_get_string(settings, "source"));
 		if (source) {
-			const char *filter_name =
-				obs_data_get_string(settings, "filter");
+			const char *filter_name = obs_data_get_string(settings, "filter");
 
 			obs_source_t *filter =
-				filter_name && strlen(filter_name)
-					? obs_source_get_filter_by_name(
-						  source, filter_name)
-					: NULL;
+				filter_name && strlen(filter_name) ? obs_source_get_filter_by_name(source, filter_name) : NULL;
 			if (filter) {
 				target_source = filter;
 				obs_source_release(source);
@@ -333,24 +255,17 @@ void audio_move_update(void *data, obs_data_t *settings)
 		target_source = NULL;
 	}
 	if (target_source) {
-		audio_move->target_source =
-			obs_source_get_weak_source(target_source);
+		audio_move->target_source = obs_source_get_weak_source(target_source);
 
-		signal_handler_t *sh =
-			obs_source_get_signal_handler(target_source);
-		signal_handler_connect(sh, "remove", audio_move_source_remove,
-				       audio_move);
-		signal_handler_connect(sh, "destroy", audio_move_source_destroy,
-				       audio_move);
+		signal_handler_t *sh = obs_source_get_signal_handler(target_source);
+		signal_handler_connect(sh, "remove", audio_move_source_remove, audio_move);
+		signal_handler_connect(sh, "destroy", audio_move_source_destroy, audio_move);
 		obs_source_release(target_source);
 	}
-	audio_move->threshold_action =
-		obs_data_get_int(settings, "threshold_action");
-	audio_move->threshold =
-		obs_data_get_double(settings, "threshold") / 100.0;
+	audio_move->threshold_action = obs_data_get_int(settings, "threshold_action");
+	audio_move->threshold = obs_data_get_double(settings, "threshold") / 100.0;
 	const char *setting_name = obs_data_get_string(settings, "setting");
-	if (!audio_move->setting_name ||
-	    strcmp(audio_move->setting_name, setting_name) != 0) {
+	if (!audio_move->setting_name || strcmp(audio_move->setting_name, setting_name) != 0) {
 		bfree(audio_move->setting_name);
 		audio_move->setting_name = bstrdup(setting_name);
 	}
@@ -358,12 +273,10 @@ void audio_move_update(void *data, obs_data_t *settings)
 
 static void *audio_move_create(obs_data_t *settings, obs_source_t *source)
 {
-	struct audio_move_info *audio_move =
-		bzalloc(sizeof(struct audio_move_info));
+	struct audio_move_info *audio_move = bzalloc(sizeof(struct audio_move_info));
 	audio_move->source = source;
 	audio_move->volmeter = obs_volmeter_create(OBS_FADER_LOG);
-	obs_volmeter_add_callback(audio_move->volmeter,
-				  audio_move_volmeter_updated, audio_move);
+	obs_volmeter_add_callback(audio_move->volmeter, audio_move_volmeter_updated, audio_move);
 	audio_move_update(audio_move, settings);
 
 	return audio_move;
@@ -373,53 +286,33 @@ static void audio_move_destroy(void *data)
 {
 	struct audio_move_info *audio_move = data;
 	obs_volmeter_detach_source(audio_move->volmeter);
-	obs_volmeter_remove_callback(audio_move->volmeter,
-				     audio_move_volmeter_updated, audio_move);
+	obs_volmeter_remove_callback(audio_move->volmeter, audio_move_volmeter_updated, audio_move);
 	obs_volmeter_destroy(audio_move->volmeter);
 	audio_move->volmeter = NULL;
 	if (audio_move->target_source) {
-		obs_source_t *source =
-			obs_weak_source_get_source(audio_move->target_source);
+		obs_source_t *source = obs_weak_source_get_source(audio_move->target_source);
 		if (source) {
-			signal_handler_t *sh =
-				obs_source_get_signal_handler(source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_t *sh = obs_source_get_signal_handler(source);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 			obs_source_release(source);
 		}
 		obs_weak_source_release(audio_move->target_source);
 	}
 	audio_move->target_source = NULL;
 	if (audio_move->sceneitem) {
-		obs_scene_t *scene =
-			obs_sceneitem_get_scene(audio_move->sceneitem);
-		signal_handler_t *sh = obs_source_get_signal_handler(
-			obs_scene_get_source(scene));
+		obs_scene_t *scene = obs_sceneitem_get_scene(audio_move->sceneitem);
+		signal_handler_t *sh = obs_source_get_signal_handler(obs_scene_get_source(scene));
 		if (sh) {
-			signal_handler_disconnect(sh, "item_remove",
-						  audio_move_item_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "item_remove", audio_move_item_remove, audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
-		obs_source_t *item_source =
-			obs_sceneitem_get_source(audio_move->sceneitem);
+		obs_source_t *item_source = obs_sceneitem_get_source(audio_move->sceneitem);
 		if (item_source) {
 			sh = obs_source_get_signal_handler(item_source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
 	}
 	audio_move->sceneitem = NULL;
@@ -435,8 +328,7 @@ static bool add_source_to_prop_list(void *data, obs_source_t *source)
 		return true;
 	size_t count = obs_property_list_item_count(p);
 	size_t idx = 0;
-	while (idx < count &&
-	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+	while (idx < count && strcmp(name, obs_property_list_item_string(p, idx)) > 0)
 		idx++;
 	obs_property_list_insert_string(p, idx, name, name);
 	return true;
@@ -452,23 +344,19 @@ static bool add_group_to_prop_list(void *data, obs_source_t *source)
 		return true;
 	size_t count = obs_property_list_item_count(p);
 	size_t idx = 0;
-	while (idx < count &&
-	       strcmp(name, obs_property_list_item_string(p, idx)) > 0)
+	while (idx < count && strcmp(name, obs_property_list_item_string(p, idx)) > 0)
 		idx++;
 	obs_property_list_insert_string(p, idx, name, name);
 	return true;
 }
 
-static bool audio_move_action_changed(obs_properties_t *props,
-				      obs_property_t *property,
-				      obs_data_t *settings)
+static bool audio_move_action_changed(obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(property);
 	long long action = obs_data_get_int(settings, "value_action");
 	obs_property_t *scene = obs_properties_get(props, "scene");
 	obs_property_t *sceneitem = obs_properties_get(props, "sceneitem");
-	if (action == VALUE_ACTION_TRANSFORM ||
-	    action == VALUE_ACTION_SOURCE_VISIBILITY) {
+	if (action == VALUE_ACTION_TRANSFORM || action == VALUE_ACTION_SOURCE_VISIBILITY) {
 		obs_property_list_clear(scene);
 		obs_enum_scenes(add_source_to_prop_list, scene);
 		obs_enum_sources(add_group_to_prop_list, scene);
@@ -480,8 +368,7 @@ static bool audio_move_action_changed(obs_properties_t *props,
 	}
 	obs_property_t *source = obs_properties_get(props, "source");
 	obs_property_t *filter = obs_properties_get(props, "filter");
-	if (action == VALUE_ACTION_SETTING ||
-	    action == VALUE_ACTION_FILTER_ENABLE) {
+	if (action == VALUE_ACTION_SETTING || action == VALUE_ACTION_FILTER_ENABLE) {
 		obs_property_list_clear(source);
 		obs_enum_sources(add_source_to_prop_list, source);
 		obs_enum_scenes(add_source_to_prop_list, source);
@@ -493,19 +380,16 @@ static bool audio_move_action_changed(obs_properties_t *props,
 	}
 	obs_property_t *base_value = obs_properties_get(props, "base_value");
 	obs_property_t *factor = obs_properties_get(props, "factor");
-	if (action == VALUE_ACTION_SETTING ||
-	    action == VALUE_ACTION_TRANSFORM) {
+	if (action == VALUE_ACTION_SETTING || action == VALUE_ACTION_TRANSFORM) {
 		obs_property_set_visible(base_value, true);
 		obs_property_set_visible(factor, true);
 	} else {
 		obs_property_set_visible(base_value, false);
 		obs_property_set_visible(factor, false);
 	}
-	obs_property_t *threshold_action =
-		obs_properties_get(props, "threshold_action");
+	obs_property_t *threshold_action = obs_properties_get(props, "threshold_action");
 	obs_property_t *threshold = obs_properties_get(props, "threshold");
-	if (action == VALUE_ACTION_SOURCE_VISIBILITY ||
-	    action == VALUE_ACTION_FILTER_ENABLE) {
+	if (action == VALUE_ACTION_SOURCE_VISIBILITY || action == VALUE_ACTION_FILTER_ENABLE) {
 		obs_property_set_visible(threshold_action, true);
 		obs_property_set_visible(threshold, true);
 	} else {
@@ -527,8 +411,7 @@ static bool audio_move_action_changed(obs_properties_t *props,
 	return true;
 }
 
-static bool add_sceneitem_to_prop_list(obs_scene_t *scene,
-				       obs_sceneitem_t *item, void *data)
+static bool add_sceneitem_to_prop_list(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
 {
 	UNUSED_PARAMETER(scene);
 	obs_property_t *p = (obs_property_t *)data;
@@ -539,9 +422,7 @@ static bool add_sceneitem_to_prop_list(obs_scene_t *scene,
 	return true;
 }
 
-static bool audio_move_scene_changed(void *data, obs_properties_t *props,
-				     obs_property_t *property,
-				     obs_data_t *settings)
+static bool audio_move_scene_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(property);
@@ -559,8 +440,7 @@ static bool audio_move_scene_changed(void *data, obs_properties_t *props,
 	return true;
 }
 
-static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child,
-				    void *data)
+static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child, void *data)
 {
 	UNUSED_PARAMETER(parent);
 	obs_property_t *p = (obs_property_t *)data;
@@ -571,8 +451,7 @@ static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child,
 		obs_property_list_add_string(p, name, name);
 }
 
-static void load_properties(obs_properties_t *props_from,
-			    obs_property_t *setting_list)
+static void load_properties(obs_properties_t *props_from, obs_property_t *setting_list)
 {
 	obs_property_t *prop_from = obs_properties_first(props_from);
 	for (; prop_from != NULL; obs_property_next(&prop_from)) {
@@ -580,22 +459,16 @@ static void load_properties(obs_properties_t *props_from,
 		const char *description = obs_property_description(prop_from);
 		if (!obs_property_visible(prop_from))
 			continue;
-		const enum obs_property_type prop_type =
-			obs_property_get_type(prop_from);
+		const enum obs_property_type prop_type = obs_property_get_type(prop_from);
 		if (prop_type == OBS_PROPERTY_GROUP) {
-			load_properties(obs_property_group_content(prop_from),
-					setting_list);
-		} else if (prop_type == OBS_PROPERTY_FLOAT ||
-			   prop_type == OBS_PROPERTY_INT) {
-			obs_property_list_add_string(setting_list, description,
-						     name);
+			load_properties(obs_property_group_content(prop_from), setting_list);
+		} else if (prop_type == OBS_PROPERTY_FLOAT || prop_type == OBS_PROPERTY_INT) {
+			obs_property_list_add_string(setting_list, description, name);
 		}
 	}
 }
 
-static bool audio_move_source_changed(void *data, obs_properties_t *props,
-				      obs_property_t *property,
-				      obs_data_t *settings)
+static bool audio_move_source_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(property);
 	UNUSED_PARAMETER(data);
@@ -611,8 +484,7 @@ static bool audio_move_source_changed(void *data, obs_properties_t *props,
 	obs_property_list_clear(setting);
 	obs_properties_t *properties = NULL;
 	if (filter_name && strlen(filter_name)) {
-		obs_source_t *f =
-			obs_source_get_filter_by_name(source, filter_name);
+		obs_source_t *f = obs_source_get_filter_by_name(source, filter_name);
 		if (f) {
 			properties = obs_source_properties(f);
 		}
@@ -631,131 +503,70 @@ static obs_properties_t *audio_move_properties(void *data)
 	UNUSED_PARAMETER(data);
 	obs_properties_t *ppts = obs_properties_create();
 
-	obs_property_t *p = obs_properties_add_list(
-		ppts, "meter_type", obs_module_text("MeterType"),
-		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("MeterType.Magnitude"),
-				  METER_TYPE_MAGNITUDE);
-	obs_property_list_add_int(p, obs_module_text("MeterType.PeakSample"),
-				  METER_TYPE_PEAK_SAMPLE);
-	obs_property_list_add_int(p, obs_module_text("MeterType.PeakTrue"),
-				  METER_TYPE_PEAK_TRUE);
-	obs_property_list_add_int(p,
-				  obs_module_text("MeterType.InputPeakSample"),
-				  METER_TYPE_INPUT_PEAK_SAMPLE);
-	obs_property_list_add_int(p, obs_module_text("MeterType.InputPeakTrue"),
-				  METER_TYPE_INPUT_PEAK_TRUE);
+	obs_property_t *p = obs_properties_add_list(ppts, "meter_type", obs_module_text("MeterType"), OBS_COMBO_TYPE_LIST,
+						    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("MeterType.Magnitude"), METER_TYPE_MAGNITUDE);
+	obs_property_list_add_int(p, obs_module_text("MeterType.PeakSample"), METER_TYPE_PEAK_SAMPLE);
+	obs_property_list_add_int(p, obs_module_text("MeterType.PeakTrue"), METER_TYPE_PEAK_TRUE);
+	obs_property_list_add_int(p, obs_module_text("MeterType.InputPeakSample"), METER_TYPE_INPUT_PEAK_SAMPLE);
+	obs_property_list_add_int(p, obs_module_text("MeterType.InputPeakTrue"), METER_TYPE_INPUT_PEAK_TRUE);
 
-	p = obs_properties_add_float_slider(
-		ppts, "easing", obs_module_text("Easing"), 0.0, 99.99, 0.01);
+	p = obs_properties_add_float_slider(ppts, "easing", obs_module_text("Easing"), 0.0, 99.99, 0.01);
 
-	p = obs_properties_add_list(ppts, "value_action",
-				    obs_module_text("ValueAction"),
-				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("ValueAction.Transform"),
-				  VALUE_ACTION_TRANSFORM);
-	obs_property_list_add_int(p, obs_module_text("ValueAction.Setting"),
-				  VALUE_ACTION_SETTING);
-	obs_property_list_add_int(
-		p, obs_module_text("ValueAction.SourceVisibility"),
-		VALUE_ACTION_SOURCE_VISIBILITY);
-	obs_property_list_add_int(p,
-				  obs_module_text("ValueAction.FilterEnable"),
-				  VALUE_ACTION_FILTER_ENABLE);
+	p = obs_properties_add_list(ppts, "value_action", obs_module_text("ValueAction"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("ValueAction.Transform"), VALUE_ACTION_TRANSFORM);
+	obs_property_list_add_int(p, obs_module_text("ValueAction.Setting"), VALUE_ACTION_SETTING);
+	obs_property_list_add_int(p, obs_module_text("ValueAction.SourceVisibility"), VALUE_ACTION_SOURCE_VISIBILITY);
+	obs_property_list_add_int(p, obs_module_text("ValueAction.FilterEnable"), VALUE_ACTION_FILTER_ENABLE);
 	obs_property_set_modified_callback(p, audio_move_action_changed);
 
-	p = obs_properties_add_list(ppts, "scene", obs_module_text("Scene"),
-				    OBS_COMBO_TYPE_EDITABLE,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(ppts, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 	obs_property_set_modified_callback2(p, audio_move_scene_changed, data);
 
-	p = obs_properties_add_list(ppts, "sceneitem",
-				    obs_module_text("Source"),
-				    OBS_COMBO_TYPE_EDITABLE,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(ppts, "sceneitem", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 
-	p = obs_properties_add_list(ppts, "source", obs_module_text("Source"),
-				    OBS_COMBO_TYPE_EDITABLE,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(ppts, "source", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 
 	obs_property_set_modified_callback2(p, audio_move_source_changed, data);
 
-	p = obs_properties_add_list(ppts, "filter", obs_module_text("Filter"),
-				    OBS_COMBO_TYPE_EDITABLE,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(ppts, "filter", obs_module_text("Filter"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 
 	obs_property_set_modified_callback2(p, audio_move_source_changed, data);
 
-	p = obs_properties_add_list(ppts, "transform",
-				    obs_module_text("Transform"),
-				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("Transform.PosX"),
-				  TRANSFORM_POS_X);
-	obs_property_list_add_int(p, obs_module_text("Transform.PosY"),
-				  TRANSFORM_POS_Y);
-	obs_property_list_add_int(p, obs_module_text("Transform.Rotation"),
-				  TRANSFORM_ROT);
-	obs_property_list_add_int(p, obs_module_text("Transform.Scale"),
-				  TRANSFORM_SCALE);
-	obs_property_list_add_int(p, obs_module_text("Transform.ScaleX"),
-				  TRANSFORM_SCALE_X);
-	obs_property_list_add_int(p, obs_module_text("Transform.ScaleY"),
-				  TRANSFORM_SCALE_Y);
-	obs_property_list_add_int(p, obs_module_text("Transform.BoundsX"),
-				  TRANSFORM_BOUNDS_X);
-	obs_property_list_add_int(p, obs_module_text("Transform.BoundsY"),
-				  TRANSFORM_BOUNDS_Y);
-	obs_property_list_add_int(p, obs_module_text("Transform.CropLeft"),
-				  TRANSFORM_CROP_LEFT);
-	obs_property_list_add_int(p, obs_module_text("Transform.CropTop"),
-				  TRANSFORM_CROP_TOP);
-	obs_property_list_add_int(p, obs_module_text("Transform.CropRight"),
-				  TRANSFORM_CROP_RIGHT);
-	obs_property_list_add_int(p, obs_module_text("Transform.CropBottom"),
-				  TRANSFORM_CROP_BOTTOM);
-	obs_property_list_add_int(p,
-				  obs_module_text("Transform.CropHorizontal"),
-				  TRANSFORM_CROP_HORIZONTAL);
-	obs_property_list_add_int(p, obs_module_text("Transform.CropVertical"),
-				  TRANSFORM_CROP_VERTICAL);
+	p = obs_properties_add_list(ppts, "transform", obs_module_text("Transform"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("Transform.PosX"), TRANSFORM_POS_X);
+	obs_property_list_add_int(p, obs_module_text("Transform.PosY"), TRANSFORM_POS_Y);
+	obs_property_list_add_int(p, obs_module_text("Transform.Rotation"), TRANSFORM_ROT);
+	obs_property_list_add_int(p, obs_module_text("Transform.Scale"), TRANSFORM_SCALE);
+	obs_property_list_add_int(p, obs_module_text("Transform.ScaleX"), TRANSFORM_SCALE_X);
+	obs_property_list_add_int(p, obs_module_text("Transform.ScaleY"), TRANSFORM_SCALE_Y);
+	obs_property_list_add_int(p, obs_module_text("Transform.BoundsX"), TRANSFORM_BOUNDS_X);
+	obs_property_list_add_int(p, obs_module_text("Transform.BoundsY"), TRANSFORM_BOUNDS_Y);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropLeft"), TRANSFORM_CROP_LEFT);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropTop"), TRANSFORM_CROP_TOP);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropRight"), TRANSFORM_CROP_RIGHT);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropBottom"), TRANSFORM_CROP_BOTTOM);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropHorizontal"), TRANSFORM_CROP_HORIZONTAL);
+	obs_property_list_add_int(p, obs_module_text("Transform.CropVertical"), TRANSFORM_CROP_VERTICAL);
 
-	p = obs_properties_add_list(ppts, "setting", obs_module_text("Setting"),
-				    OBS_COMBO_TYPE_LIST,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(ppts, "setting", obs_module_text("Setting"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 
-	p = obs_properties_add_float(ppts, "base_value",
-				     obs_module_text("BaseValue"), -DBL_MAX,
-				     DBL_MAX, 0.01);
-	p = obs_properties_add_float(ppts, "factor", obs_module_text("Factor"),
-				     -DBL_MAX, DBL_MAX, 0.01);
-	p = obs_properties_add_list(ppts, "threshold_action",
-				    obs_module_text("ThresholdAction"),
-				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("ThresholdAction.None"),
-				  THRESHOLD_NONE);
-	obs_property_list_add_int(p,
-				  obs_module_text("ThresholdAction.EnableOver"),
-				  THRESHOLD_ENABLE_OVER);
-	obs_property_list_add_int(
-		p, obs_module_text("ThresholdAction.EnableUnder"),
-		THRESHOLD_ENABLE_UNDER);
-	obs_property_list_add_int(
-		p, obs_module_text("ThresholdAction.DisableOver"),
-		THRESHOLD_DISABLE_OVER);
-	obs_property_list_add_int(
-		p, obs_module_text("ThresholdAction.DisableUnder"),
-		THRESHOLD_DISABLE_UNDER);
-	obs_property_list_add_int(
-		p, obs_module_text("ThresholdAction.EnableOverDisableUnder"),
-		THRESHOLD_ENABLE_OVER_DISABLE_UNDER);
-	obs_property_list_add_int(
-		p, obs_module_text("ThresholdAction.EnableUnderDisableOver"),
-		THRESHOLD_ENABLE_UNDER_DISABLE_OVER);
-	p = obs_properties_add_float_slider(ppts, "threshold",
-					    obs_module_text("Threshold"), 0.0,
-					    100.0, 0.01);
-	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO,
-				OBS_TEXT_INFO);
+	p = obs_properties_add_float(ppts, "base_value", obs_module_text("BaseValue"), -DBL_MAX, DBL_MAX, 0.01);
+	p = obs_properties_add_float(ppts, "factor", obs_module_text("Factor"), -DBL_MAX, DBL_MAX, 0.01);
+	p = obs_properties_add_list(ppts, "threshold_action", obs_module_text("ThresholdAction"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.None"), THRESHOLD_NONE);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.EnableOver"), THRESHOLD_ENABLE_OVER);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.EnableUnder"), THRESHOLD_ENABLE_UNDER);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.DisableOver"), THRESHOLD_DISABLE_OVER);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.DisableUnder"), THRESHOLD_DISABLE_UNDER);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.EnableOverDisableUnder"),
+				  THRESHOLD_ENABLE_OVER_DISABLE_UNDER);
+	obs_property_list_add_int(p, obs_module_text("ThresholdAction.EnableUnderDisableOver"),
+				  THRESHOLD_ENABLE_UNDER_DISABLE_OVER);
+	p = obs_properties_add_float_slider(ppts, "threshold", obs_module_text("Threshold"), 0.0, 100.0, 0.01);
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO, OBS_TEXT_INFO);
 	return ppts;
 }
 
@@ -772,8 +583,7 @@ void audio_move_tick(void *data, float seconds)
 		return;
 	if (filter->action == VALUE_ACTION_TRANSFORM) {
 		if (!filter->sceneitem) {
-			obs_data_t *settings =
-				obs_source_get_settings(filter->source);
+			obs_data_t *settings = obs_source_get_settings(filter->source);
 			audio_move_update(filter, settings);
 			obs_data_release(settings);
 		}
@@ -782,192 +592,146 @@ void audio_move_tick(void *data, float seconds)
 		if (filter->transform == TRANSFORM_POS_X) {
 			struct vec2 pos;
 			obs_sceneitem_get_pos(filter->sceneitem, &pos);
-			pos.x = (float)(filter->factor * filter->audio_value +
-					filter->base_value);
+			pos.x = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_pos(filter->sceneitem, &pos);
 		} else if (filter->transform == TRANSFORM_POS_Y) {
 			struct vec2 pos;
 			obs_sceneitem_get_pos(filter->sceneitem, &pos);
-			pos.y = (float)(filter->factor * filter->audio_value +
-					filter->base_value);
+			pos.y = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_pos(filter->sceneitem, &pos);
 		} else if (filter->transform == TRANSFORM_ROT) {
-			obs_sceneitem_set_rot(
-				filter->sceneitem,
-				(float)(filter->factor * filter->audio_value +
-					filter->base_value));
+			obs_sceneitem_set_rot(filter->sceneitem,
+					      (float)(filter->factor * filter->audio_value + filter->base_value));
 		} else if (filter->transform == TRANSFORM_SCALE) {
 			struct vec2 scale;
-			scale.x = (float)(filter->factor * filter->audio_value +
-					  filter->base_value);
+			scale.x = (float)(filter->factor * filter->audio_value + filter->base_value);
 			scale.y = scale.x;
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_SCALE_X) {
 			struct vec2 scale;
 			obs_sceneitem_get_scale(filter->sceneitem, &scale);
-			scale.x = (float)(filter->factor * filter->audio_value +
-					  filter->base_value);
+			scale.x = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_SCALE_Y) {
 			struct vec2 scale;
 			obs_sceneitem_get_scale(filter->sceneitem, &scale);
-			scale.y = (float)(filter->factor * filter->audio_value +
-					  filter->base_value);
+			scale.y = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_scale(filter->sceneitem, &scale);
 		} else if (filter->transform == TRANSFORM_BOUNDS_X) {
 			struct vec2 bounds;
 			obs_sceneitem_get_bounds(filter->sceneitem, &bounds);
-			bounds.x =
-				(float)(filter->factor * filter->audio_value +
-					filter->base_value);
+			bounds.x = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_bounds(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_BOUNDS_Y) {
 			struct vec2 bounds;
 			obs_sceneitem_get_bounds(filter->sceneitem, &bounds);
-			bounds.y =
-				(float)(filter->factor * filter->audio_value +
-					filter->base_value);
+			bounds.y = (float)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_bounds(filter->sceneitem, &bounds);
 		} else if (filter->transform == TRANSFORM_CROP_LEFT) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.left = (int)(filter->factor * filter->audio_value +
-					  filter->base_value);
+			crop.left = (int)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_TOP) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.top = (int)(filter->factor * filter->audio_value +
-					 filter->base_value);
+			crop.top = (int)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_RIGHT) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.right =
-				(int)(filter->factor * filter->audio_value +
-				      filter->base_value);
+			crop.right = (int)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_BOTTOM) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.bottom =
-				(int)(filter->factor * filter->audio_value +
-				      filter->base_value);
+			crop.bottom = (int)(filter->factor * filter->audio_value + filter->base_value);
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_HORIZONTAL) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.left = (int)(filter->factor * filter->audio_value +
-					  filter->base_value);
+			crop.left = (int)(filter->factor * filter->audio_value + filter->base_value);
 			crop.right = crop.left;
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		} else if (filter->transform == TRANSFORM_CROP_VERTICAL) {
 			struct obs_sceneitem_crop crop;
 			obs_sceneitem_get_crop(filter->sceneitem, &crop);
-			crop.top = (int)(filter->factor * filter->audio_value +
-					 filter->base_value);
+			crop.top = (int)(filter->factor * filter->audio_value + filter->base_value);
 			crop.bottom = crop.top;
 			obs_sceneitem_set_crop(filter->sceneitem, &crop);
 		}
 
 	} else if (filter->action == VALUE_ACTION_SOURCE_VISIBILITY) {
 		if (!filter->sceneitem) {
-			obs_data_t *settings =
-				obs_source_get_settings(filter->source);
+			obs_data_t *settings = obs_source_get_settings(filter->source);
 			audio_move_update(filter, settings);
 			obs_data_release(settings);
 		}
 		if (!filter->sceneitem)
 			return;
 		if ((filter->threshold_action == THRESHOLD_ENABLE_OVER ||
-		     filter->threshold_action ==
-			     THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+		     filter->threshold_action == THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
 		    filter->audio_value >= filter->threshold) {
 			obs_sceneitem_set_visible(filter->sceneitem, true);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+		} else if ((filter->threshold_action == THRESHOLD_ENABLE_UNDER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
 			   filter->audio_value < filter->threshold) {
 			obs_sceneitem_set_visible(filter->sceneitem, true);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_DISABLE_OVER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+		} else if ((filter->threshold_action == THRESHOLD_DISABLE_OVER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
 			   filter->audio_value >= filter->threshold) {
 			obs_sceneitem_set_visible(filter->sceneitem, false);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_DISABLE_UNDER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+		} else if ((filter->threshold_action == THRESHOLD_DISABLE_UNDER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
 			   filter->audio_value < filter->threshold) {
 			obs_sceneitem_set_visible(filter->sceneitem, false);
 		}
 	} else if (filter->action == VALUE_ACTION_FILTER_ENABLE) {
 		if (!filter->target_source) {
-			obs_data_t *settings =
-				obs_source_get_settings(filter->source);
+			obs_data_t *settings = obs_source_get_settings(filter->source);
 			audio_move_update(filter, settings);
 			obs_data_release(settings);
 		}
 		if (!filter->target_source)
 			return;
-		obs_source_t *source =
-			obs_weak_source_get_source(filter->target_source);
+		obs_source_t *source = obs_weak_source_get_source(filter->target_source);
 		if (!source)
 			return;
 
 		if ((filter->threshold_action == THRESHOLD_ENABLE_OVER ||
-		     filter->threshold_action ==
-			     THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
-		    filter->audio_value >= filter->threshold &&
-		    !obs_source_enabled(source)) {
+		     filter->threshold_action == THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+		    filter->audio_value >= filter->threshold && !obs_source_enabled(source)) {
 			obs_source_set_enabled(source, true);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
-			   filter->audio_value < filter->threshold &&
-			   !obs_source_enabled(source)) {
+		} else if ((filter->threshold_action == THRESHOLD_ENABLE_UNDER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+			   filter->audio_value < filter->threshold && !obs_source_enabled(source)) {
 			obs_source_set_enabled(source, true);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_DISABLE_OVER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
-			   filter->audio_value >= filter->threshold &&
-			   obs_source_enabled(source)) {
+		} else if ((filter->threshold_action == THRESHOLD_DISABLE_OVER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_UNDER_DISABLE_OVER) &&
+			   filter->audio_value >= filter->threshold && obs_source_enabled(source)) {
 			obs_source_set_enabled(source, false);
-		} else if ((filter->threshold_action ==
-				    THRESHOLD_DISABLE_UNDER ||
-			    filter->threshold_action ==
-				    THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
-			   filter->audio_value < filter->threshold &&
-			   obs_source_enabled(source)) {
+		} else if ((filter->threshold_action == THRESHOLD_DISABLE_UNDER ||
+			    filter->threshold_action == THRESHOLD_ENABLE_OVER_DISABLE_UNDER) &&
+			   filter->audio_value < filter->threshold && obs_source_enabled(source)) {
 			obs_source_set_enabled(source, false);
 		}
 		obs_source_release(source);
-	} else if (filter->action == VALUE_ACTION_SETTING &&
-		   filter->setting_name && strlen(filter->setting_name)) {
+	} else if (filter->action == VALUE_ACTION_SETTING && filter->setting_name && strlen(filter->setting_name)) {
 		if (!filter->target_source) {
-			obs_data_t *settings =
-				obs_source_get_settings(filter->source);
+			obs_data_t *settings = obs_source_get_settings(filter->source);
 			audio_move_update(filter, settings);
 			obs_data_release(settings);
 		}
 		if (!filter->target_source)
 			return;
-		obs_source_t *source =
-			obs_weak_source_get_source(filter->target_source);
+		obs_source_t *source = obs_weak_source_get_source(filter->target_source);
 		if (!source)
 			return;
 		obs_data_t *settings = obs_source_get_settings(source);
-		const double val = filter->factor * filter->audio_value +
-				   filter->base_value;
-		obs_data_item_t *setting =
-			obs_data_item_byname(settings, filter->setting_name);
+		const double val = filter->factor * filter->audio_value + filter->base_value;
+		obs_data_item_t *setting = obs_data_item_byname(settings, filter->setting_name);
 		if (setting) {
-			const enum obs_data_number_type num_type =
-				obs_data_item_numtype(setting);
+			const enum obs_data_number_type num_type = obs_data_item_numtype(setting);
 			if (num_type == OBS_DATA_NUM_INT) {
 				obs_data_item_set_int(&setting, (long long)val);
 			} else if (num_type == OBS_DATA_NUM_DOUBLE) {
@@ -975,8 +739,7 @@ void audio_move_tick(void *data, float seconds)
 			}
 			obs_data_item_release(&setting);
 		} else {
-			obs_data_set_double(settings, filter->setting_name,
-					    val);
+			obs_data_set_double(settings, filter->setting_name, val);
 		}
 		obs_data_release(settings);
 		obs_source_update(source, NULL);
@@ -988,48 +751,30 @@ void audio_move_remove(void *data, obs_source_t *source)
 {
 	struct audio_move_info *audio_move = data;
 	signal_handler_t *sh = obs_source_get_signal_handler(source);
-	signal_handler_disconnect(sh, "remove", audio_move_source_remove,
-				  audio_move);
-	signal_handler_disconnect(sh, "destroy", audio_move_source_destroy,
-				  audio_move);
+	signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+	signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 	if (audio_move->target_source) {
-		obs_source_t *source =
-			obs_weak_source_get_source(audio_move->target_source);
+		obs_source_t *source = obs_weak_source_get_source(audio_move->target_source);
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
-		signal_handler_disconnect(sh, "remove",
-					  audio_move_source_remove, audio_move);
-		signal_handler_disconnect(
-			sh, "destroy", audio_move_source_destroy, audio_move);
+		signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+		signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		obs_source_release(source);
 		obs_weak_source_release(audio_move->target_source);
 	}
 	audio_move->target_source = NULL;
 	if (audio_move->sceneitem) {
-		obs_scene_t *scene =
-			obs_sceneitem_get_scene(audio_move->sceneitem);
-		signal_handler_t *sh = obs_source_get_signal_handler(
-			obs_scene_get_source(scene));
+		obs_scene_t *scene = obs_sceneitem_get_scene(audio_move->sceneitem);
+		signal_handler_t *sh = obs_source_get_signal_handler(obs_scene_get_source(scene));
 		if (sh) {
-			signal_handler_disconnect(sh, "item_remove",
-						  audio_move_item_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "item_remove", audio_move_item_remove, audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
-		obs_source_t *item_source =
-			obs_sceneitem_get_source(audio_move->sceneitem);
+		obs_source_t *item_source = obs_sceneitem_get_source(audio_move->sceneitem);
 		if (item_source) {
 			sh = obs_source_get_signal_handler(item_source);
-			signal_handler_disconnect(sh, "remove",
-						  audio_move_source_remove,
-						  audio_move);
-			signal_handler_disconnect(sh, "destroy",
-						  audio_move_source_destroy,
-						  audio_move);
+			signal_handler_disconnect(sh, "remove", audio_move_source_remove, audio_move);
+			signal_handler_disconnect(sh, "destroy", audio_move_source_destroy, audio_move);
 		}
 	}
 	audio_move->sceneitem = NULL;
