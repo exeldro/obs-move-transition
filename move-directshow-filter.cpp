@@ -420,7 +420,7 @@ static void *move_directshow_create(obs_data_t *settings, obs_source_t *source)
 	move_directshow->procAmpProps = new std::map<long, directshow_property>();
 	pthread_mutex_init(&move_directshow->mutex, nullptr);
 	os_event_init(&move_directshow->start_event, OS_EVENT_TYPE_AUTO);
-	move_directshow_update(move_directshow, settings);
+	obs_source_update(source, NULL);
 	move_directshow->run = true;
 	pthread_create(&move_directshow->thread, NULL, move_directshow_thread, move_directshow);
 	return move_directshow;

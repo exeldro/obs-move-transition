@@ -175,7 +175,7 @@ static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 	struct move_action_info *move_action = bzalloc(sizeof(struct move_action_info));
 	move_filter_init(&move_action->move_filter, source, move_action_start);
 	move_action->hotkey_id = OBS_INVALID_HOTKEY_ID;
-	move_action_update(move_action, settings);
+	obs_source_update(source, NULL);
 	return move_action;
 }
 

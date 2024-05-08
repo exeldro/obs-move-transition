@@ -609,7 +609,7 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 	struct move_source_info *move_source = bzalloc(sizeof(struct move_source_info));
 	move_filter_init(&move_source->move_filter, source, (void (*)(void *))move_source_start);
 	move_source->move_filter.get_alternative_source = move_source_get_source;
-	move_source_update(move_source, settings);
+	obs_source_update(source, NULL);
 	signal_handler_connect(obs_get_signal_handler(), "source_rename", move_source_source_rename, move_source);
 
 	return move_source;

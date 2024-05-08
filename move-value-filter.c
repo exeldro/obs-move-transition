@@ -309,7 +309,8 @@ void move_value_start(struct move_value_info *move_value)
 			move_value->double_to = move_value->double_value;
 		}
 	} else {
-		if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
+		if (!move_value->setting_name) {
+		} else if (strcmp(move_value->setting_name, VOLUME_SETTING) == 0) {
 			move_value->int_from = (long long)(obs_source_get_volume(source) * 100.0f);
 			move_value->double_from = (double)obs_source_get_volume(source) * 100.0;
 		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
@@ -439,7 +440,7 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_value_info *move_value = bzalloc(sizeof(struct move_value_info));
 	move_filter_init(&move_value->move_filter, source, (void (*)(void *))move_value_start);
-	move_value_update(move_value, settings);
+	obs_source_update(source, NULL);
 	return move_value;
 }
 
