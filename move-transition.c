@@ -72,7 +72,6 @@ struct move_item {
 	obs_scene_t *release_scene_b;
 	bool scene_flip_horizontal;
 	bool scene_flip_vertical;
-	bool has_transform;
 	struct matrix4 transform_a;
 	struct matrix4 transform_b;
 	struct obs_sceneitem_crop bounds_crop_a;
@@ -1460,16 +1459,13 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		point_sampler_info.max_anisotropy = 1;
 		move->point_sampler = gs_samplerstate_create(&point_sampler_info);
 	}
-	if (!item->has_transform) {
-		if (item->item_a) {
-			move_get_draw_transform(item->item_a, item->scene_flip_horizontal, item->scene_flip_vertical,
-						&item->transform_a, &item->bounds_crop_a);
-		}
-		if (item->item_b) {
-			move_get_draw_transform(item->item_b, item->scene_flip_horizontal, item->scene_flip_vertical,
-						&item->transform_b, &item->bounds_crop_b);
-		}
-		item->has_transform = true;
+	if (item->item_a) {
+		move_get_draw_transform(item->item_a, item->scene_flip_horizontal, item->scene_flip_vertical, &item->transform_a,
+					&item->bounds_crop_a);
+	}
+	if (item->item_b) {
+		move_get_draw_transform(item->item_b, item->scene_flip_horizontal, item->scene_flip_vertical, &item->transform_b,
+					&item->bounds_crop_b);
 	}
 	struct obs_sceneitem_crop bounds_crop = {0};
 	if ((item->item_a && item->item_b) || item->move_scene) {
