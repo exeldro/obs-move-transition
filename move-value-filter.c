@@ -440,7 +440,7 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_value_info *move_value = bzalloc(sizeof(struct move_value_info));
 	move_filter_init(&move_value->move_filter, source, (void (*)(void *))move_value_start);
-	obs_source_update(source, NULL);
+	obs_source_update(source, settings);
 	return move_value;
 }
 

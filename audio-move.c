@@ -741,8 +741,8 @@ void audio_move_tick(void *data, float seconds)
 		} else {
 			obs_data_set_double(settings, filter->setting_name, val);
 		}
+		obs_source_update(source, settings);
 		obs_data_release(settings);
-		obs_source_update(source, NULL);
 		obs_source_release(source);
 	}
 }

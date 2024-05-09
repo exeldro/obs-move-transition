@@ -161,7 +161,7 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	da_init(move->transition_pool_out);
 	da_init(move->transition_pool_in);
 	da_init(move->transition_pool_out);
-	obs_source_update(source, NULL);
+	obs_source_update(source, settings);
 	return move;
 }
 
@@ -3106,6 +3106,7 @@ MODULE_EXPORT const char *obs_module_name(void)
 
 extern struct obs_source_info move_transition_override_filter;
 extern struct obs_source_info move_source_filter;
+extern struct obs_source_info move_source_swap_filter;
 extern struct obs_source_info move_value_filter;
 extern struct obs_source_info move_audio_value_filter;
 extern struct obs_source_info audio_move_filter;
@@ -3124,6 +3125,7 @@ bool obs_module_load(void)
 	obs_register_source(&move_transition);
 	obs_register_source(&move_transition_override_filter);
 	obs_register_source(&move_source_filter);
+	obs_register_source(&move_source_swap_filter);
 	obs_register_source(&move_value_filter);
 	obs_register_source(&move_audio_value_filter);
 	obs_register_source(&audio_move_filter);

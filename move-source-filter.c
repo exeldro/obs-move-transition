@@ -598,18 +598,21 @@ void move_source_source_rename(void *data, calldata_t *call_data)
 	obs_data_release(settings);
 }
 
-obs_source_t *move_source_get_source(void *data)
+obs_source_t *move_source_get_source(void *data, const char *name)
 {
 	struct move_source_info *move_source = data;
-	return obs_sceneitem_get_source(move_source->scene_item);
+	obs_source_t *source = obs_sceneitem_get_source(move_source->scene_item);
+	if (!source)
+		return NULL;
+	return obs_source_get_filter_by_name(source, name);
 }
 
 static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_source_info *move_source = bzalloc(sizeof(struct move_source_info));
 	move_filter_init(&move_source->move_filter, source, (void (*)(void *))move_source_start);
-	move_source->move_filter.get_alternative_source = move_source_get_source;
-	obs_source_update(source, NULL);
+	move_source->move_filter.get_alternative_filter = move_source_get_source;
+	obs_source_update(source, settings);
 	signal_handler_connect(obs_get_signal_handler(), "source_rename", move_source_source_rename, move_source);
 
 	return move_source;

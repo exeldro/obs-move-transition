@@ -6,9 +6,10 @@ bool is_move_filter(const char *filter_id)
 {
 	if (!filter_id)
 		return false;
-	return strcmp(filter_id, MOVE_SOURCE_FILTER_ID) == 0 || strcmp(filter_id, MOVE_VALUE_FILTER_ID) == 0 ||
-	       strcmp(filter_id, MOVE_AUDIO_VALUE_FILTER_ID) == 0 || strcmp(filter_id, MOVE_ACTION_FILTER_ID) == 0 ||
-	       strcmp(filter_id, MOVE_AUDIO_ACTION_FILTER_ID) == 0 || strcmp(filter_id, MOVE_DIRECTSHOW_FILTER_ID) == 0;
+	return strcmp(filter_id, MOVE_SOURCE_FILTER_ID) == 0 || strcmp(filter_id, MOVE_SOURCE_SWAP_FILTER_ID) == 0 ||
+	       strcmp(filter_id, MOVE_VALUE_FILTER_ID) == 0 || strcmp(filter_id, MOVE_AUDIO_VALUE_FILTER_ID) == 0 ||
+	       strcmp(filter_id, MOVE_ACTION_FILTER_ID) == 0 || strcmp(filter_id, MOVE_AUDIO_ACTION_FILTER_ID) == 0 ||
+	       strcmp(filter_id, MOVE_DIRECTSHOW_FILTER_ID) == 0;
 }
 
 void move_filter_init(struct move_filter *move_filter, obs_source_t *source, void (*move_start)(void *data))
@@ -78,10 +79,8 @@ void move_filter_start_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey
 			return;
 		}
 		filter = obs_source_get_filter_by_name(parent, next_move_name);
-		if (!filter && move_filter->get_alternative_source) {
-			obs_source_t *alternative_source = move_filter->get_alternative_source(move_filter);
-			if (alternative_source)
-				filter = obs_source_get_filter_by_name(alternative_source, next_move_name);
+		if (!filter && move_filter->get_alternative_filter) {
+			filter = move_filter->get_alternative_filter(move_filter, next_move_name);
 		}
 
 		if (filter) {
@@ -232,11 +231,8 @@ bool move_filter_start_internal(struct move_filter *move_filter)
 		obs_source_t *parent = obs_filter_get_parent(move_filter->source);
 		if (parent) {
 			obs_source_t *filter = obs_source_get_filter_by_name(parent, move_filter->simultaneous_move_name);
-			if (!filter && move_filter->get_alternative_source) {
-				obs_source_t *alternative_source = move_filter->get_alternative_source(move_filter);
-				if (alternative_source)
-					filter = obs_source_get_filter_by_name(alternative_source,
-									       move_filter->simultaneous_move_name);
+			if (!filter && move_filter->get_alternative_filter) {
+				filter = move_filter->get_alternative_filter(move_filter, move_filter->simultaneous_move_name);
 			}
 
 			if (filter) {
@@ -280,11 +276,8 @@ extern void move_filter_ended(struct move_filter *move_filter)
 			if (parent) {
 				obs_source_t *filter = obs_source_get_filter_by_name(parent, move_filter->next_move_name);
 
-				if (!filter && move_filter->get_alternative_source) {
-					obs_source_t *alternative_source = move_filter->get_alternative_source(move_filter);
-					if (alternative_source)
-						filter = obs_source_get_filter_by_name(alternative_source,
-										       move_filter->next_move_name);
+				if (!filter && move_filter->get_alternative_filter) {
+					filter = move_filter->get_alternative_filter(move_filter, move_filter->next_move_name);
 				}
 
 				if (filter) {

@@ -5,6 +5,7 @@
 #include "version.h"
 
 #define MOVE_SOURCE_FILTER_ID "move_source_filter"
+#define MOVE_SOURCE_SWAP_FILTER_ID "move_source_swap_filter"
 #define MOVE_VALUE_FILTER_ID "move_value_filter"
 #define MOVE_AUDIO_VALUE_FILTER_ID "move_audio_value_filter"
 #define AUDIO_MOVE_FILTER_ID "audio_move_filter"
@@ -253,7 +254,7 @@ struct move_filter {
 	bool reverse;
 	bool enabled_match_moving;
 	void (*move_start)(void *data);
-	obs_source_t *(*get_alternative_source)(void *data);
+	obs_source_t *(*get_alternative_filter)(void *data, const char *name);
 };
 
 bool is_move_filter(const char *filter_id);

@@ -25,6 +25,7 @@ target_sources(${PROJECT_NAME} PRIVATE
 	move-transition-override-filter.c
 	move-filter.c
 	move-source-filter.c
+	move-source-swap-filter.c
 	move-value-filter.c
 	move-action-filter.c
 	audio-move.c

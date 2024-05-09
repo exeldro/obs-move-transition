@@ -1064,7 +1064,7 @@ static void *nv_move_create(obs_data_t *settings, obs_source_t *context)
 	}
 	obs_leave_graphics();
 
-	obs_source_update(context, NULL);
+	obs_source_update(context, settings);
 
 	return filter;
 }
