@@ -165,6 +165,40 @@ static bool find_sceneitem(obs_scene_t *scene, obs_sceneitem_t *scene_item, void
 	return !move_source_swap->scene_item1 || !move_source_swap->scene_item2;
 }
 
+static void move_source_swap_ended(struct move_source_swap_info *move_source_swap)
+{
+	move_filter_ended(&move_source_swap->move_filter);
+	if (move_source_swap->swap_order == SWAP_END) {
+		int order1 = obs_sceneitem_get_order_position(move_source_swap->scene_item1);
+		int order2 = obs_sceneitem_get_order_position(move_source_swap->scene_item2);
+		if (order1 < order2) {
+			obs_sceneitem_set_order_position(move_source_swap->scene_item2, order1);
+			obs_sceneitem_set_order_position(move_source_swap->scene_item1, order2);
+		} else {
+			obs_sceneitem_set_order_position(move_source_swap->scene_item1, order2);
+			obs_sceneitem_set_order_position(move_source_swap->scene_item2, order1);
+		}
+	}
+	if (move_source_swap->swap_visibility == SWAP_END) {
+		bool vis1 = obs_sceneitem_visible(move_source_swap->scene_item1);
+		bool vis2 = obs_sceneitem_visible(move_source_swap->scene_item2);
+		if (vis1 != vis2) {
+			obs_sceneitem_set_visible(move_source_swap->scene_item1, vis2);
+			obs_sceneitem_set_visible(move_source_swap->scene_item2, vis1);
+		}
+	}
+	if (move_source_swap->swap_mute == SWAP_END) {
+		obs_source_t *source1 = obs_sceneitem_get_source(move_source_swap->scene_item1);
+		obs_source_t *source2 = obs_sceneitem_get_source(move_source_swap->scene_item2);
+		bool muted1 = obs_source_muted(source1);
+		bool muted2 = obs_source_muted(source2);
+		if (muted1 != muted2) {
+			obs_source_set_muted(source1, muted2);
+			obs_source_set_muted(source2, muted1);
+		}
+	}
+}
+
 static void move_source_swap_start(struct move_source_swap_info *move_source_swap)
 {
 	if ((!move_source_swap->scene_item1 && move_source_swap->source_name1 && strlen(move_source_swap->source_name1)) ||
@@ -178,9 +212,11 @@ static void move_source_swap_start(struct move_source_swap_info *move_source_swa
 				obs_scene_enum_items(scene, find_sceneitem, move_source_swap);
 		}
 	}
-	if (!move_source_swap->scene_item1 || !move_source_swap->scene_item2 ||
-	    move_source_swap->scene_item1 == move_source_swap->scene_item2)
+	if (!move_source_swap->scene_item1 || !move_source_swap->scene_item2) {
+		move_source_swap->move_filter.moving = false;
+		move_source_swap_ended(move_source_swap);
 		return;
+	}
 	if (!move_filter_start_internal(&move_source_swap->move_filter))
 		return;
 	if (move_source_swap->swap_order == SWAP_START) {
@@ -676,40 +712,6 @@ static void move_source_swap_video_render(void *data, gs_effect_t *effect)
 	obs_source_skip_video_filter(filter->move_filter.source);
 }
 
-static void move_source_swap_ended(struct move_source_swap_info *move_source_swap)
-{
-	move_filter_ended(&move_source_swap->move_filter);
-	if (move_source_swap->swap_order == SWAP_END) {
-		int order1 = obs_sceneitem_get_order_position(move_source_swap->scene_item1);
-		int order2 = obs_sceneitem_get_order_position(move_source_swap->scene_item2);
-		if (order1 < order2) {
-			obs_sceneitem_set_order_position(move_source_swap->scene_item2, order1);
-			obs_sceneitem_set_order_position(move_source_swap->scene_item1, order2);
-		} else {
-			obs_sceneitem_set_order_position(move_source_swap->scene_item1, order2);
-			obs_sceneitem_set_order_position(move_source_swap->scene_item2, order1);
-		}
-	}
-	if (move_source_swap->swap_visibility == SWAP_END) {
-		bool vis1 = obs_sceneitem_visible(move_source_swap->scene_item1);
-		bool vis2 = obs_sceneitem_visible(move_source_swap->scene_item2);
-		if (vis1 != vis2) {
-			obs_sceneitem_set_visible(move_source_swap->scene_item1, vis2);
-			obs_sceneitem_set_visible(move_source_swap->scene_item2, vis1);
-		}
-	}
-	if (move_source_swap->swap_mute == SWAP_END) {
-		obs_source_t *source1 = obs_sceneitem_get_source(move_source_swap->scene_item1);
-		obs_source_t *source2 = obs_sceneitem_get_source(move_source_swap->scene_item2);
-		bool muted1 = obs_source_muted(source1);
-		bool muted2 = obs_source_muted(source2);
-		if (muted1 != muted2) {
-			obs_source_set_muted(source1, muted2);
-			obs_source_set_muted(source2, muted1);
-		}
-	}
-}
-
 void vec2_bezier(struct vec2 *dst, struct vec2 *begin, struct vec2 *control, struct vec2 *end, const float t);
 
 static void move_source_swap_tick(void *data, float seconds)
@@ -721,6 +723,7 @@ static void move_source_swap_tick(void *data, float seconds)
 
 	if (!move_source_swap->scene_item1 || !move_source_swap->scene_item2) {
 		move_source_swap->move_filter.moving = false;
+		move_source_swap_ended(move_source_swap);
 		return;
 	}
 

@@ -200,7 +200,7 @@ void move_values_load_properties(struct move_value_info *move_value, obs_source_
 		}
 		obs_data_t *data_from = obs_source_get_settings(source);
 		const char *source_id = obs_source_get_unversioned_id(source);
-		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+		if (source_id && strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
 			load_move_source_properties(move_value->settings, settings, data_from);
 		}
 		load_properties(sps, move_value->settings, settings, data_from);
@@ -582,7 +582,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INVALID) {
 		const char *source_id = obs_source_get_unversioned_id(source);
-		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+		if (source_id && strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
 			if (strcmp(move_value->setting_name, "pos.x") == 0) {
 				obs_data_t *pos = obs_data_get_obj(ss, "pos");
 				const double value = obs_data_get_double(pos, "x");
@@ -730,7 +730,7 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property, vo
 	obs_data_t *settings = obs_source_get_settings(move_value->move_filter.source);
 	obs_data_t *ss = obs_source_get_settings(source);
 	const char *source_id = obs_source_get_unversioned_id(source);
-	const bool is_move_source = strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
+	const bool is_move_source = source_id && strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
 
 	const size_t count = obs_data_array_count(move_value->settings);
 	for (size_t i = 0; i < count; i++) {
@@ -1140,7 +1140,7 @@ bool move_value_setting_changed(void *data, obs_properties_t *props, obs_propert
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
 	if (prop_type == OBS_PROPERTY_INVALID) {
 		const char *source_id = obs_source_get_unversioned_id(source);
-		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+		if (source_id && strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
 			if (strcmp(setting_name, "pos.x") == 0) {
 				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
 					obs_property_set_visible(prop_float, true);
@@ -1814,7 +1814,7 @@ void move_value_tick(void *data, float seconds)
 		return;
 	obs_data_t *ss = obs_source_get_settings(source);
 	const char *source_id = obs_source_get_unversioned_id(source);
-	const bool is_move_source = strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
+	const bool is_move_source = source_id && strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
 	bool update = true;
 	if (move_value->settings) {
 		const size_t count = obs_data_array_count(move_value->settings);
