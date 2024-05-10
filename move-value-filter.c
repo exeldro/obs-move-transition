@@ -60,6 +60,64 @@ struct move_value_info {
 	char *format;
 };
 
+static void load_move_source_setting(obs_data_array_t *array, obs_data_t *settings_to, obs_data_t *settings_from,
+				     const char *obj_name, const char *var_name, const char *setting_name, bool is_float)
+{
+
+	obs_data_t *obj = NULL;
+	if (obj_name && strlen(obj_name)) {
+		obj = obs_data_get_obj(settings_from, obj_name);
+	} else {
+		obs_data_addref(settings_from);
+		obj = settings_from;
+	}
+	obs_data_t *setting = NULL;
+	const size_t count = obs_data_array_count(array);
+	for (size_t i = 0; i < count; i++) {
+		obs_data_t *item2 = obs_data_array_item(array, i);
+		const char *setting_name2 = obs_data_get_string(item2, S_SETTING_NAME);
+		if (strcmp(setting_name2, setting_name) == 0) {
+			setting = item2;
+		}
+		obs_data_release(item2);
+	}
+	if (!setting) {
+		setting = obs_data_create();
+		obs_data_set_string(setting, S_SETTING_NAME, setting_name);
+		obs_data_array_push_back(array, setting);
+	}
+	if (is_float) {
+		obs_data_set_int(setting, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+		const double to = obs_data_get_double(settings_to, setting_name);
+		obs_data_set_double(setting, S_SETTING_TO, to);
+		const double from = obs_data_get_double(obj, var_name);
+		obs_data_set_double(setting, S_SETTING_FROM, from);
+
+	} else {
+		obs_data_set_int(setting, S_VALUE_TYPE, MOVE_VALUE_INT);
+		const long long to = obs_data_get_int(settings_to, setting_name);
+		obs_data_set_int(setting, S_SETTING_TO, to);
+		const long long from = obs_data_get_int(obj, var_name);
+		obs_data_set_int(setting, S_SETTING_FROM, from);
+	}
+	obs_data_release(obj);
+}
+
+static void load_move_source_properties(obs_data_array_t *array, obs_data_t *settings_to, obs_data_t *settings_from)
+{
+	load_move_source_setting(array, settings_to, settings_from, "pos", "x", "pos.x", true);
+	load_move_source_setting(array, settings_to, settings_from, "pos", "y", "pos.y", true);
+	load_move_source_setting(array, settings_to, settings_from, "scale", "x", "scale.x", true);
+	load_move_source_setting(array, settings_to, settings_from, "scale", "y", "scale.y", true);
+	load_move_source_setting(array, settings_to, settings_from, "bounds", "x", "bounds.x", true);
+	load_move_source_setting(array, settings_to, settings_from, "bounds", "y", "bounds.y", true);
+	load_move_source_setting(array, settings_to, settings_from, "crop", "left", "crop.left", false);
+	load_move_source_setting(array, settings_to, settings_from, "crop", "top", "crop.top", false);
+	load_move_source_setting(array, settings_to, settings_from, "crop", "right", "crop.right", false);
+	load_move_source_setting(array, settings_to, settings_from, "crop", "bottom", "crop.bottom", false);
+	load_move_source_setting(array, settings_to, settings_from, NULL, "rot", "rot", true);
+}
+
 static void load_properties(obs_properties_t *props_from, obs_data_array_t *array, obs_data_t *settings_to,
 			    obs_data_t *settings_from)
 {
@@ -77,6 +135,7 @@ static void load_properties(obs_properties_t *props_from, obs_data_array_t *arra
 			if (strcmp(setting_name2, name) == 0) {
 				setting = item2;
 			}
+			obs_data_release(item2);
 		}
 
 		const enum obs_property_type prop_type = obs_property_get_type(prop_from);
@@ -140,6 +199,10 @@ void move_values_load_properties(struct move_value_info *move_value, obs_source_
 			}
 		}
 		obs_data_t *data_from = obs_source_get_settings(source);
+		const char *source_id = obs_source_get_unversioned_id(source);
+		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+			load_move_source_properties(move_value->settings, settings, data_from);
+		}
 		load_properties(sps, move_value->settings, settings, data_from);
 		obs_data_release(data_from);
 		obs_properties_destroy(sps);
@@ -503,8 +566,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
 		obs_data_release(settings);
 		return true;
-	}
-	if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
+	} else if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
 		const double value = (double)obs_source_get_balance_value(source) * 100.0;
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
@@ -518,8 +580,98 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 	obs_data_t *ss = obs_source_get_settings(source);
 
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
-
-	if (prop_type == OBS_PROPERTY_INT) {
+	if (prop_type == OBS_PROPERTY_INVALID) {
+		const char *source_id = obs_source_get_unversioned_id(source);
+		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+			if (strcmp(move_value->setting_name, "pos.x") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				const double value = obs_data_get_double(pos, "x");
+				obs_data_release(pos);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "pos.y") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				const double value = obs_data_get_double(pos, "y");
+				obs_data_release(pos);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "scale.x") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				const double value = obs_data_get_double(scale, "x");
+				obs_data_release(scale);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "scale.y") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				const double value = obs_data_get_double(scale, "y");
+				obs_data_release(scale);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "bounds.x") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				const double value = obs_data_get_double(bounds, "x");
+				obs_data_release(bounds);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "bounds.y") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				const double value = obs_data_get_double(bounds, "y");
+				obs_data_release(bounds);
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "crop.left") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				const long long value = obs_data_get_int(crop, "left");
+				obs_data_release(crop);
+				obs_data_set_int(settings, S_SETTING_INT, value);
+				obs_data_set_int(settings, S_SETTING_INT_MIN, value);
+				obs_data_set_int(settings, S_SETTING_INT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "crop.top") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				const long long value = obs_data_get_int(crop, "top");
+				obs_data_release(crop);
+				obs_data_set_int(settings, S_SETTING_INT, value);
+				obs_data_set_int(settings, S_SETTING_INT_MIN, value);
+				obs_data_set_int(settings, S_SETTING_INT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "crop.right") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				const long long value = obs_data_get_int(crop, "right");
+				obs_data_release(crop);
+				obs_data_set_int(settings, S_SETTING_INT, value);
+				obs_data_set_int(settings, S_SETTING_INT_MIN, value);
+				obs_data_set_int(settings, S_SETTING_INT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "crop.bottom") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				const long long value = obs_data_get_int(crop, "bottom");
+				obs_data_release(crop);
+				obs_data_set_int(settings, S_SETTING_INT, value);
+				obs_data_set_int(settings, S_SETTING_INT_MIN, value);
+				obs_data_set_int(settings, S_SETTING_INT_MAX, value);
+				settings_changed = true;
+			} else if (strcmp(move_value->setting_name, "rot") == 0) {
+				const double value = obs_data_get_double(ss, "rot");
+				obs_data_set_double(settings, S_SETTING_FLOAT, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
+				obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+				settings_changed = true;
+			}
+		}
+	} else if (prop_type == OBS_PROPERTY_INT) {
 		const long long value = obs_data_get_int(ss, move_value->setting_name);
 		obs_data_set_int(settings, S_SETTING_INT, value);
 		obs_data_set_int(settings, S_SETTING_INT_MIN, value);
@@ -577,12 +729,102 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property, vo
 
 	obs_data_t *settings = obs_source_get_settings(move_value->move_filter.source);
 	obs_data_t *ss = obs_source_get_settings(source);
+	const char *source_id = obs_source_get_unversioned_id(source);
+	const bool is_move_source = strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
 
 	const size_t count = obs_data_array_count(move_value->settings);
 	for (size_t i = 0; i < count; i++) {
 		obs_data_t *item = obs_data_array_item(move_value->settings, i);
 		const char *name = obs_data_get_string(item, S_SETTING_NAME);
 		const long long value_type = obs_data_get_int(item, S_VALUE_TYPE);
+		obs_data_release(item);
+		if (is_move_source) {
+			if (strcmp(name, "pos.x") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				if (pos) {
+					const double value = obs_data_get_double(pos, "x");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(pos);
+					continue;
+				}
+			} else if (strcmp(name, "pos.y") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				if (pos) {
+					const double value = obs_data_get_double(pos, "y");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(pos);
+					continue;
+				}
+			} else if (strcmp(name, "scale.x") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				if (scale) {
+					const double value = obs_data_get_double(scale, "x");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(scale);
+					continue;
+				}
+			} else if (strcmp(name, "scale.y") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				if (scale) {
+					const double value = obs_data_get_double(scale, "y");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(scale);
+					continue;
+				}
+			} else if (strcmp(name, "bounds.x") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				if (bounds) {
+					const double value = obs_data_get_double(bounds, "x");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(bounds);
+					continue;
+				}
+			} else if (strcmp(name, "bounds.y") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				if (bounds) {
+					const double value = obs_data_get_double(bounds, "y");
+					obs_data_set_double(settings, name, value);
+					obs_data_release(bounds);
+					continue;
+				}
+			} else if (strcmp(name, "crop.left") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				if (crop) {
+					const long long value = obs_data_get_int(crop, "left");
+					obs_data_set_int(settings, name, value);
+					obs_data_release(crop);
+					continue;
+				}
+			} else if (strcmp(name, "crop.top") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				if (crop) {
+					const long long value = obs_data_get_int(crop, "top");
+					obs_data_set_int(settings, name, value);
+					obs_data_release(crop);
+					continue;
+				}
+			} else if (strcmp(name, "crop.right") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				if (crop) {
+					const long long value = obs_data_get_int(crop, "right");
+					obs_data_set_int(settings, name, value);
+					obs_data_release(crop);
+					continue;
+				}
+			} else if (strcmp(name, "crop.bottom") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				if (crop) {
+					const long long value = obs_data_get_int(crop, "bottom");
+					obs_data_set_int(settings, name, value);
+					obs_data_release(crop);
+					continue;
+				}
+			} else if (strcmp(name, "rot") == 0) {
+				const double value = obs_data_get_double(ss, "rot");
+				obs_data_set_double(settings, name, value);
+				continue;
+			}
+		}
 		if (value_type == MOVE_VALUE_INT) {
 			const long long value = obs_data_get_int(ss, name);
 			obs_data_set_int(settings, name, value);
@@ -600,6 +842,9 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property, vo
 	}
 
 	if (count > 0) {
+		if (is_move_source) {
+			load_move_source_properties(move_value->settings, settings, ss);
+		}
 		obs_properties_t *sps = obs_source_properties(source);
 		load_properties(sps, move_value->settings, settings, ss);
 		obs_properties_destroy(sps);
@@ -726,6 +971,30 @@ bool move_value_filter_changed(void *data, obs_properties_t *props, obs_property
 	if (obs_source_get_type(source) == OBS_SOURCE_TYPE_INPUT && (obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO)) {
 		obs_property_list_add_string(p, obs_module_text("Setting.Volume"), VOLUME_SETTING);
 		obs_property_list_add_string(p, obs_module_text("Setting.Balance"), BALANCE_SETTING);
+	}
+	if (strcmp(obs_source_get_unversioned_id(source), MOVE_SOURCE_FILTER_ID) == 0) {
+		obs_property_list_add_string(p, obs_module_text("PosX"), "pos.x");
+		obs_properties_add_float(g, "pos.x", obs_module_text("PosX"), -10000.0, 10000.0, 0.1);
+		obs_property_list_add_string(p, obs_module_text("PosY"), "pos.y");
+		obs_properties_add_float(g, "pos.y", obs_module_text("PosY"), -10000.0, 10000.0, 0.1);
+		obs_property_list_add_string(p, obs_module_text("ScaleX"), "scale.x");
+		obs_properties_add_float(g, "scale.x", obs_module_text("ScaleX"), -10000.0, 10000.0, 0.001);
+		obs_property_list_add_string(p, obs_module_text("ScaleY"), "scale.y");
+		obs_properties_add_float(g, "scale.y", obs_module_text("ScaleY"), -10000.0, 10000.0, 0.001);
+		obs_property_list_add_string(p, obs_module_text("BoundsX"), "bounds.x");
+		obs_properties_add_float(g, "bounds.x", obs_module_text("BoundsX"), -10000.0, 10000.0, 0.1);
+		obs_property_list_add_string(p, obs_module_text("BoundsY"), "bounds.y");
+		obs_properties_add_float(g, "bounds.y", obs_module_text("BoundsY"), -10000.0, 10000.0, 0.1);
+		obs_property_list_add_string(p, obs_module_text("CropLeft"), "crop.left");
+		obs_properties_add_int(g, "crop.left", obs_module_text("CropLeft"), 0, 10000, 1);
+		obs_property_list_add_string(p, obs_module_text("CropTop"), "crop.top");
+		obs_properties_add_int(g, "crop.top", obs_module_text("CropTop"), 0, 10000, 1);
+		obs_property_list_add_string(p, obs_module_text("CropRight"), "crop.right");
+		obs_properties_add_int(g, "crop.right", obs_module_text("CropRight"), 0, 10000, 1);
+		obs_property_list_add_string(p, obs_module_text("CropBottom"), "crop.bottom");
+		obs_properties_add_int(g, "crop.bottom", obs_module_text("CropBottom"), 0, 10000, 1);
+		obs_property_list_add_string(p, obs_module_text("Rotation"), S_ROT);
+		obs_properties_add_float_slider(g, S_ROT, obs_module_text("Rotation"), -360.0, 360.0, 0.1);
 	}
 
 	obs_properties_t *sps = obs_source_properties(source);
@@ -869,7 +1138,394 @@ bool move_value_setting_changed(void *data, obs_properties_t *props, obs_propert
 	obs_properties_t *sps = obs_source_properties(source);
 	obs_property_t *sp = obs_properties_get(sps, setting_name);
 	const enum obs_property_type prop_type = obs_property_get_type(sp);
-	if (prop_type == OBS_PROPERTY_INT) {
+	if (prop_type == OBS_PROPERTY_INVALID) {
+		const char *source_id = obs_source_get_unversioned_id(source);
+		if (strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0) {
+			if (strcmp(setting_name, "pos.x") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, " px");
+					if (refresh) {
+						obs_data_t *pos = obs_data_get_obj(ss, "pos");
+						if (pos) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(pos, "x"));
+							obs_data_release(pos);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float_min, " px");
+					obs_property_float_set_suffix(prop_float_max, " px");
+					if (refresh) {
+						obs_data_t *pos = obs_data_get_obj(ss, "pos");
+						if (pos) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(pos, "x"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(pos, "x"));
+							obs_data_release(pos);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "pos.y") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, " px");
+					if (refresh) {
+						obs_data_t *pos = obs_data_get_obj(ss, "pos");
+						if (pos) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(pos, "y"));
+							obs_data_release(pos);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float_min, " px");
+					obs_property_float_set_suffix(prop_float_max, " px");
+					if (refresh) {
+						obs_data_t *pos = obs_data_get_obj(ss, "pos");
+						if (pos) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(pos, "y"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(pos, "y"));
+							obs_data_release(pos);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "scale.x") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_suffix(prop_float, "");
+					if (refresh) {
+						obs_data_t *scale = obs_data_get_obj(ss, "scale");
+						if (scale) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(scale, "x"));
+							obs_data_release(scale);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_suffix(prop_float_min, "");
+					obs_property_float_set_suffix(prop_float_max, "");
+					if (refresh) {
+						obs_data_t *scale = obs_data_get_obj(ss, "scale");
+						if (scale) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(scale, "x"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(scale, "x"));
+							obs_data_release(scale);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "scale.y") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_suffix(prop_float, "");
+					if (refresh) {
+						obs_data_t *scale = obs_data_get_obj(ss, "scale");
+						if (scale) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(scale, "y"));
+							obs_data_release(scale);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.001);
+					obs_property_float_set_suffix(prop_float_min, "");
+					obs_property_float_set_suffix(prop_float_max, "");
+					if (refresh) {
+						obs_data_t *scale = obs_data_get_obj(ss, "scale");
+						if (scale) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(scale, "y"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(scale, "y"));
+							obs_data_release(scale);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "bounds.x") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, " px");
+					if (refresh) {
+						obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+						if (bounds) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(bounds, "x"));
+							obs_data_release(bounds);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float_min, " px");
+					obs_property_float_set_suffix(prop_float_max, " px");
+					if (refresh) {
+						obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+						if (bounds) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(bounds, "x"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(bounds, "x"));
+							obs_data_release(bounds);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "bounds.y") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, " px");
+					if (refresh) {
+						obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+						if (bounds) {
+							obs_data_set_double(settings, S_SETTING_FLOAT,
+									    obs_data_get_double(bounds, "y"));
+							obs_data_release(bounds);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_limits(prop_float_max, -100000.0, 100000.0, 0.1);
+					obs_property_float_set_suffix(prop_float_min, " px");
+					obs_property_float_set_suffix(prop_float_max, " px");
+					if (refresh) {
+						obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+						if (bounds) {
+							obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+									    obs_data_get_double(bounds, "y"));
+							obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+									    obs_data_get_double(bounds, "y"));
+							obs_data_release(bounds);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			} else if (strcmp(setting_name, "crop.left") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT, obs_data_get_int(crop, "left"));
+							obs_data_release(crop);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, -1000, 1000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_int_min, true);
+					obs_property_set_visible(prop_int_max, true);
+					obs_property_int_set_limits(prop_int_min, 0, 100000, 1);
+					obs_property_int_set_limits(prop_int_max, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int_min, " px");
+					obs_property_int_set_suffix(prop_int_max, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT_MIN,
+									 obs_data_get_int(crop, "left"));
+							obs_data_set_int(settings, S_SETTING_INT_MAX,
+									 obs_data_get_int(crop, "left"));
+							obs_data_release(crop);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_INT);
+			} else if (strcmp(setting_name, "crop.top") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT, obs_data_get_int(crop, "top"));
+							obs_data_release(crop);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, -1000, 1000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_int_min, true);
+					obs_property_set_visible(prop_int_max, true);
+					obs_property_int_set_limits(prop_int_min, 0, 100000, 1);
+					obs_property_int_set_limits(prop_int_max, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int_min, " px");
+					obs_property_int_set_suffix(prop_int_max, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT_MIN,
+									 obs_data_get_int(crop, "top"));
+							obs_data_set_int(settings, S_SETTING_INT_MAX,
+									 obs_data_get_int(crop, "top"));
+							obs_data_release(crop);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_INT);
+			} else if (strcmp(setting_name, "crop.right") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT, obs_data_get_int(crop, "right"));
+							obs_data_release(crop);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, -1000, 1000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_int_min, true);
+					obs_property_set_visible(prop_int_max, true);
+					obs_property_int_set_limits(prop_int_min, 0, 100000, 1);
+					obs_property_int_set_limits(prop_int_max, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int_min, " px");
+					obs_property_int_set_suffix(prop_int_max, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT_MIN,
+									 obs_data_get_int(crop, "right"));
+							obs_data_set_int(settings, S_SETTING_INT_MAX,
+									 obs_data_get_int(crop, "right"));
+							obs_data_release(crop);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_INT);
+			} else if (strcmp(setting_name, "crop.bottom") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT, obs_data_get_int(crop, "bottom"));
+							obs_data_release(crop);
+						}
+					}
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_int, true);
+					obs_property_int_set_limits(prop_int, -1000, 1000, 1);
+					obs_property_int_set_suffix(prop_int, " px");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_int_min, true);
+					obs_property_set_visible(prop_int_max, true);
+					obs_property_int_set_limits(prop_int_min, 0, 100000, 1);
+					obs_property_int_set_limits(prop_int_max, 0, 100000, 1);
+					obs_property_int_set_suffix(prop_int_min, " px");
+					obs_property_int_set_suffix(prop_int_max, " px");
+					if (refresh) {
+						obs_data_t *crop = obs_data_get_obj(ss, "crop");
+						if (crop) {
+							obs_data_set_int(settings, S_SETTING_INT_MIN,
+									 obs_data_get_int(crop, "bottom"));
+							obs_data_set_int(settings, S_SETTING_INT_MAX,
+									 obs_data_get_int(crop, "bottom"));
+							obs_data_release(crop);
+						}
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_INT);
+			} else if (strcmp(setting_name, "rot") == 0) {
+				if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -360.0, 360.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+					if (refresh)
+						obs_data_set_double(settings, S_SETTING_FLOAT, obs_data_get_double(ss, "rot"));
+				} else if (move_value_type == MOVE_VALUE_TYPE_SETTING_ADD) {
+					obs_property_set_visible(prop_float, true);
+					obs_property_float_set_limits(prop_float, -1000.0, 1000.0, 0.1);
+					obs_property_float_set_suffix(prop_float, "");
+				} else if (move_value_type == MOVE_VALUE_TYPE_RANDOM) {
+					obs_property_set_visible(prop_float_min, true);
+					obs_property_set_visible(prop_float_max, true);
+					obs_property_float_set_limits(prop_float_min, -360.0, 360.0, 0.1);
+					obs_property_float_set_limits(prop_float_max, -360.0, 360.0, 0.1);
+					obs_property_float_set_suffix(prop_float_min, "");
+					obs_property_float_set_suffix(prop_float_max, "");
+					if (refresh) {
+						obs_data_set_double(settings, S_SETTING_FLOAT_MIN,
+								    obs_data_get_double(ss, setting_name));
+						obs_data_set_double(settings, S_SETTING_FLOAT_MAX,
+								    obs_data_get_double(ss, setting_name));
+					}
+				}
+				obs_data_set_int(settings, S_VALUE_TYPE, MOVE_VALUE_FLOAT);
+			}
+		}
+	} else if (prop_type == OBS_PROPERTY_INT) {
 		if (move_value_type == MOVE_VALUE_TYPE_SINGLE_SETTING) {
 			obs_property_set_visible(prop_int, true);
 			obs_property_int_set_limits(prop_int, obs_property_int_min(sp), obs_property_int_max(sp),
@@ -1157,9 +1813,14 @@ void move_value_tick(void *data, float seconds)
 	if (!source)
 		return;
 	obs_data_t *ss = obs_source_get_settings(source);
+	const char *source_id = obs_source_get_unversioned_id(source);
+	const bool is_move_source = strcmp(source_id, MOVE_SOURCE_FILTER_ID) == 0;
 	bool update = true;
 	if (move_value->settings) {
 		const size_t count = obs_data_array_count(move_value->settings);
+		if (is_move_source) {
+			obs_data_set_string(ss, S_TRANSFORM_TEXT, "");
+		}
 		for (size_t i = 0; i < count; i++) {
 			obs_data_t *item = obs_data_array_item(move_value->settings, i);
 			const char *setting_name = obs_data_get_string(item, S_SETTING_NAME);
@@ -1199,6 +1860,27 @@ void move_value_tick(void *data, float seconds)
 		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
 			obs_source_set_balance_value(source, (float)value_int / 100.0f);
 			update = false;
+		} else if (is_move_source) {
+			obs_data_set_string(ss, S_TRANSFORM_TEXT, "");
+			if (strcmp(move_value->setting_name, "crop.left") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				obs_data_set_int(crop, "left", value_int);
+				obs_data_release(crop);
+			} else if (strcmp(move_value->setting_name, "crop.top") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				obs_data_set_int(crop, "top", value_int);
+				obs_data_release(crop);
+			} else if (strcmp(move_value->setting_name, "crop.right") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				obs_data_set_int(crop, "right", value_int);
+				obs_data_release(crop);
+			} else if (strcmp(move_value->setting_name, "crop.bottom") == 0) {
+				obs_data_t *crop = obs_data_get_obj(ss, "crop");
+				obs_data_set_int(crop, "bottom", value_int);
+				obs_data_release(crop);
+			} else {
+				obs_data_set_int(ss, move_value->setting_name, value_int);
+			}
 		} else {
 			obs_data_set_int(ss, move_value->setting_name, value_int);
 		}
@@ -1210,6 +1892,35 @@ void move_value_tick(void *data, float seconds)
 		} else if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
 			obs_source_set_balance_value(source, (float)(value_double / 100.0));
 			update = false;
+		} else if (is_move_source) {
+			obs_data_set_string(ss, S_TRANSFORM_TEXT, "");
+			if (strcmp(move_value->setting_name, "pos.x") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				obs_data_set_double(pos, "x", value_double);
+				obs_data_release(pos);
+			} else if (strcmp(move_value->setting_name, "pos.y") == 0) {
+				obs_data_t *pos = obs_data_get_obj(ss, "pos");
+				obs_data_set_double(pos, "y", value_double);
+				obs_data_release(pos);
+			} else if (strcmp(move_value->setting_name, "scale.x") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				obs_data_set_double(scale, "x", value_double);
+				obs_data_release(scale);
+			} else if (strcmp(move_value->setting_name, "scale.y") == 0) {
+				obs_data_t *scale = obs_data_get_obj(ss, "scale");
+				obs_data_set_double(scale, "y", value_double);
+				obs_data_release(scale);
+			} else if (strcmp(move_value->setting_name, "bounds.x") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				obs_data_set_double(bounds, "x", value_double);
+				obs_data_release(bounds);
+			} else if (strcmp(move_value->setting_name, "bounds.y") == 0) {
+				obs_data_t *bounds = obs_data_get_obj(ss, "bounds");
+				obs_data_set_double(bounds, "y", value_double);
+				obs_data_release(bounds);
+			} else {
+				obs_data_set_double(ss, move_value->setting_name, value_double);
+			}
 		} else {
 			obs_data_set_double(ss, move_value->setting_name, value_double);
 		}
