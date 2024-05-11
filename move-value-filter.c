@@ -855,19 +855,23 @@ bool move_value_get_values(obs_properties_t *props, obs_property_t *property, vo
 }
 
 void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to, obs_data_t *data_from, obs_data_t *data_to,
-		     obs_property_t *setting_list)
+		     obs_property_t *setting_list, const char *parent_description)
 {
 	obs_property_t *prop_from = obs_properties_first(props_from);
 	for (; prop_from != NULL; obs_property_next(&prop_from)) {
 		const char *name = obs_property_name(prop_from);
 		const char *description = obs_property_description(prop_from);
+		const char *list_description = description;
 		if (!obs_property_visible(prop_from))
 			continue;
+		if ((!description || !strlen(description)) && parent_description && strlen(parent_description))
+			list_description = parent_description;
 		obs_property_t *prop_to = NULL;
 		const enum obs_property_type prop_type = obs_property_get_type(prop_from);
 		if (prop_type == OBS_PROPERTY_GROUP) {
 			obs_properties_t *group_to = obs_properties_create();
-			copy_properties(obs_property_group_content(prop_from), group_to, data_from, data_to, setting_list);
+			copy_properties(obs_property_group_content(prop_from), group_to, data_from, data_to, setting_list,
+					list_description);
 			if (obs_properties_first(group_to) == NULL) {
 				obs_properties_destroy(group_to);
 			} else {
@@ -876,7 +880,7 @@ void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to, o
 			}
 
 		} else if (prop_type == OBS_PROPERTY_INT) {
-			obs_property_list_add_string(setting_list, description, name);
+			obs_property_list_add_string(setting_list, list_description, name);
 			if (obs_property_int_type(prop_from) == OBS_NUMBER_SLIDER) {
 				prop_to = obs_properties_add_int_slider(props_to, name, description,
 									obs_property_int_min(prop_from),
@@ -891,7 +895,7 @@ void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to, o
 			obs_property_int_set_suffix(prop_to, obs_property_int_suffix(prop_from));
 
 		} else if (prop_type == OBS_PROPERTY_FLOAT) {
-			obs_property_list_add_string(setting_list, description, name);
+			obs_property_list_add_string(setting_list, list_description, name);
 			if (obs_property_float_type(prop_from) == OBS_NUMBER_SLIDER) {
 				prop_to = obs_properties_add_float_slider(props_to, name, description,
 									  obs_property_float_min(prop_from),
@@ -906,12 +910,12 @@ void copy_properties(obs_properties_t *props_from, obs_properties_t *props_to, o
 				obs_data_set_default_double(data_to, name, obs_data_get_default_double(data_from, name));
 			obs_property_float_set_suffix(prop_to, obs_property_float_suffix(prop_from));
 		} else if (prop_type == OBS_PROPERTY_COLOR) {
-			obs_property_list_add_string(setting_list, description, name);
+			obs_property_list_add_string(setting_list, list_description, name);
 			prop_to = obs_properties_add_color(props_to, name, description);
 			if (obs_data_has_default_value(data_from, name))
 				obs_data_set_default_int(data_to, name, obs_data_get_default_int(data_from, name));
 		} else if (prop_type == OBS_PROPERTY_COLOR_ALPHA) {
-			obs_property_list_add_string(setting_list, description, name);
+			obs_property_list_add_string(setting_list, list_description, name);
 			prop_to = obs_properties_add_color_alpha(props_to, name, description);
 			if (obs_data_has_default_value(data_from, name))
 				obs_data_set_default_int(data_to, name, obs_data_get_default_int(data_from, name));
@@ -998,7 +1002,7 @@ bool move_value_filter_changed(void *data, obs_properties_t *props, obs_property
 	}
 
 	obs_properties_t *sps = obs_source_properties(source);
-	copy_properties(sps, g, s, settings, p);
+	copy_properties(sps, g, s, settings, p, NULL);
 	obs_properties_destroy(sps);
 
 	obs_data_release(s);
