@@ -2820,6 +2820,7 @@ static void move_video_tick(void *data, float seconds)
 {
 	UNUSED_PARAMETER(seconds);
 	struct move_info *move = data;
+	move->first_frame = false;
 	move_start_init(move, false);
 }
 
@@ -2870,7 +2871,6 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			obs_transition_video_render_direct(move->source, OBS_TRANSITION_SOURCE_B);
 		}
 	}
-	move->first_frame = false;
 
 	UNUSED_PARAMETER(effect);
 }
