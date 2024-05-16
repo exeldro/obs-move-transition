@@ -1752,7 +1752,7 @@ static obs_properties_t *move_value_properties(void *data)
 	obs_property_set_visible(p, false);
 	p = obs_properties_add_color_alpha(setting_value, S_SETTING_COLOR_ALPHA_MIN, obs_module_text("MinValue"));
 	obs_property_set_visible(p, false);
-	p = obs_properties_add_color_alpha(setting_value, S_SETTING_COLOR_ALPHA_MIN, obs_module_text("MaxValue"));
+	p = obs_properties_add_color_alpha(setting_value, S_SETTING_COLOR_ALPHA_MAX, obs_module_text("MaxValue"));
 	obs_property_set_visible(p, false);
 	p = obs_properties_add_text(setting_value, S_SETTING_TEXT, obs_module_text("Text"), OBS_TEXT_MULTILINE);
 	obs_property_set_visible(p, false);

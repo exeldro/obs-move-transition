@@ -633,11 +633,10 @@ static void move_source_destroy(void *data)
 
 	obs_source_t *source = NULL;
 	if (move_source->scene_item) {
-		source = obs_sceneitem_get_source(move_source->scene_item);
+		source = obs_source_get_ref(obs_sceneitem_get_source(move_source->scene_item));
 	}
 	if (!source && move_source->source_name && strlen(move_source->source_name)) {
 		source = obs_get_source_by_name(move_source->source_name);
-		obs_source_release(source);
 	}
 	if (source) {
 		signal_handler_t *sh = obs_source_get_signal_handler(source);
@@ -650,6 +649,7 @@ static void move_source_destroy(void *data)
 			signal_handler_disconnect(sh, "media_ended", move_source_source_media_ended, data);
 			signal_handler_disconnect(sh, "remove", move_source_source_remove, data);
 		}
+		obs_source_release(source);
 	}
 	move_source->scene_item = NULL;
 	move_filter_destroy(&move_source->move_filter);
@@ -1031,6 +1031,9 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaStarted"), START_TRIGGER_MEDIA_STARTED);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaEnded"), START_TRIGGER_MEDIA_ENDED);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.Load"), START_TRIGGER_LOAD);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
 
 	p = obs_properties_add_list(group, S_STOP_TRIGGER, obs_module_text("StopTrigger"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1047,6 +1050,9 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.SourceHide"), START_TRIGGER_SOURCE_HIDE);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaStarted"), START_TRIGGER_MEDIA_STARTED);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MediaEnded"), START_TRIGGER_MEDIA_ENDED);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
 
 	p = obs_properties_add_list(group, S_SIMULTANEOUS_MOVE, obs_module_text("SimultaneousMove"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);

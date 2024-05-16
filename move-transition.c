@@ -2289,6 +2289,45 @@ static bool darray_sceneitem_push_back(obs_scene_t *scene, obs_sceneitem_t *item
 	return true;
 }
 
+static void move_filter_start_matching(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	UNUSED_PARAMETER(param);
+	UNUSED_PARAMETER(parent);
+	if (!is_move_filter(obs_source_get_unversioned_id(child)))
+		return;
+	struct move_filter *move_filter = (struct move_filter *)obs_obj_get_data(child);
+	if (move_filter->start_trigger == START_TRIGGER_MOVE_MATCH)
+		move_filter_start(move_filter);
+	if (move_filter->stop_trigger == START_TRIGGER_MOVE_MATCH)
+		move_filter_stop(move_filter);
+}
+
+static void move_filter_start_in(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	UNUSED_PARAMETER(param);
+	UNUSED_PARAMETER(parent);
+	if (!is_move_filter(obs_source_get_unversioned_id(child)))
+		return;
+	struct move_filter *move_filter = (struct move_filter *)obs_obj_get_data(child);
+	if (move_filter->start_trigger == START_TRIGGER_MOVE_IN)
+		move_filter_start(move_filter);
+	if (move_filter->stop_trigger == START_TRIGGER_MOVE_IN)
+		move_filter_stop(move_filter);
+}
+
+static void move_filter_start_out(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	UNUSED_PARAMETER(param);
+	UNUSED_PARAMETER(parent);
+	if (!is_move_filter(obs_source_get_unversioned_id(child)))
+		return;
+	struct move_filter *move_filter = (struct move_filter *)obs_obj_get_data(child);
+	if (move_filter->start_trigger == START_TRIGGER_MOVE_OUT)
+		move_filter_start(move_filter);
+	if (move_filter->stop_trigger == START_TRIGGER_MOVE_OUT)
+		move_filter_stop(move_filter);
+}
+
 static void move_start_init(struct move_info *move, bool in_graphics)
 {
 	move->t = obs_transition_get_time(move->source);
@@ -2316,6 +2355,12 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 	move->matched_scene_a = false;
 	move->matched_scene_b = false;
 	move->item_pos = 0;
+
+	if (move->scene_source_a)
+		obs_source_enum_filters(move->scene_source_a, move_filter_start_out, NULL);
+	if (move->scene_source_b)
+		obs_source_enum_filters(move->scene_source_b, move_filter_start_in, NULL);
+
 	obs_scene_t *scene_a = obs_scene_from_source(move->scene_source_a);
 	if (!scene_a)
 		scene_a = obs_group_from_source(move->scene_source_a);
@@ -2582,18 +2627,36 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			item->easing_function = move->easing_function_move;
 			item->transition_scale = move->transition_move_scale;
 			item->curve = move->curve_move;
+
+			obs_source_t *source_a = obs_sceneitem_get_source(item->item_a);
+			obs_source_t *source_b = obs_sceneitem_get_source(item->item_b);
+			if (source_a == source_b) {
+				obs_source_enum_filters(source_a, move_filter_start_matching, NULL);
+			} else {
+				if (source_a)
+					obs_source_enum_filters(source_a, move_filter_start_matching, NULL);
+				if (source_b)
+					obs_source_enum_filters(source_b, move_filter_start_matching, NULL);
+			}
+
 		} else if (item->item_b) {
 			item->easing = move->easing_in;
 			item->easing_function = move->easing_function_in;
 			item->position = move->position_in;
 			item->zoom = move->zoom_in;
 			item->curve = move->curve_in;
+
+			obs_source_t *source = obs_sceneitem_get_source(item->item_b);
+			obs_source_enum_filters(source, move_filter_start_in, NULL);
 		} else if (item->item_a) {
 			item->easing = move->easing_out;
 			item->easing_function = move->easing_function_out;
 			item->position = move->position_out;
 			item->zoom = move->zoom_out;
 			item->curve = move->curve_out;
+
+			obs_source_t *source = obs_sceneitem_get_source(item->item_a);
+			obs_source_enum_filters(source, move_filter_start_out, NULL);
 		}
 
 		obs_data_t *settings_a = get_override_filter_settings(item->item_a);
