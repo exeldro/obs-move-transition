@@ -233,8 +233,16 @@ double parse_text(long long format_type, const char *format, const char *text)
 {
 	double value = 0.0;
 	if (format_type == MOVE_VALUE_FORMAT_FLOAT) {
-
-		sscanf(text, format, &value);
+		char *pos = strstr(format, "%");
+		while (pos && (*(pos + 1) < '0' || *(pos + 1) > '9') && *(pos + 1) != '.')
+			pos = strstr(pos + 1, "%");
+		size_t len = pos ? (size_t)(pos - format) : 0;
+		if (pos && ((*(pos + 1) >= '0' && *(pos + 1) <= '9') || *(pos + 1) == '.') && strlen(text) > len &&
+		    memcmp(text, format, len) == 0) {
+			sscanf(text + len, "%lf", &value);
+		} else {
+			sscanf(text, format, &value);
+		}
 	} else if (format_type == MOVE_VALUE_FORMAT_TIME) {
 		char *pos;
 		unsigned int sec = 0;
