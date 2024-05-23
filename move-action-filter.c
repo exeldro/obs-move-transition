@@ -14,9 +14,12 @@
 #define MOVE_ACTION_DISABLE 1
 #define MOVE_ACTION_TOGGLE 2
 
-struct move_action_info {
-	struct move_filter move_filter;
+#define DURATION_TYPE_CUSTOM 0
+#define DURATION_TYPE_TRANSITION 1
+#define DURATION_TYPE_INFINITE 2
 
+struct move_action_action {
+	bool *reverse;
 	char *scene_name;
 	char *sceneitem_name;
 	char *source_name;
@@ -29,13 +32,21 @@ struct move_action_info {
 	long long frontend_action;
 	long long enable;
 	long long audio_track;
+};
 
+struct move_action_info {
+	struct move_filter move_filter;
+
+	uint8_t duration_type;
+
+	struct move_action_action start_action;
+	struct move_action_action end_action;
 	bool start;
 };
 
 bool move_action_load_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 {
-	struct move_action_info *move_action = data;
+	struct move_action_action *move_action = data;
 	if (strcmp(move_action->hotkey_name, obs_hotkey_get_name(key)) != 0)
 		return true;
 	obs_hotkey_registerer_t type = obs_hotkey_get_registerer_type(key);
@@ -61,97 +72,186 @@ bool move_action_load_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *key)
 void move_action_update(void *data, obs_data_t *settings)
 {
 	struct move_action_info *move_action = data;
+	move_action->duration_type = (uint8_t)obs_data_get_int(settings, "duration_type");
+	obs_data_set_bool(settings, S_CUSTOM_DURATION, move_action->duration_type == DURATION_TYPE_CUSTOM);
 	move_filter_update(&move_action->move_filter, settings);
 	bool changed = false;
 
-	move_action->frontend_action = obs_data_get_int(settings, "frontend_action");
-	move_action->audio_track = obs_data_get_int(settings, "audio_track");
-	const char *hotkey_name = obs_data_get_string(settings, "hotkey");
-	long long action = obs_data_get_int(settings, "action");
-	if (action == MOVE_ACTION_NONE && move_action->frontend_action != 0) {
-		action = MOVE_ACTION_FRONTEND;
-		obs_data_set_int(settings, "action", action);
+	move_action->start_action.frontend_action = obs_data_get_int(settings, "frontend_action");
+	move_action->end_action.frontend_action = obs_data_get_int(settings, "end_frontend_action");
+	move_action->start_action.audio_track = obs_data_get_int(settings, "audio_track");
+	move_action->end_action.audio_track = obs_data_get_int(settings, "end_audio_track");
+	const char *start_hotkey_name = obs_data_get_string(settings, "hotkey");
+	const char *end_hotkey_name = obs_data_get_string(settings, "end_hotkey");
+	long long start_action = obs_data_get_int(settings, "action");
+	long long end_action = obs_data_get_int(settings, "end_action");
+	if (start_action == MOVE_ACTION_NONE && move_action->start_action.frontend_action != 0) {
+		start_action = MOVE_ACTION_FRONTEND;
+		obs_data_set_int(settings, "action", start_action);
 	}
-	if (action == MOVE_ACTION_NONE && strlen(hotkey_name)) {
-		action = MOVE_ACTION_SOURCE_HOTKEY;
-		obs_data_set_int(settings, "action", action);
+	if (end_action == MOVE_ACTION_NONE && move_action->end_action.frontend_action != 0) {
+		end_action = MOVE_ACTION_FRONTEND;
+		obs_data_set_int(settings, "end_action", end_action);
+	}
+	if (start_action == MOVE_ACTION_NONE && strlen(start_hotkey_name)) {
+		start_action = MOVE_ACTION_SOURCE_HOTKEY;
+		obs_data_set_int(settings, "action", start_action);
 	}
 
-	if (move_action->action != action) {
-		move_action->action = action;
+	if (end_action == MOVE_ACTION_NONE && strlen(end_hotkey_name)) {
+		end_action = MOVE_ACTION_SOURCE_HOTKEY;
+		obs_data_set_int(settings, "end_action", end_action);
+	}
+
+	if (move_action->start_action.action != start_action) {
+		move_action->start_action.action = start_action;
+		changed = true;
+	}
+	if (move_action->end_action.action != end_action) {
+		move_action->end_action.action = end_action;
 		changed = true;
 	}
 
-	if (action == MOVE_ACTION_SOURCE_HOTKEY || action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_MUTE ||
-	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+	if (start_action == MOVE_ACTION_SOURCE_HOTKEY || start_action == MOVE_ACTION_FILTER_ENABLE ||
+	    start_action == MOVE_ACTION_SOURCE_MUTE || start_action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
 		const char *source_name = obs_data_get_string(settings, "source");
-		if (!move_action->source_name || strcmp(source_name, move_action->source_name) != 0) {
-			bfree(move_action->source_name);
-			move_action->source_name = bstrdup(source_name);
+		if (!move_action->start_action.source_name || strcmp(source_name, move_action->start_action.source_name) != 0) {
+			bfree(move_action->start_action.source_name);
+			move_action->start_action.source_name = bstrdup(source_name);
 			changed = true;
 		}
-	} else if (move_action->source_name) {
-		bfree(move_action->source_name);
-		move_action->source_name = NULL;
+	} else if (move_action->start_action.source_name) {
+		bfree(move_action->start_action.source_name);
+		move_action->start_action.source_name = NULL;
 		changed = true;
 	}
 
-	if (action == MOVE_ACTION_SOURCE_HOTKEY || action == MOVE_ACTION_FRONTEND_HOTKEY) {
-		if (!move_action->hotkey_name || strcmp(hotkey_name, move_action->hotkey_name) != 0) {
-			bfree(move_action->hotkey_name);
-			move_action->hotkey_name = bstrdup(hotkey_name);
+	if (end_action == MOVE_ACTION_SOURCE_HOTKEY || end_action == MOVE_ACTION_FILTER_ENABLE ||
+	    end_action == MOVE_ACTION_SOURCE_MUTE || end_action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+		const char *source_name = obs_data_get_string(settings, "end_source");
+		if (!move_action->end_action.source_name || strcmp(source_name, move_action->end_action.source_name) != 0) {
+			bfree(move_action->end_action.source_name);
+			move_action->end_action.source_name = bstrdup(source_name);
 			changed = true;
 		}
-	} else if (move_action->hotkey_name) {
-		bfree(move_action->hotkey_name);
-		move_action->hotkey_name = NULL;
+	} else if (move_action->end_action.source_name) {
+		bfree(move_action->end_action.source_name);
+		move_action->end_action.source_name = NULL;
+		changed = true;
+	}
+
+	if (start_action == MOVE_ACTION_SOURCE_HOTKEY || start_action == MOVE_ACTION_FRONTEND_HOTKEY) {
+		if (!move_action->start_action.hotkey_name ||
+		    strcmp(start_hotkey_name, move_action->start_action.hotkey_name) != 0) {
+			bfree(move_action->start_action.hotkey_name);
+			move_action->start_action.hotkey_name = bstrdup(start_hotkey_name);
+			changed = true;
+		}
+	} else if (move_action->start_action.hotkey_name) {
+		bfree(move_action->start_action.hotkey_name);
+		move_action->start_action.hotkey_name = NULL;
+		changed = true;
+	}
+	if (end_action == MOVE_ACTION_SOURCE_HOTKEY || end_action == MOVE_ACTION_FRONTEND_HOTKEY) {
+		if (!move_action->end_action.hotkey_name || strcmp(end_hotkey_name, move_action->end_action.hotkey_name) != 0) {
+			bfree(move_action->end_action.hotkey_name);
+			move_action->end_action.hotkey_name = bstrdup(end_hotkey_name);
+			changed = true;
+		}
+	} else if (move_action->end_action.hotkey_name) {
+		bfree(move_action->end_action.hotkey_name);
+		move_action->end_action.hotkey_name = NULL;
 		changed = true;
 	}
 	if (changed) {
-		move_action->hotkey_id = OBS_INVALID_HOTKEY_ID;
-		if (move_action->hotkey_name && strlen(move_action->hotkey_name)) {
-			if (move_action->action == MOVE_ACTION_SOURCE_HOTKEY && move_action->source_name &&
-			    strlen(move_action->source_name))
-				obs_enum_hotkeys(move_action_load_hotkey, move_action);
-			else if (action == MOVE_ACTION_FRONTEND_HOTKEY)
-				obs_enum_hotkeys(move_action_load_hotkey, move_action);
+		move_action->start_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+		if (move_action->start_action.hotkey_name && strlen(move_action->start_action.hotkey_name)) {
+			if (move_action->start_action.action == MOVE_ACTION_SOURCE_HOTKEY &&
+			    move_action->start_action.source_name && strlen(move_action->start_action.source_name))
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
+			else if (start_action == MOVE_ACTION_FRONTEND_HOTKEY)
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
+		}
+		move_action->end_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+		if (move_action->end_action.hotkey_name && strlen(move_action->end_action.hotkey_name)) {
+			if (move_action->end_action.action == MOVE_ACTION_SOURCE_HOTKEY && move_action->end_action.source_name &&
+			    strlen(move_action->end_action.source_name))
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
+			else if (end_action == MOVE_ACTION_FRONTEND_HOTKEY)
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
 		}
 	}
 
-	if (action == MOVE_ACTION_FILTER_ENABLE) {
+	if (start_action == MOVE_ACTION_FILTER_ENABLE) {
 		const char *filter_name = obs_data_get_string(settings, "filter");
-		if (!move_action->filter_name || strcmp(filter_name, move_action->filter_name) != 0) {
-			bfree(move_action->filter_name);
-			move_action->filter_name = bstrdup(filter_name);
+		if (!move_action->start_action.filter_name || strcmp(filter_name, move_action->start_action.filter_name) != 0) {
+			bfree(move_action->start_action.filter_name);
+			move_action->start_action.filter_name = bstrdup(filter_name);
 		}
-	} else if (move_action->filter_name) {
-		bfree(move_action->filter_name);
-		move_action->filter_name = NULL;
+	} else if (move_action->start_action.filter_name) {
+		bfree(move_action->start_action.filter_name);
+		move_action->start_action.filter_name = NULL;
 	}
 
-	if (action == MOVE_ACTION_SOURCE_VISIBILITY) {
+	if (end_action == MOVE_ACTION_FILTER_ENABLE) {
+		const char *filter_name = obs_data_get_string(settings, "end_filter");
+		if (!move_action->end_action.filter_name || strcmp(filter_name, move_action->end_action.filter_name) != 0) {
+			bfree(move_action->end_action.filter_name);
+			move_action->end_action.filter_name = bstrdup(filter_name);
+		}
+	} else if (move_action->end_action.filter_name) {
+		bfree(move_action->end_action.filter_name);
+		move_action->end_action.filter_name = NULL;
+	}
+
+	if (start_action == MOVE_ACTION_SOURCE_VISIBILITY) {
 		const char *scene_name = obs_data_get_string(settings, "scene");
-		if (!move_action->scene_name || strcmp(scene_name, move_action->scene_name) != 0) {
-			bfree(move_action->scene_name);
-			move_action->scene_name = bstrdup(scene_name);
+		if (!move_action->start_action.scene_name || strcmp(scene_name, move_action->start_action.scene_name) != 0) {
+			bfree(move_action->start_action.scene_name);
+			move_action->start_action.scene_name = bstrdup(scene_name);
 		}
-	} else if (move_action->scene_name) {
-		bfree(move_action->scene_name);
-		move_action->scene_name = NULL;
+	} else if (move_action->start_action.scene_name) {
+		bfree(move_action->start_action.scene_name);
+		move_action->start_action.scene_name = NULL;
 	}
 
-	if (action == MOVE_ACTION_SOURCE_VISIBILITY) {
+	if (end_action == MOVE_ACTION_SOURCE_VISIBILITY) {
+		const char *scene_name = obs_data_get_string(settings, "end_scene");
+		if (!move_action->end_action.scene_name || strcmp(scene_name, move_action->end_action.scene_name) != 0) {
+			bfree(move_action->end_action.scene_name);
+			move_action->end_action.scene_name = bstrdup(scene_name);
+		}
+	} else if (move_action->end_action.scene_name) {
+		bfree(move_action->end_action.scene_name);
+		move_action->end_action.scene_name = NULL;
+	}
+
+	if (start_action == MOVE_ACTION_SOURCE_VISIBILITY) {
 		const char *sceneitem_name = obs_data_get_string(settings, "sceneitem");
-		if (!move_action->sceneitem_name || strcmp(sceneitem_name, move_action->sceneitem_name) != 0) {
-			bfree(move_action->sceneitem_name);
-			move_action->sceneitem_name = bstrdup(sceneitem_name);
+		if (!move_action->start_action.sceneitem_name ||
+		    strcmp(sceneitem_name, move_action->start_action.sceneitem_name) != 0) {
+			bfree(move_action->start_action.sceneitem_name);
+			move_action->start_action.sceneitem_name = bstrdup(sceneitem_name);
 		}
-	} else if (move_action->sceneitem_name) {
-		bfree(move_action->sceneitem_name);
-		move_action->sceneitem_name = NULL;
+	} else if (move_action->start_action.sceneitem_name) {
+		bfree(move_action->start_action.sceneitem_name);
+		move_action->start_action.sceneitem_name = NULL;
 	}
 
-	move_action->enable = obs_data_get_int(settings, "enable");
+	if (end_action == MOVE_ACTION_SOURCE_VISIBILITY) {
+		const char *sceneitem_name = obs_data_get_string(settings, "end_sceneitem");
+		if (!move_action->end_action.sceneitem_name ||
+		    strcmp(sceneitem_name, move_action->end_action.sceneitem_name) != 0) {
+			bfree(move_action->end_action.sceneitem_name);
+			move_action->end_action.sceneitem_name = bstrdup(sceneitem_name);
+		}
+	} else if (move_action->end_action.sceneitem_name) {
+		bfree(move_action->end_action.sceneitem_name);
+		move_action->end_action.sceneitem_name = NULL;
+	}
+
+	move_action->start_action.enable = obs_data_get_int(settings, "enable");
+	move_action->end_action.enable = obs_data_get_int(settings, "end_enable");
 }
 
 static const char *move_action_get_name(void *type_data)
@@ -174,7 +274,10 @@ static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_action_info *move_action = bzalloc(sizeof(struct move_action_info));
 	move_filter_init(&move_action->move_filter, source, move_action_start);
-	move_action->hotkey_id = OBS_INVALID_HOTKEY_ID;
+	move_action->start_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+	move_action->end_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+	move_action->start_action.reverse = &move_action->move_filter.reverse;
+	move_action->end_action.reverse = &move_action->move_filter.reverse;
 	obs_source_update(source, settings);
 	return move_action;
 }
@@ -183,11 +286,17 @@ static void move_action_destroy(void *data)
 {
 	struct move_action_info *move_action = data;
 	move_filter_destroy(&move_action->move_filter);
-	bfree(move_action->source_name);
-	bfree(move_action->hotkey_name);
-	bfree(move_action->scene_name);
-	bfree(move_action->sceneitem_name);
-	bfree(move_action->filter_name);
+	bfree(move_action->start_action.source_name);
+	bfree(move_action->start_action.hotkey_name);
+	bfree(move_action->start_action.scene_name);
+	bfree(move_action->start_action.sceneitem_name);
+	bfree(move_action->start_action.filter_name);
+	bfree(move_action->end_action.source_name);
+	bfree(move_action->end_action.hotkey_name);
+	bfree(move_action->end_action.scene_name);
+	bfree(move_action->end_action.sceneitem_name);
+	bfree(move_action->end_action.filter_name);
+
 	bfree(move_action);
 }
 struct hotkey_enum_add_data {
@@ -255,6 +364,43 @@ static bool move_action_source_changed(void *data, obs_properties_t *props, obs_
 		obs_weak_source_release(hd.source);
 	}
 	obs_source_release(source);
+	return true;
+}
+
+static bool move_action_end_source_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	const char *source_name = obs_data_get_string(settings, "end_source");
+	obs_property_t *filter = obs_properties_get(props, "end_filter");
+	obs_property_list_clear(filter);
+	obs_source_t *source = obs_get_source_by_name(source_name);
+	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
+	long long action = obs_data_get_int(settings, "end_action");
+	if (action == MOVE_ACTION_SOURCE_HOTKEY) {
+		obs_property_t *hotkey = obs_properties_get(props, "end_hotkey");
+		obs_property_list_clear(hotkey);
+		obs_property_list_add_string(hotkey, "", "");
+		struct hotkey_enum_add_data hd;
+		hd.hotkey_prop = hotkey;
+		hd.source = obs_source_get_weak_source(source);
+		obs_enum_hotkeys(add_source_hotkeys, &hd);
+		obs_weak_source_release(hd.source);
+	}
+	obs_source_release(source);
+	return true;
+}
+
+static bool move_action_duration_type_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	obs_property_t *duration = obs_properties_get(props, S_DURATION);
+	long long duration_type = obs_data_get_int(settings, "duration_type");
+	const bool custom_duration = duration_type == DURATION_TYPE_CUSTOM;
+	if (obs_property_enabled(duration) == custom_duration)
+		return false;
+	obs_property_set_enabled(duration, duration_type == DURATION_TYPE_CUSTOM);
 	return true;
 }
 
@@ -338,6 +484,56 @@ static bool move_action_action_changed(obs_properties_t *props, obs_property_t *
 	return true;
 }
 
+static bool move_action_end_action_changed(obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(property);
+	long long action = obs_data_get_int(settings, "end_action");
+	obs_property_t *scene = obs_properties_get(props, "end_scene");
+	obs_property_t *sceneitem = obs_properties_get(props, "end_sceneitem");
+	if (action == MOVE_ACTION_SOURCE_VISIBILITY) {
+		obs_property_list_clear(scene);
+		obs_enum_scenes(add_source_to_prop_list, scene);
+		obs_enum_sources(add_group_to_prop_list, scene);
+		obs_property_set_visible(scene, true);
+		obs_property_set_visible(sceneitem, true);
+	} else {
+		obs_property_set_visible(scene, false);
+		obs_property_set_visible(sceneitem, false);
+	}
+	obs_property_t *source = obs_properties_get(props, "end_source");
+	obs_property_t *filter = obs_properties_get(props, "end_filter");
+	obs_property_t *hotkey = obs_properties_get(props, "end_hotkey");
+	if (action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_HOTKEY || action == MOVE_ACTION_SOURCE_MUTE ||
+	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+		obs_property_list_clear(source);
+		obs_enum_sources(add_source_to_prop_list, source);
+		obs_enum_scenes(add_source_to_prop_list, source);
+		obs_property_set_visible(source, true);
+		obs_property_set_visible(filter, action == MOVE_ACTION_FILTER_ENABLE);
+		obs_property_set_visible(hotkey, action == MOVE_ACTION_SOURCE_HOTKEY);
+
+	} else {
+		obs_property_set_visible(source, false);
+		obs_property_set_visible(filter, false);
+		obs_property_set_visible(hotkey, action == MOVE_ACTION_FRONTEND_HOTKEY);
+	}
+	obs_property_t *audio_track = obs_properties_get(props, "end_audio_track");
+	obs_property_set_visible(audio_track, action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
+	if (action == MOVE_ACTION_FRONTEND_HOTKEY) {
+		obs_property_list_clear(hotkey);
+		obs_property_list_add_string(hotkey, "", "");
+		obs_enum_hotkeys(add_global_hotkeys, hotkey);
+	}
+	obs_property_t *frontend_action = obs_properties_get(props, "end_frontend_action");
+	obs_property_set_visible(frontend_action, action == MOVE_ACTION_FRONTEND);
+
+	obs_property_t *enable = obs_properties_get(props, "end_enable");
+	obs_property_set_visible(enable, action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_VISIBILITY ||
+						 action == MOVE_ACTION_SOURCE_MUTE || action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
+
+	return true;
+}
+
 static bool add_sceneitem_to_prop_list(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
 {
 	UNUSED_PARAMETER(scene);
@@ -367,14 +563,37 @@ static bool move_action_scene_changed(void *data, obs_properties_t *props, obs_p
 	return true;
 }
 
+static bool move_action_end_scene_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	const char *scene_name = obs_data_get_string(settings, "end_scene");
+	obs_property_t *sceneitem = obs_properties_get(props, "end_sceneitem");
+	obs_property_list_clear(sceneitem);
+	obs_source_t *source = obs_get_source_by_name(scene_name);
+	obs_source_release(source);
+	obs_scene_t *scene = obs_scene_from_source(source);
+	if (!scene)
+		scene = obs_group_from_source(source);
+	if (!scene)
+		return true;
+	obs_scene_enum_items(scene, add_sceneitem_to_prop_list, sceneitem);
+	return true;
+}
+
+void prop_list_add_move_filter(obs_source_t *parent, obs_source_t *child, void *data);
+bool move_filter_start_button(obs_properties_t *props, obs_property_t *property, void *data);
+
 static obs_properties_t *move_action_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 
-	obs_property_t *p =
-		obs_properties_add_list(ppts, "action", obs_module_text("Action"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("FrontendAction"), MOVE_ACTION_FRONTEND);
+	obs_properties_t *start_action = obs_properties_create();
 
+	obs_property_t *p = obs_properties_add_list(start_action, "action", obs_module_text("Action"), OBS_COMBO_TYPE_LIST,
+						    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("NoneAction"), MOVE_ACTION_NONE);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction"), MOVE_ACTION_FRONTEND);
 	obs_property_list_add_int(p, obs_module_text("SourceVisibility"), MOVE_ACTION_SOURCE_VISIBILITY);
 	obs_property_list_add_int(p, obs_module_text("SourceMute"), MOVE_ACTION_SOURCE_MUTE);
 	obs_property_list_add_int(p, obs_module_text("SourceAudioTrack"), MOVE_ACTION_SOURCE_AUDIO_TRACK);
@@ -383,20 +602,25 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
 	obs_property_set_modified_callback(p, move_action_action_changed);
 
-	p = obs_properties_add_list(ppts, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(start_action, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
 	obs_property_set_modified_callback2(p, move_action_scene_changed, data);
 
-	p = obs_properties_add_list(ppts, "sceneitem", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(start_action, "sceneitem", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
 
-	p = obs_properties_add_list(ppts, "source", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
-
-	obs_property_set_modified_callback2(p, move_action_source_changed, data);
-
-	p = obs_properties_add_list(ppts, "filter", obs_module_text("Filter"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(start_action, "source", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
 
 	obs_property_set_modified_callback2(p, move_action_source_changed, data);
 
-	p = obs_properties_add_list(ppts, "audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	p = obs_properties_add_list(start_action, "filter", obs_module_text("Filter"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_set_modified_callback2(p, move_action_source_changed, data);
+
+	p = obs_properties_add_list(start_action, "audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("AudioTrack.None"), 0);
 	obs_property_list_add_int(p, obs_module_text("AudioTrack.All"), -1);
 	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track1"), 1);
@@ -406,14 +630,15 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track5"), 5);
 	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track6"), 6);
 
-	p = obs_properties_add_list(ppts, "enable", obs_module_text("Enable"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	p = obs_properties_add_list(start_action, "enable", obs_module_text("Enable"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("Enable"), MOVE_ACTION_ENABLE);
 	obs_property_list_add_int(p, obs_module_text("Disable"), MOVE_ACTION_DISABLE);
 	obs_property_list_add_int(p, obs_module_text("Toggle"), MOVE_ACTION_TOGGLE);
 
-	p = obs_properties_add_list(ppts, "hotkey", obs_module_text("Hotkey"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(start_action, "hotkey", obs_module_text("Hotkey"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
 
-	p = obs_properties_add_list(ppts, "frontend_action", obs_module_text("FrontendAction"), OBS_COMBO_TYPE_LIST,
+	p = obs_properties_add_list(start_action, "frontend_action", obs_module_text("FrontendAction"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("FrontendAction.None"), 0);
 	obs_property_list_add_int(p, obs_module_text("FrontendAction.StreamingStart"), 1);
@@ -431,33 +656,174 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FrontendAction.StudioModeDisable"), 13);
 	obs_property_list_add_int(p, obs_module_text("FrontendAction.TakeScreenshot"), 14);
 
+	p = obs_properties_add_group(ppts, "start_action", obs_module_text("StartAction"), OBS_GROUP_NORMAL, start_action);
+
 	//obs_frontend_preview_program_trigger_transition
 
 	//obs_frontend_take_source_screenshot
 	//obs_frontend_open_filters
 	//obs_frontend_open_properties
 
-	move_filter_properties(data, ppts);
+	//move_filter_properties(data, ppts);
+	struct move_action_info *move_action = data;
+
+	obs_properties_t *duration = obs_properties_create();
+
+	p = obs_properties_add_list(duration, "duration_type", obs_module_text("Duration"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("CustomDuration"), DURATION_TYPE_CUSTOM);
+	obs_property_list_add_int(p, obs_module_text("TransitionDuration"), DURATION_TYPE_TRANSITION);
+	obs_property_list_add_int(p, obs_module_text("InfiniteDuration"), DURATION_TYPE_INFINITE);
+
+	obs_property_set_modified_callback2(p, move_action_duration_type_changed, data);
+
+	p = obs_properties_add_int(duration, S_DURATION, obs_module_text("CustomDuration"), 0, 10000000, 100);
+	obs_property_int_set_suffix(p, "ms");
+
+	p = obs_properties_add_group(ppts, S_CUSTOM_DURATION, obs_module_text("Duration"), OBS_GROUP_NORMAL, duration);
+
+	obs_properties_t *end_action = obs_properties_create();
+
+	p = obs_properties_add_list(end_action, "end_action", obs_module_text("Action"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("NoneAction"), MOVE_ACTION_NONE);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction"), MOVE_ACTION_FRONTEND);
+	obs_property_list_add_int(p, obs_module_text("SourceVisibility"), MOVE_ACTION_SOURCE_VISIBILITY);
+	obs_property_list_add_int(p, obs_module_text("SourceMute"), MOVE_ACTION_SOURCE_MUTE);
+	obs_property_list_add_int(p, obs_module_text("SourceAudioTrack"), MOVE_ACTION_SOURCE_AUDIO_TRACK);
+	obs_property_list_add_int(p, obs_module_text("SourceHotkey"), MOVE_ACTION_SOURCE_HOTKEY);
+	obs_property_list_add_int(p, obs_module_text("FilterEnable"), MOVE_ACTION_FILTER_ENABLE);
+	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
+	obs_property_set_modified_callback(p, move_action_end_action_changed);
+
+	p = obs_properties_add_list(end_action, "end_scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_set_modified_callback2(p, move_action_end_scene_changed, data);
+
+	p = obs_properties_add_list(end_action, "end_sceneitem", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+
+	p = obs_properties_add_list(end_action, "end_source", obs_module_text("Source"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_set_modified_callback2(p, move_action_end_source_changed, data);
+
+	p = obs_properties_add_list(end_action, "end_filter", obs_module_text("Filter"), OBS_COMBO_TYPE_EDITABLE,
+				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_set_modified_callback2(p, move_action_end_source_changed, data);
+
+	p = obs_properties_add_list(end_action, "end_audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.None"), 0);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.All"), -1);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track1"), 1);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track2"), 2);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track3"), 3);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track4"), 4);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track5"), 5);
+	obs_property_list_add_int(p, obs_module_text("AudioTrack.Track6"), 6);
+
+	p = obs_properties_add_list(end_action, "end_enable", obs_module_text("Enable"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("Enable"), MOVE_ACTION_ENABLE);
+	obs_property_list_add_int(p, obs_module_text("Disable"), MOVE_ACTION_DISABLE);
+	obs_property_list_add_int(p, obs_module_text("Toggle"), MOVE_ACTION_TOGGLE);
+
+	p = obs_properties_add_list(end_action, "end_hotkey", obs_module_text("Hotkey"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+
+	p = obs_properties_add_list(end_action, "end_frontend_action", obs_module_text("FrontendAction"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.None"), 0);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.StreamingStart"), 1);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.StreamingStop"), 2);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.RecordingStart"), 3);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.RecordingStop"), 4);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.RecordingPause"), 5);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.RecordingUnpause"), 6);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.VirtualCamStart"), 7);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.VirtualCamStop"), 8);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.ReplayBufferStart"), 9);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.ReplayBufferStop"), 10);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.ReplayBufferSave"), 11);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.StudioModeEnable"), 12);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.StudioModeDisable"), 13);
+	obs_property_list_add_int(p, obs_module_text("FrontendAction.TakeScreenshot"), 14);
+
+	p = obs_properties_add_group(ppts, "end_action", obs_module_text("EndAction"), OBS_GROUP_NORMAL, end_action);
+
+	p = obs_properties_add_bool(ppts, S_ENABLED_MATCH_MOVING, obs_module_text("EnabledMatchMoving"));
+
+	p = obs_properties_add_list(ppts, S_START_TRIGGER, obs_module_text("StartTrigger"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.None"), START_TRIGGER_NONE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Activate"), START_TRIGGER_ACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Deactivate"), START_TRIGGER_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Show"), START_TRIGGER_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"), START_TRIGGER_HIDE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"), START_TRIGGER_ENABLE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Load"), START_TRIGGER_LOAD);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+
+	p = obs_properties_add_list(ppts, S_STOP_TRIGGER, obs_module_text("StopTrigger"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_INT);
+
+	obs_property_list_add_int(p, obs_module_text("StopTrigger.None"), START_TRIGGER_NONE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Activate"), START_TRIGGER_ACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Deactivate"), START_TRIGGER_DEACTIVATE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Show"), START_TRIGGER_SHOW);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Hide"), START_TRIGGER_HIDE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Enable"), START_TRIGGER_ENABLE);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+
+	obs_source_t *parent = obs_filter_get_parent(move_action->move_filter.source);
+
+	p = obs_properties_add_list(ppts, S_SIMULTANEOUS_MOVE, obs_module_text("SimultaneousMove"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("SimultaneousMove.None"), "");
+	if (parent)
+		obs_source_enum_filters(parent, prop_list_add_move_filter, p);
+
+	p = obs_properties_add_list(ppts, S_NEXT_MOVE, obs_module_text("NextMove"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(p, obs_module_text("NextMove.None"), "");
+	obs_property_list_add_string(p, obs_module_text("NextMove.Reverse"), NEXT_MOVE_REVERSE);
+	if (parent)
+		obs_source_enum_filters(parent, prop_list_add_move_filter, p);
+
+	p = obs_properties_add_list(ppts, S_NEXT_MOVE_ON, obs_module_text("NextMoveOn"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, obs_module_text("NextMoveOn.End"), NEXT_MOVE_ON_END);
+	obs_property_list_add_int(p, obs_module_text("NextMoveOn.Hotkey"), NEXT_MOVE_ON_HOTKEY);
+
+	obs_properties_add_button(ppts, "move_filter_start", obs_module_text("Start"), move_filter_start_button);
+	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO, OBS_TEXT_INFO);
 	return ppts;
 }
 
 void move_action_execute(void *data)
 {
-	struct move_action_info *move_action = data;
+	struct move_action_action *move_action = data;
 	if (move_action->action == MOVE_ACTION_SOURCE_HOTKEY) {
 		if (move_action->hotkey_id == OBS_INVALID_HOTKEY_ID && move_action->hotkey_name &&
 		    strlen(move_action->hotkey_name) && move_action->source_name && strlen(move_action->source_name)) {
 			obs_enum_hotkeys(move_action_load_hotkey, move_action);
 		}
 		if (move_action->hotkey_id != OBS_INVALID_HOTKEY_ID)
-			obs_hotkey_trigger_routed_callback(move_action->hotkey_id, !move_action->move_filter.reverse);
+			obs_hotkey_trigger_routed_callback(move_action->hotkey_id, !*move_action->reverse);
 	} else if (move_action->action == MOVE_ACTION_FRONTEND_HOTKEY) {
 		if (move_action->hotkey_id == OBS_INVALID_HOTKEY_ID && move_action->hotkey_name &&
 		    strlen(move_action->hotkey_name)) {
 			obs_enum_hotkeys(move_action_load_hotkey, move_action);
 		}
 		if (move_action->hotkey_id != OBS_INVALID_HOTKEY_ID)
-			obs_hotkey_trigger_routed_callback(move_action->hotkey_id, !move_action->move_filter.reverse);
+			obs_hotkey_trigger_routed_callback(move_action->hotkey_id, !*move_action->reverse);
 	} else if (move_action->action == MOVE_ACTION_FRONTEND) {
 		if (move_action->frontend_action == 1) {
 			obs_frontend_streaming_start();
@@ -597,24 +963,53 @@ void move_action_execute(void *data)
 void move_action_hotkey_end(void *data)
 {
 	struct move_action_info *move_action = data;
-	obs_hotkey_trigger_routed_callback(move_action->hotkey_id, move_action->move_filter.reverse);
+	obs_hotkey_trigger_routed_callback(move_action->start_action.hotkey_id, move_action->move_filter.reverse);
 }
 
 void move_action_tick(void *data, float seconds)
 {
 	struct move_action_info *move_action = data;
 	float t;
+	if (move_action->duration_type == DURATION_TYPE_INFINITE) {
+		const bool enabled = obs_source_enabled(move_action->move_filter.source);
+		if (move_action->move_filter.enabled != enabled) {
+			if (enabled && (move_action->move_filter.start_trigger == START_TRIGGER_ENABLE ||
+					(move_action->move_filter.enabled_match_moving && !move_action->move_filter.moving)))
+				move_filter_start(&move_action->move_filter);
+			if (enabled && move_action->move_filter.stop_trigger == START_TRIGGER_ENABLE) {
+				move_filter_stop(&move_action->move_filter);
+				obs_queue_task(OBS_TASK_UI, move_action_execute, &move_action->end_action, false);
+				move_filter_ended(&move_action->move_filter);
+			}
+
+			move_action->move_filter.enabled = enabled;
+		}
+		if (move_action->move_filter.enabled_match_moving && enabled != move_action->move_filter.moving) {
+			if (enabled) {
+				move_filter_start(&move_action->move_filter);
+			} else {
+				move_filter_stop(&move_action->move_filter);
+				obs_queue_task(OBS_TASK_UI, move_action_execute, &move_action->end_action, false);
+				move_filter_ended(&move_action->move_filter);
+			}
+		}
+		move_action->move_filter.running_duration =
+			(float)(move_action->move_filter.start_delay + move_action->move_filter.duration / 2) / 1000.0f;
+		seconds = 0.0f;
+	}
 	if (!move_filter_tick(&move_action->move_filter, seconds, &t))
 		return;
 	if (move_action->start) {
 		move_action->start = false;
-		obs_queue_task(OBS_TASK_UI, move_action_execute, data, false);
+		obs_queue_task(OBS_TASK_UI, move_action_execute, &move_action->start_action, false);
 	}
 
 	if (!move_action->move_filter.moving) {
-		if ((move_action->action == MOVE_ACTION_SOURCE_HOTKEY || move_action->action == MOVE_ACTION_FRONTEND_HOTKEY) &&
-		    move_action->hotkey_id != OBS_INVALID_HOTKEY_ID)
+		if ((move_action->start_action.action == MOVE_ACTION_SOURCE_HOTKEY ||
+		     move_action->start_action.action == MOVE_ACTION_FRONTEND_HOTKEY) &&
+		    move_action->start_action.hotkey_id != OBS_INVALID_HOTKEY_ID)
 			obs_queue_task(OBS_TASK_UI, move_action_hotkey_end, data, false);
+		obs_queue_task(OBS_TASK_UI, move_action_execute, &move_action->end_action, false);
 		move_filter_ended(&move_action->move_filter);
 	}
 }
