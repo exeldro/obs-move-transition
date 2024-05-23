@@ -71,6 +71,7 @@ static obs_properties_t *move_override_filter_properties(void *data)
 	if (scene) {
 		p = obs_properties_add_list(ppts, S_SOURCE, obs_module_text("Source"), OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_STRING);
+		obs_property_list_add_string(p, "", "");
 		obs_scene_enum_items(scene, prop_list_add_sceneitem, p);
 		obs_data_t *settings = obs_source_get_settings(move_filter->source);
 		if (settings) {
@@ -259,12 +260,14 @@ static const char *move_override_filter_get_name(void *type_data)
 	return obs_module_text("MoveTransitionOverrideFilter");
 }
 
-struct obs_source_info move_transition_override_filter = {.id = "move_transition_override_filter",
-							  .type = OBS_SOURCE_TYPE_FILTER,
-							  .output_flags = OBS_SOURCE_VIDEO,
-							  .get_name = move_override_filter_get_name,
-							  .create = move_override_filter_create,
-							  .destroy = move_override_filter_destroy,
-							  .get_properties = move_override_filter_properties,
-							  .get_defaults = move_override_filter_defaults,
-							  .video_render = move_override_filter_video_render};
+struct obs_source_info move_transition_override_filter = {
+	.id = "move_transition_override_filter",
+	.type = OBS_SOURCE_TYPE_FILTER,
+	.output_flags = OBS_SOURCE_VIDEO,
+	.get_name = move_override_filter_get_name,
+	.create = move_override_filter_create,
+	.destroy = move_override_filter_destroy,
+	.get_properties = move_override_filter_properties,
+	.get_defaults = move_override_filter_defaults,
+	.video_render = move_override_filter_video_render,
+};
