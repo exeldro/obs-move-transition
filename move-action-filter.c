@@ -270,6 +270,47 @@ void move_action_start(void *data)
 	move_action->start = true;
 }
 
+static void move_action_source_rename(void *data, calldata_t *call_data)
+{
+	struct move_action_info *move_action = data;
+	const char *new_name = calldata_string(call_data, "new_name");
+	const char *prev_name = calldata_string(call_data, "prev_name");
+	obs_data_t *settings = obs_source_get_settings(move_action->move_filter.source);
+	if (!settings || !new_name || !prev_name)
+		return;
+	if (move_action->start_action.scene_name && strcmp(move_action->start_action.scene_name, prev_name) == 0) {
+		bfree(move_action->start_action.scene_name);
+		move_action->start_action.scene_name = bstrdup(new_name);
+		obs_data_set_string(settings, "scene", new_name);
+	}
+	if (move_action->start_action.sceneitem_name && strcmp(move_action->start_action.sceneitem_name, prev_name) == 0) {
+		bfree(move_action->start_action.sceneitem_name);
+		move_action->start_action.sceneitem_name = bstrdup(new_name);
+		obs_data_set_string(settings, "sceneitem", new_name);
+	}
+	if (move_action->start_action.source_name && strcmp(move_action->start_action.source_name, prev_name) == 0) {
+		bfree(move_action->start_action.source_name);
+		move_action->start_action.source_name = bstrdup(new_name);
+		obs_data_set_string(settings, "source", new_name);
+	}
+	if (move_action->end_action.scene_name && strcmp(move_action->end_action.scene_name, prev_name) == 0) {
+		bfree(move_action->end_action.scene_name);
+		move_action->end_action.scene_name = bstrdup(new_name);
+		obs_data_set_string(settings, "end_scene", new_name);
+	}
+	if (move_action->end_action.sceneitem_name && strcmp(move_action->end_action.sceneitem_name, prev_name) == 0) {
+		bfree(move_action->end_action.sceneitem_name);
+		move_action->end_action.sceneitem_name = bstrdup(new_name);
+		obs_data_set_string(settings, "end_sceneitem", new_name);
+	}
+	if (move_action->end_action.source_name && strcmp(move_action->end_action.source_name, prev_name) == 0) {
+		bfree(move_action->end_action.source_name);
+		move_action->end_action.source_name = bstrdup(new_name);
+		obs_data_set_string(settings, "end_source", new_name);
+	}
+	obs_data_release(settings);
+}
+
 static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_action_info *move_action = bzalloc(sizeof(struct move_action_info));
@@ -279,12 +320,16 @@ static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 	move_action->start_action.reverse = &move_action->move_filter.reverse;
 	move_action->end_action.reverse = &move_action->move_filter.reverse;
 	obs_source_update(source, settings);
+	signal_handler_t *sh = obs_get_signal_handler();
+	signal_handler_connect(sh, "source_rename", move_action_source_rename, move_action);
 	return move_action;
 }
 
 static void move_action_destroy(void *data)
 {
 	struct move_action_info *move_action = data;
+	signal_handler_t *sh = obs_get_signal_handler();
+	signal_handler_disconnect(sh, "source_rename", move_action_source_rename, move_action);
 	move_filter_destroy(&move_action->move_filter);
 	bfree(move_action->start_action.source_name);
 	bfree(move_action->start_action.hotkey_name);
