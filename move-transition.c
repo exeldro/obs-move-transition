@@ -487,7 +487,7 @@ static inline bool default_blending_enabled(struct obs_scene_item *item)
 static inline bool item_texture_enabled(struct obs_scene_item *item, struct obs_sceneitem_crop *bounds_crop)
 {
 	if (!item)
-		false;
+		return false;
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
 	return crop_enabled(&crop) || crop_enabled(bounds_crop) || scale_filter_enabled(item) || !default_blending_enabled(item) ||
@@ -2007,6 +2007,8 @@ struct move_item *match_item_scene_same(struct move_info *move, obs_sceneitem_t 
 bool match_item_nested_match(obs_scene_t *obs_scene, obs_sceneitem_t *sceneitem, void *p)
 {
 	UNUSED_PARAMETER(obs_scene);
+	if (!obs_sceneitem_visible(sceneitem))
+		return true;
 	struct match_item_nested_match *mi = p;
 	obs_source_t *source = obs_sceneitem_get_source(sceneitem);
 	if (!source)
@@ -2401,18 +2403,27 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			if (obs_sceneitem_get_source(scene_item) == move->scene_source_a) {
 
 				struct move_item *item = NULL;
-				for (size_t i = 0; i < MATCH_FUNCTION_COUNT; i++) {
+				for (size_t j = 0; j < MATCH_FUNCTION_COUNT; j++) {
 					size_t old_pos = 0;
-					item = match_functions[i](move, scene_item, &old_pos);
+					item = match_functions[j](move, scene_item, &old_pos);
 					if (item)
 						break;
 				}
-				if (item) {
+				if (item && item->move_scene) {
+					obs_sceneitem_release(item->item_a);
+					if (item->release_scene_a)
+						obs_scene_release(item->release_scene_a);
+					if (item->release_scene_b)
+						obs_scene_release(item->release_scene_b);
+					da_erase_item(move->items_a, &item);
+					bfree(item->transition_name);
+					bfree(item);
+					item = create_move_item();
+				} else if (item) {
 					move->matched_items++;
 				} else {
 					item = create_move_item();
 				}
-
 				item->move_scene = true;
 				move->matched_scene_a = true;
 				da_erase(items, i - 1);
