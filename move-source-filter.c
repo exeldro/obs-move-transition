@@ -41,6 +41,7 @@ struct move_source_info {
 	float audio_fade_from;
 	float audio_fade_to;
 	long long mute_action;
+	bool midpoint;
 };
 
 void move_source_scene_remove(void *data, calldata_t *call_data);
@@ -305,6 +306,7 @@ void move_source_start(struct move_source_info *move_source)
 
 		move_source->audio_fade_from = obs_source_get_volume(obs_sceneitem_get_source(move_source->scene_item));
 	}
+	move_source->midpoint = false;
 }
 
 bool move_source_start_button(obs_properties_t *props, obs_property_t *property, void *data)
@@ -955,13 +957,20 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.Toggle"), CHANGE_VISIBILITY_TOGGLE);
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.ToggleStart"), CHANGE_VISIBILITY_TOGGLE_START);
 	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.ToggleEnd"), CHANGE_VISIBILITY_TOGGLE_END);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.ShowMidpoint"), CHANGE_VISIBILITY_SHOW_MIDPOINT);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.HideMidpoint"), CHANGE_VISIBILITY_HIDE_MIDPOINT);
+	obs_property_list_add_int(p, obs_module_text("ChangeVisibility.ToggleMidpoint"), CHANGE_VISIBILITY_TOGGLE_MIDPOINT);
 
 	p = obs_properties_add_list(group, S_CHANGE_ORDER, obs_module_text("ChangeOrder"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(p, obs_module_text("ChangeOrder.No"), CHANGE_ORDER_NONE);
 	obs_property_list_add_int(p, obs_module_text("ChangeOrder.StartAbsolute"), CHANGE_ORDER_START | CHANGE_ORDER_ABSOLUTE);
+	obs_property_list_add_int(p, obs_module_text("ChangeOrder.MidpointAbsolute"),
+				  CHANGE_ORDER_MIDPOINT | CHANGE_ORDER_ABSOLUTE);
 	obs_property_list_add_int(p, obs_module_text("ChangeOrder.EndAbsolute"), CHANGE_ORDER_END | CHANGE_ORDER_ABSOLUTE);
 	obs_property_list_add_int(p, obs_module_text("ChangeOrder.StartRelative"), CHANGE_ORDER_START | CHANGE_ORDER_RELATIVE);
+	obs_property_list_add_int(p, obs_module_text("ChangeOrder.MidpointRelative"),
+				  CHANGE_ORDER_MIDPOINT | CHANGE_ORDER_RELATIVE);
 	obs_property_list_add_int(p, obs_module_text("ChangeOrder.EndRelative"), CHANGE_ORDER_END | CHANGE_ORDER_RELATIVE);
 	p = obs_properties_add_int(group, S_ORDER_POSITION, obs_module_text("OrderPosition"), -1000, 1000, 1);
 
@@ -998,8 +1007,10 @@ static obs_properties_t *move_source_properties(void *data)
 
 	obs_property_list_add_int(p, obs_module_text("MuteAction.None"), MUTE_ACTION_NONE);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.MuteStart"), MUTE_ACTION_MUTE_START);
+	obs_property_list_add_int(p, obs_module_text("MuteAction.MuteMidpoint"), MUTE_ACTION_MUTE_MIDPOINT);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.MuteEnd"), MUTE_ACTION_MUTE_END);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.UnmuteStart"), MUTE_ACTION_UNMUTE_START);
+	obs_property_list_add_int(p, obs_module_text("MuteAction.UnmuteMidpoint"), MUTE_ACTION_UNMUTE_MIDPOINT);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.UnmuteEnd"), MUTE_ACTION_UNMUTE_END);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.MuteDuring"), MUTE_ACTION_MUTE_DURING);
 	obs_property_list_add_int(p, obs_module_text("MuteAction.UnmuteDuring"), MUTE_ACTION_UNMUTE_DURING);
@@ -1155,6 +1166,39 @@ void move_source_tick(void *data, float seconds)
 	if (!move_source->scene_item) {
 		move_source->move_filter.moving = false;
 		return;
+	}
+
+	if (!move_source->midpoint && t >= 0.5) {
+		move_source->midpoint = true;
+		if (move_source->change_visibility == CHANGE_VISIBILITY_SHOW_MIDPOINT) {
+			obs_sceneitem_set_visible(move_source->scene_item, true);
+		} else if (move_source->change_visibility == CHANGE_VISIBILITY_HIDE_MIDPOINT) {
+			obs_sceneitem_set_visible(move_source->scene_item, false);
+		} else if (move_source->change_visibility == CHANGE_VISIBILITY_TOGGLE_MIDPOINT) {
+			obs_sceneitem_set_visible(move_source->scene_item, !obs_sceneitem_visible(move_source->scene_item));
+		}
+		if ((move_source->change_order & CHANGE_ORDER_MIDPOINT) != 0) {
+			if ((move_source->change_order & CHANGE_ORDER_RELATIVE) != 0 && move_source->order_position) {
+				if (move_source->order_position > 0) {
+					for (int i = 0; i < move_source->order_position; i++) {
+						obs_sceneitem_set_order(move_source->scene_item, OBS_ORDER_MOVE_UP);
+					}
+				} else if (move_source->order_position < 0) {
+					for (int i = 0; i > move_source->order_position; i--) {
+						obs_sceneitem_set_order(move_source->scene_item, OBS_ORDER_MOVE_DOWN);
+					}
+				}
+			} else if ((move_source->change_order & CHANGE_ORDER_ABSOLUTE) != 0) {
+				obs_sceneitem_set_order_position(move_source->scene_item, (int)move_source->order_position);
+			}
+		}
+		if (move_source->mute_action == MUTE_ACTION_MUTE_MIDPOINT &&
+		    !obs_source_muted(obs_sceneitem_get_source(move_source->scene_item))) {
+			obs_source_set_muted(obs_sceneitem_get_source(move_source->scene_item), true);
+		} else if (move_source->mute_action == MUTE_ACTION_UNMUTE_MIDPOINT &&
+			   obs_source_muted(obs_sceneitem_get_source(move_source->scene_item))) {
+			obs_source_set_muted(obs_sceneitem_get_source(move_source->scene_item), false);
+		}
 	}
 
 	float ot = t;
