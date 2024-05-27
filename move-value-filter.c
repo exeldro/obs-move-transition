@@ -1946,7 +1946,9 @@ void move_value_tick(void *data, float seconds)
 		const long long value_int = vec4_to_rgba(&color);
 		obs_data_set_int(ss, move_value->setting_name, value_int);
 	} else if (move_value->value_type == MOVE_VALUE_TEXT && move_value->move_value_type == MOVE_VALUE_TYPE_TYPING) {
-		if (t * move_value->text_steps <= move_value->text_step && move_value->move_filter.moving) {
+		if (move_value->move_filter.moving &&
+		    ((!move_value->move_filter.reverse && t * move_value->text_steps <= move_value->text_step) ||
+		     (move_value->move_filter.reverse && t * move_value->text_steps > move_value->text_step))) {
 			obs_data_release(ss);
 			return;
 		}
