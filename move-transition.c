@@ -1266,7 +1266,19 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	vec2_zero(&origin2);
 
 	uint32_t canvas_width = obs_source_get_width(move->source);
+	if (!canvas_width && move->scene_source_a)
+		canvas_width = obs_source_get_width(move->scene_source_a);
+	if (!canvas_width && move->scene_source_b)
+		canvas_width = obs_source_get_width(move->scene_source_b);
+	if (!canvas_width)
+		canvas_width = obs_source_get_width(source);
 	uint32_t canvas_height = obs_source_get_height(move->source);
+	if (!canvas_height && move->scene_source_a)
+		canvas_height = obs_source_get_height(move->scene_source_a);
+	if (!canvas_height && move->scene_source_b)
+		canvas_height = obs_source_get_height(move->scene_source_b);
+	if (!canvas_height)
+		canvas_height = obs_source_get_height(source);
 
 	enum obs_bounds_type bt_a = obs_sceneitem_get_bounds_type(item->item_a);
 	enum obs_bounds_type bt_b = obs_sceneitem_get_bounds_type(item->item_b);
