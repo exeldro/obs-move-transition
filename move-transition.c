@@ -484,14 +484,21 @@ static inline bool default_blending_enabled(struct obs_scene_item *item)
 	return obs_sceneitem_get_blending_mode(item) == OBS_BLEND_NORMAL;
 }
 
-static inline bool item_texture_enabled(struct obs_scene_item *item, struct obs_sceneitem_crop *bounds_crop)
+static inline bool item_texture_enabled(struct obs_scene_item *item)
 {
 	if (!item)
 		return false;
 	struct obs_sceneitem_crop crop;
 	obs_sceneitem_get_crop(item, &crop);
-	return crop_enabled(&crop) || crop_enabled(bounds_crop) || scale_filter_enabled(item) || !default_blending_enabled(item) ||
-	       (item_is_scene(item) && !obs_sceneitem_is_group(item));
+	if (crop_enabled(&crop))
+		return true;
+	if (item_is_scene(item) && !obs_sceneitem_is_group(item))
+		return true;
+	if (scale_filter_enabled(item) || !default_blending_enabled(item))
+		return true;
+	if (crop_to_bounds(item, obs_sceneitem_get_bounds_type(item)))
+		return true;
+	return false;
 }
 
 void pos_add_center(struct vec2 *pos, uint32_t alignment, uint32_t cx, uint32_t cy)
@@ -1456,12 +1463,11 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	struct vec2 output_scale = scale;
 
-	if (item->item_render && !item_texture_enabled(item->item_a, &item->bounds_crop_a) &&
-	    !item_texture_enabled(item->item_b, &item->bounds_crop_b)) {
+	if (item->item_render && !item_texture_enabled(item->item_a) && !item_texture_enabled(item->item_b)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (!item->item_render && ((item->item_a && item_texture_enabled(item->item_a, &item->bounds_crop_a)) ||
-					  (item->item_b && item_texture_enabled(item->item_b, &item->bounds_crop_b)))) {
+	} else if (!item->item_render &&
+		   ((item->item_a && item_texture_enabled(item->item_a)) || (item->item_b && item_texture_enabled(item->item_b)))) {
 		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 	} else if (item->item_render) {
 		gs_texrender_reset(item->item_render);

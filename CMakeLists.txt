@@ -9,7 +9,7 @@ else()
   cmake_minimum_required(VERSION 3.18)
 endif()
 
-project(move-transition VERSION 3.0.0)
+project(move-transition VERSION 3.0.1)
 set(PROJECT_FULL_NAME "Move Transition")
 
 # Set new UUIDs when you start to create a new plugin.
