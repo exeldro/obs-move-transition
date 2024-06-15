@@ -325,7 +325,7 @@ static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 	return move_action;
 }
 
-static void move_action_destroy(void *data)
+static void move_action_actual_destroy(void *data)
 {
 	struct move_action_info *move_action = data;
 	signal_handler_t *sh = obs_get_signal_handler();
@@ -344,6 +344,14 @@ static void move_action_destroy(void *data)
 
 	bfree(move_action);
 }
+
+static void move_action_destroy(void *data)
+{
+	signal_handler_t *sh = obs_get_signal_handler();
+	signal_handler_disconnect(sh, "source_rename", move_action_source_rename, data);
+	obs_queue_task(OBS_TASK_UI, move_action_actual_destroy, data, false);
+}
+
 struct hotkey_enum_add_data {
 	obs_weak_source_t *source;
 	obs_property_t *hotkey_prop;
