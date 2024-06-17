@@ -511,7 +511,11 @@ static void *move_value_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct move_value_info *move_value = bzalloc(sizeof(struct move_value_info));
 	move_filter_init(&move_value->move_filter, source, (void (*)(void *))move_value_start);
-	obs_source_update(source, settings);
+	if ((obs_get_source_output_flags(obs_source_get_id(source)) & OBS_SOURCE_VIDEO) == 0) {
+		move_value_update(move_value, settings);
+	} else {
+		obs_source_update(source, settings);
+	}
 	return move_value;
 }
 

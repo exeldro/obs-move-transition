@@ -319,7 +319,11 @@ static void *move_action_create(obs_data_t *settings, obs_source_t *source)
 	move_action->end_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
 	move_action->start_action.reverse = &move_action->move_filter.reverse;
 	move_action->end_action.reverse = &move_action->move_filter.reverse;
-	obs_source_update(source, settings);
+	if ((obs_get_source_output_flags(obs_source_get_id(source)) & OBS_SOURCE_VIDEO) == 0) {
+		move_action_update(move_action, settings);
+	} else {
+		obs_source_update(source, settings);
+	}
 	signal_handler_t *sh = obs_get_signal_handler();
 	signal_handler_connect(sh, "source_rename", move_action_source_rename, move_action);
 	return move_action;
