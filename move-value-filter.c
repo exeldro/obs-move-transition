@@ -134,6 +134,7 @@ static void load_properties(obs_properties_t *props_from, obs_data_array_t *arra
 			const char *setting_name2 = obs_data_get_string(item2, S_SETTING_NAME);
 			if (strcmp(setting_name2, name) == 0) {
 				setting = item2;
+				obs_data_addref(setting);
 			}
 			obs_data_release(item2);
 		}
@@ -181,6 +182,9 @@ static void load_properties(obs_properties_t *props_from, obs_data_array_t *arra
 			const long long from = obs_data_get_int(settings_from, name);
 			obs_data_set_int(setting, S_SETTING_FROM, from);
 		}
+		if (setting) {
+			obs_data_release(setting);
+		}
 	}
 }
 
@@ -192,6 +196,7 @@ void move_values_load_properties(struct move_value_info *move_value, obs_source_
 		while (index < obs_data_array_count(move_value->settings)) {
 			obs_data_t *item = obs_data_array_item(move_value->settings, index);
 			const char *setting_name = obs_data_get_string(item, S_SETTING_NAME);
+			obs_data_release(item);
 			if (obs_properties_get(sps, setting_name) == NULL) {
 				obs_data_array_erase(move_value->settings, index);
 			} else {
