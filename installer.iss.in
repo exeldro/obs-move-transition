@@ -25,6 +25,7 @@ SolidCompression=yes
 LZMAAlgorithm=1
 ; Other Information
 DefaultDirName={code:GetDirName}
+AppendDefaultDirName=no
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir="package"
