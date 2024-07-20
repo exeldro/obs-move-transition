@@ -24,8 +24,8 @@ struct move_info {
 	long long easing_function_move;
 	long long easing_function_in;
 	long long easing_function_out;
-	bool zoom_in;
-	bool zoom_out;
+	float zoom_in;
+	float zoom_out;
 	long long position_in;
 	long long position_out;
 	char *transition_move;
@@ -60,7 +60,7 @@ struct move_item {
 	obs_source_t *transition;
 	long long easing;
 	long long easing_function;
-	bool zoom;
+	float zoom;
 	long long position;
 	char *transition_name;
 	enum obs_transition_scale_type transition_scale;
@@ -252,9 +252,9 @@ static void move_update(void *data, obs_data_t *settings)
 	move->easing_function_in = obs_data_get_int(settings, S_EASING_FUNCTION_IN);
 	move->easing_function_out = obs_data_get_int(settings, S_EASING_FUNCTION_OUT);
 	move->position_in = obs_data_get_int(settings, S_POSITION_IN);
-	move->zoom_in = obs_data_get_bool(settings, S_ZOOM_IN);
+	move->zoom_in = (float)obs_data_get_double(settings, S_ZOOM_IN) / 100.0f;
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
-	move->zoom_out = obs_data_get_bool(settings, S_ZOOM_OUT);
+	move->zoom_out = (float)obs_data_get_double(settings, S_ZOOM_OUT) / 100.0f;
 	move->curve_move = (float)obs_data_get_double(settings, S_CURVE_MATCH);
 	move->curve_in = (float)obs_data_get_double(settings, S_CURVE_IN);
 	move->curve_out = (float)obs_data_get_double(settings, S_CURVE_OUT);
@@ -530,13 +530,13 @@ void pos_subtract_center(struct vec2 *pos, uint32_t alignment, int32_t cx, int32
 }
 
 void calc_edge_position(struct vec2 *pos, long long position, uint32_t canvas_width, uint32_t canvas_height, uint32_t alignment,
-			int32_t cx, int32_t cy, bool zoom)
+			int32_t cx, int32_t cy, float zoom)
 {
 	int32_t cx2 = abs(cx >> 1);
 	int32_t cy2 = abs(cy >> 1);
-	if (zoom) {
-		cx2 = 0;
-		cy2 = 0;
+	if (zoom != 1.0f) {
+		cx2 = (int32_t)fabs((float)cx * zoom / 2.0f);
+		cy2 = (int32_t)fabs((float)cy * zoom / 2.0f);
 	}
 
 	if (position - POS_EDGE == 0) {
@@ -614,9 +614,9 @@ void calc_edge_position(struct vec2 *pos, long long position, uint32_t canvas_wi
 
 		return;
 	}
-	if (zoom) {
-		cx = 0;
-		cy = 0;
+	if (zoom != 1.0f) {
+		cx = (int32_t)((float)cx * zoom);
+		cy = (int32_t)((float)cy * zoom);
 	}
 	if (position & POS_EDGE)
 		vec2_set(pos, 0, 0);
@@ -1253,10 +1253,12 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				} else if (item->item_b) {
 					vec2_set(&scale, (1.0f - t) + t * scale.x, (1.0f - t) + t * scale.y);
 				}
-			} else if (!move_out && item->zoom) {
-				vec2_set(&scale, t * scale.x, t * scale.y);
-			} else if (move_out && item->zoom) {
-				vec2_set(&scale, (1.0f - t) * scale.x, (1.0f - t) * scale.y);
+			} else if (!move_out && item->zoom != 1.0f) {
+				vec2_set(&scale, (1.0f - t) * scale.x * item->zoom + t * scale.x,
+					 (1.0f - t) * scale.y * item->zoom + t * scale.y);
+			} else if (move_out && item->zoom != 1.0f) {
+				vec2_set(&scale, (1.0f - t) * scale.x + t * scale.x * item->zoom,
+					 (1.0f - t) * scale.y + t * scale.y * item->zoom);
 			}
 		}
 	}
@@ -1309,10 +1311,12 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			}
 		} else {
 			obs_sceneitem_get_bounds(scene_item, &bounds);
-			if (!move_out && item->zoom) {
-				vec2_set(&bounds, t * bounds.x, t * bounds.y);
-			} else if (move_out && item->zoom) {
-				vec2_set(&bounds, (1.0f - t) * bounds.x, (1.0f - t) * bounds.y);
+			if (!move_out && item->zoom != 1.0f) {
+				vec2_set(&bounds, (1.0f - t) * bounds.x * item->zoom + t * bounds.x,
+					 (1.0f - t) * bounds.y * item->zoom + t * bounds.y);
+			} else if (move_out && item->zoom != 1.0f) {
+				vec2_set(&bounds, (1.0f - t) * bounds.x + t * bounds.x * item->zoom,
+					 (1.0f - t) * bounds.y + t * bounds.y * item->zoom);
 			}
 		}
 		if (item->item_a && item->item_b &&
@@ -1388,7 +1392,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
 			vec2_set(&pos_a, (float)(canvas_width >> 1), (float)(canvas_height >> 1));
-			if (!item->zoom)
+			if (item->zoom == 1.0f)
 				pos_add_center(&pos_a, alignment, cx, cy);
 		} else if (item->position & POS_EDGE || item->position & POS_SWIPE) {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
@@ -1397,7 +1401,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 		} else {
 			obs_sceneitem_get_pos(item->item_b, &pos_a);
-			if (item->zoom)
+			if (item->zoom != 1.0f)
 				pos_subtract_center(&pos_a, alignment, original_cx, original_cy);
 		}
 	}
@@ -1425,7 +1429,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
 			vec2_set(&pos_b, (float)(canvas_width >> 1), (float)(canvas_height >> 1));
-			if (!item->zoom)
+			if (item->zoom == 1.0f)
 				pos_add_center(&pos_b, alignment, cx, cy);
 		} else if (item->position & POS_EDGE || item->position & POS_SWIPE) {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
@@ -1434,7 +1438,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 		} else {
 			obs_sceneitem_get_pos(item->item_a, &pos_b);
-			if (item->zoom)
+			if (item->zoom != 1.0f)
 				pos_subtract_center(&pos_b, alignment, original_cx, original_cy);
 		}
 	}
@@ -2772,8 +2776,10 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 				item->easing_function = val;
 			}
 			val = obs_data_get_int(settings_a, S_ZOOM_OUT);
-			if (val != NO_OVERRIDE) {
-				item->zoom = !!val;
+			if (val == ZOOM_NO) {
+				item->zoom = 1.0f;
+			} else if (val == ZOOM_YES) {
+				item->zoom = 0.0f;
 			}
 			val = obs_data_get_int(settings_a, S_POSITION_OUT);
 			if (val != NO_OVERRIDE) {
@@ -2838,8 +2844,10 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 				item->easing_function = val;
 			}
 			val = obs_data_get_int(settings_b, S_ZOOM_IN);
-			if (val != NO_OVERRIDE) {
-				item->zoom = !!val;
+			if (val == ZOOM_NO) {
+				item->zoom = 1.0f;
+			} else if (val == ZOOM_YES) {
+				item->zoom = 0.0f;
 			}
 			val = obs_data_get_int(settings_b, S_POSITION_IN);
 			if (val != NO_OVERRIDE) {
@@ -3098,7 +3106,9 @@ static obs_properties_t *move_properties(void *data)
 				    OBS_COMBO_FORMAT_INT);
 	prop_list_add_easing_functions(p);
 
-	obs_properties_add_bool(group, S_ZOOM_IN, obs_module_text("Zoom"));
+	p = obs_properties_add_float_slider(group, S_ZOOM_IN, obs_module_text("Zoom"), 0.0, 200.0, 1.0);
+	obs_property_float_set_suffix(p, "%");
+
 	p = obs_properties_add_list(group, S_POSITION_IN, obs_module_text("Position"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
 
@@ -3120,7 +3130,9 @@ static obs_properties_t *move_properties(void *data)
 				    OBS_COMBO_FORMAT_INT);
 	prop_list_add_easing_functions(p);
 
-	obs_properties_add_bool(group, S_ZOOM_OUT, obs_module_text("Zoom"));
+	p = obs_properties_add_float_slider(group, S_ZOOM_OUT, obs_module_text("Zoom"), 0.0, 200.0, 1.0);
+	obs_property_float_set_suffix(p, "%");
+
 	p = obs_properties_add_list(group, S_POSITION_OUT, obs_module_text("Position"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	prop_list_add_positions(p);
 
@@ -3145,9 +3157,9 @@ void move_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_IN, EASING_CUBIC);
 	obs_data_set_default_int(settings, S_EASING_FUNCTION_OUT, EASING_CUBIC);
 	obs_data_set_default_int(settings, S_POSITION_IN, POS_EDGE | POS_LEFT);
-	obs_data_set_default_bool(settings, S_ZOOM_IN, true);
+	obs_data_set_default_double(settings, S_ZOOM_IN, 0.0);
 	obs_data_set_default_int(settings, S_POSITION_OUT, POS_EDGE | POS_RIGHT);
-	obs_data_set_default_bool(settings, S_ZOOM_OUT, true);
+	obs_data_set_default_double(settings, S_ZOOM_OUT, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_MATCH, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_IN, 0.0);
 	obs_data_set_default_double(settings, S_CURVE_OUT, 0.0);
