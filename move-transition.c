@@ -2601,7 +2601,9 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 
 	if (move->scene_flip_horizontal || move->scene_flip_vertical) {
 		obs_sceneitem_t *other_sceneitem = NULL;
-		if (scene_flip_item->item_a == scene_flip_sceneitem) {
+		if (!scene_flip_item) {
+
+		} else if (scene_flip_item->item_a == scene_flip_sceneitem) {
 			other_sceneitem = scene_flip_item->item_b;
 		} else if (scene_flip_item->item_b == scene_flip_sceneitem) {
 			other_sceneitem = scene_flip_item->item_a;
