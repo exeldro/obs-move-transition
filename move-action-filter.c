@@ -9,6 +9,7 @@
 #define MOVE_ACTION_FRONTEND_HOTKEY 5
 #define MOVE_ACTION_SOURCE_MUTE 6
 #define MOVE_ACTION_SOURCE_AUDIO_TRACK 7
+#define MOVE_ACTION_SETTING 8
 
 #define MOVE_ACTION_ENABLE 0
 #define MOVE_ACTION_DISABLE 1
@@ -24,14 +25,19 @@ struct move_action_action {
 	char *sceneitem_name;
 	char *source_name;
 	char *filter_name;
+	char *setting_name;
 	char *hotkey_name;
 	obs_hotkey_id hotkey_id;
+	enum obs_property_type setting_type;
 
 	long long action;
 
 	long long frontend_action;
 	long long enable;
 	long long audio_track;
+	char *value_string;
+	long long value_int;
+	double value_float;
 };
 
 struct move_action_info {
@@ -113,7 +119,8 @@ void move_action_update(void *data, obs_data_t *settings)
 	}
 
 	if (start_action == MOVE_ACTION_SOURCE_HOTKEY || start_action == MOVE_ACTION_FILTER_ENABLE ||
-	    start_action == MOVE_ACTION_SOURCE_MUTE || start_action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+	    start_action == MOVE_ACTION_SOURCE_MUTE || start_action == MOVE_ACTION_SOURCE_AUDIO_TRACK ||
+	    start_action == MOVE_ACTION_SETTING) {
 		const char *source_name = obs_data_get_string(settings, "source");
 		if (!move_action->start_action.source_name || strcmp(source_name, move_action->start_action.source_name) != 0) {
 			bfree(move_action->start_action.source_name);
@@ -127,7 +134,8 @@ void move_action_update(void *data, obs_data_t *settings)
 	}
 
 	if (end_action == MOVE_ACTION_SOURCE_HOTKEY || end_action == MOVE_ACTION_FILTER_ENABLE ||
-	    end_action == MOVE_ACTION_SOURCE_MUTE || end_action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+	    end_action == MOVE_ACTION_SOURCE_MUTE || end_action == MOVE_ACTION_SOURCE_AUDIO_TRACK ||
+	    end_action == MOVE_ACTION_SETTING) {
 		const char *source_name = obs_data_get_string(settings, "end_source");
 		if (!move_action->end_action.source_name || strcmp(source_name, move_action->end_action.source_name) != 0) {
 			bfree(move_action->end_action.source_name);
@@ -182,7 +190,7 @@ void move_action_update(void *data, obs_data_t *settings)
 		}
 	}
 
-	if (start_action == MOVE_ACTION_FILTER_ENABLE) {
+	if (start_action == MOVE_ACTION_FILTER_ENABLE || start_action == MOVE_ACTION_SETTING) {
 		const char *filter_name = obs_data_get_string(settings, "filter");
 		if (!move_action->start_action.filter_name || strcmp(filter_name, move_action->start_action.filter_name) != 0) {
 			bfree(move_action->start_action.filter_name);
@@ -193,7 +201,7 @@ void move_action_update(void *data, obs_data_t *settings)
 		move_action->start_action.filter_name = NULL;
 	}
 
-	if (end_action == MOVE_ACTION_FILTER_ENABLE) {
+	if (end_action == MOVE_ACTION_FILTER_ENABLE || end_action == MOVE_ACTION_SETTING) {
 		const char *filter_name = obs_data_get_string(settings, "end_filter");
 		if (!move_action->end_action.filter_name || strcmp(filter_name, move_action->end_action.filter_name) != 0) {
 			bfree(move_action->end_action.filter_name);
@@ -202,6 +210,62 @@ void move_action_update(void *data, obs_data_t *settings)
 	} else if (move_action->end_action.filter_name) {
 		bfree(move_action->end_action.filter_name);
 		move_action->end_action.filter_name = NULL;
+	}
+
+	if (start_action == MOVE_ACTION_SETTING) {
+		const char *setting_name = obs_data_get_string(settings, "setting");
+		if (!move_action->start_action.setting_name || strcmp(setting_name, move_action->start_action.setting_name) != 0) {
+			bfree(move_action->start_action.setting_name);
+			move_action->start_action.setting_name = bstrdup(setting_name);
+		}
+		move_action->start_action.setting_type = obs_data_get_int(settings, "setting_type");
+		if (move_action->start_action.setting_type == OBS_PROPERTY_COLOR ||
+		    move_action->start_action.setting_type == OBS_PROPERTY_COLOR_ALPHA) {
+			move_action->start_action.value_int = obs_data_get_int(settings, "value_color");
+		} else {
+			move_action->start_action.value_int = obs_data_get_int(settings, "value_int");
+		}
+		move_action->start_action.value_float = obs_data_get_double(settings, "value_double");
+		if (move_action->start_action.setting_type == OBS_PROPERTY_TEXT ||
+		    move_action->start_action.setting_type == OBS_PROPERTY_PATH) {
+			move_action->start_action.value_string = bstrdup(obs_data_get_string(settings, "value_string"));
+		} else {
+			bfree(move_action->start_action.value_string);
+			move_action->start_action.value_string = NULL;
+		}
+	} else if (move_action->start_action.setting_name) {
+		bfree(move_action->start_action.setting_name);
+		move_action->start_action.setting_name = NULL;
+		bfree(move_action->start_action.value_string);
+		move_action->start_action.value_string = NULL;
+	}
+
+	if (end_action == MOVE_ACTION_SETTING) {
+		const char *setting_name = obs_data_get_string(settings, "end_setting");
+		if (!move_action->end_action.setting_name || strcmp(setting_name, move_action->end_action.setting_name) != 0) {
+			bfree(move_action->end_action.setting_name);
+			move_action->end_action.setting_name = bstrdup(setting_name);
+		}
+		move_action->end_action.setting_type = obs_data_get_int(settings, "end_setting_type");
+		if (move_action->end_action.setting_type == OBS_PROPERTY_COLOR ||
+		    move_action->end_action.setting_type == OBS_PROPERTY_COLOR_ALPHA) {
+			move_action->end_action.value_int = obs_data_get_int(settings, "end_value_color");
+		} else {
+			move_action->end_action.value_int = obs_data_get_int(settings, "end_value_int");
+		}
+		move_action->end_action.value_float = obs_data_get_double(settings, "end_value_double");
+		if (move_action->end_action.setting_type == OBS_PROPERTY_TEXT ||
+		    move_action->end_action.setting_type == OBS_PROPERTY_PATH) {
+			move_action->end_action.value_string = bstrdup(obs_data_get_string(settings, "end_value_string"));
+		} else {
+			bfree(move_action->end_action.value_string);
+			move_action->end_action.value_string = NULL;
+		}
+	} else if (move_action->end_action.setting_name) {
+		bfree(move_action->end_action.setting_name);
+		move_action->end_action.setting_name = NULL;
+		bfree(move_action->end_action.value_string);
+		move_action->end_action.value_string = NULL;
 	}
 
 	if (start_action == MOVE_ACTION_SOURCE_VISIBILITY) {
@@ -340,11 +404,15 @@ static void move_action_actual_destroy(void *data)
 	bfree(move_action->start_action.scene_name);
 	bfree(move_action->start_action.sceneitem_name);
 	bfree(move_action->start_action.filter_name);
+	bfree(move_action->start_action.setting_name);
+	bfree(move_action->start_action.value_string);
 	bfree(move_action->end_action.source_name);
 	bfree(move_action->end_action.hotkey_name);
 	bfree(move_action->end_action.scene_name);
 	bfree(move_action->end_action.sceneitem_name);
 	bfree(move_action->end_action.filter_name);
+	bfree(move_action->end_action.setting_name);
+	bfree(move_action->end_action.value_string);
 
 	bfree(move_action);
 }
@@ -407,9 +475,24 @@ static bool move_action_source_changed(void *data, obs_properties_t *props, obs_
 	const char *source_name = obs_data_get_string(settings, "source");
 	obs_property_t *filter = obs_properties_get(props, "filter");
 	obs_property_list_clear(filter);
+	obs_property_t *setting = obs_properties_get(props, "setting");
+	obs_property_list_clear(setting);
 	obs_source_t *source = obs_get_source_by_name(source_name);
-	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	long long action = obs_data_get_int(settings, "action");
+	if (action == MOVE_ACTION_SETTING) {
+		obs_source_t *f = obs_source_get_filter_by_name(source, obs_data_get_string(settings, "filter"));
+		obs_source_release(f);
+		if (!f)
+			f = source;
+		obs_property_list_add_string(filter, "", "");
+		obs_properties_t *ps = obs_source_properties(f);
+		obs_property_t *p = obs_properties_first(ps);
+		for (; p != NULL; obs_property_next(&p)) {
+			obs_property_list_add_string(setting, obs_property_description(p), obs_property_name(p));
+		}
+		obs_properties_destroy(ps);
+	}
+	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	if (action == MOVE_ACTION_SOURCE_HOTKEY) {
 		obs_property_t *hotkey = obs_properties_get(props, "hotkey");
 		obs_property_list_clear(hotkey);
@@ -431,9 +514,24 @@ static bool move_action_end_source_changed(void *data, obs_properties_t *props, 
 	const char *source_name = obs_data_get_string(settings, "end_source");
 	obs_property_t *filter = obs_properties_get(props, "end_filter");
 	obs_property_list_clear(filter);
+	obs_property_t *setting = obs_properties_get(props, "end_setting");
+	obs_property_list_clear(setting);
 	obs_source_t *source = obs_get_source_by_name(source_name);
-	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	long long action = obs_data_get_int(settings, "end_action");
+	if (action == MOVE_ACTION_SETTING) {
+		obs_source_t *f = obs_source_get_filter_by_name(source, obs_data_get_string(settings, "end_filter"));
+		obs_source_release(f);
+		if (!f)
+			f = source;
+		obs_property_list_add_string(filter, "", "");
+		obs_properties_t *ps = obs_source_properties(f);
+		obs_property_t *p = obs_properties_first(ps);
+		for (; p != NULL; obs_property_next(&p)) {
+			obs_property_list_add_string(setting, obs_property_description(p), obs_property_name(p));
+		}
+		obs_properties_destroy(ps);
+	}
+	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	if (action == MOVE_ACTION_SOURCE_HOTKEY) {
 		obs_property_t *hotkey = obs_properties_get(props, "end_hotkey");
 		obs_property_list_clear(hotkey);
@@ -445,6 +543,130 @@ static bool move_action_end_source_changed(void *data, obs_properties_t *props, 
 		obs_weak_source_release(hd.source);
 	}
 	obs_source_release(source);
+	return true;
+}
+
+#if LIBOBS_API_VER < MAKE_SEMANTIC_VERSION(31, 0, 0)
+#define OBS_COMBO_FORMAT_BOOL 4
+#endif
+
+static bool move_action_setting_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	obs_property_t *enable = obs_properties_get(props, "enable");
+	obs_property_t *value_double = obs_properties_get(props, "value_double");
+	obs_property_t *value_int = obs_properties_get(props, "value_int");
+	obs_property_t *value_color = obs_properties_get(props, "value_color");
+	obs_property_t *value_string = obs_properties_get(props, "value_string");
+	long long action = obs_data_get_int(settings, "action");
+	if (action != MOVE_ACTION_SETTING) {
+		obs_property_set_visible(value_double, false);
+		obs_property_set_visible(value_int, false);
+		obs_property_set_visible(value_color, false);
+		obs_property_set_visible(value_string, false);
+		return false;
+	}
+	const char *source_name = obs_data_get_string(settings, "source");
+	obs_source_t *source = obs_get_source_by_name(source_name);
+	obs_source_t *f = obs_source_get_filter_by_name(source, obs_data_get_string(settings, "filter"));
+	obs_source_release(f);
+	if (!f)
+		f = source;
+	long long setting_type = obs_data_get_int(settings, "setting_type");
+	obs_properties_t *ps = obs_source_properties(f);
+	obs_property_t *p = obs_properties_get(ps, obs_data_get_string(settings, "setting"));
+	if (p) {
+		setting_type = obs_property_get_type(p);
+		if (setting_type == OBS_PROPERTY_LIST) {
+			int list_format = obs_property_list_format(p);
+			if (list_format == OBS_COMBO_FORMAT_INT) {
+				setting_type = OBS_PROPERTY_INT;
+			} else if (list_format == OBS_COMBO_FORMAT_FLOAT) {
+				setting_type = OBS_PROPERTY_FLOAT;
+			} else if (list_format == OBS_COMBO_FORMAT_STRING) {
+				setting_type = OBS_PROPERTY_TEXT;
+			} else if (list_format == OBS_COMBO_FORMAT_BOOL) {
+				setting_type = OBS_PROPERTY_BOOL;
+			}
+		}
+		obs_data_set_int(settings, "setting_type", setting_type);
+		if (setting_type == OBS_PROPERTY_FLOAT) {
+			obs_property_float_set_limits(value_double, obs_property_float_min(p), obs_property_float_max(p),
+						      obs_property_float_step(p));
+		} else if (setting_type == OBS_PROPERTY_INT) {
+			obs_property_int_set_limits(value_int, obs_property_int_min(p), obs_property_int_max(p),
+						      obs_property_int_step(p));
+		}
+	}
+	obs_properties_destroy(ps);
+	obs_source_release(source);
+
+	obs_property_set_visible(enable, setting_type == OBS_PROPERTY_BOOL);
+	obs_property_set_visible(value_double, setting_type == OBS_PROPERTY_FLOAT);
+	obs_property_set_visible(value_int, setting_type == OBS_PROPERTY_INT);
+	obs_property_set_visible(value_color, setting_type == OBS_PROPERTY_COLOR || setting_type == OBS_PROPERTY_COLOR_ALPHA);
+	obs_property_set_visible(value_string, setting_type == OBS_PROPERTY_TEXT || setting_type == OBS_PROPERTY_PATH);
+	return true;
+}
+
+static bool move_action_end_setting_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	obs_property_t *enable = obs_properties_get(props, "end_enable");
+	obs_property_t *value_double = obs_properties_get(props, "end_value_double");
+	obs_property_t *value_int = obs_properties_get(props, "end_value_int");
+	obs_property_t *value_color = obs_properties_get(props, "end_value_color");
+	obs_property_t *value_string = obs_properties_get(props, "end_value_string");
+	long long action = obs_data_get_int(settings, "end_action");
+	if (action != MOVE_ACTION_SETTING) {
+		obs_property_set_visible(value_double, false);
+		obs_property_set_visible(value_int, false);
+		obs_property_set_visible(value_color, false);
+		obs_property_set_visible(value_string, false);
+		return false;
+	}
+	const char *source_name = obs_data_get_string(settings, "end_source");
+	obs_source_t *source = obs_get_source_by_name(source_name);
+	obs_source_t *f = obs_source_get_filter_by_name(source, obs_data_get_string(settings, "end_filter"));
+	obs_source_release(f);
+	if (!f)
+		f = source;
+	long long setting_type = obs_data_get_int(settings, "end_setting_type");
+	obs_properties_t *ps = obs_source_properties(f);
+	obs_property_t *p = obs_properties_get(ps, obs_data_get_string(settings, "end_setting"));
+	if (p) {
+		setting_type = obs_property_get_type(p);
+		if (setting_type == OBS_PROPERTY_LIST) {
+			int list_format = obs_property_list_format(p);
+			if (list_format == OBS_COMBO_FORMAT_INT) {
+				setting_type = OBS_PROPERTY_INT;
+			} else if (list_format == OBS_COMBO_FORMAT_FLOAT) {
+				setting_type = OBS_PROPERTY_FLOAT;
+			} else if (list_format == OBS_COMBO_FORMAT_STRING) {
+				setting_type = OBS_PROPERTY_TEXT;
+			} else if (list_format == OBS_COMBO_FORMAT_BOOL) {
+				setting_type = OBS_PROPERTY_BOOL;
+			}
+		}
+		obs_data_set_int(settings, "end_setting_type", setting_type);
+		if (setting_type == OBS_PROPERTY_FLOAT) {
+			obs_property_float_set_limits(value_double, obs_property_float_min(p), obs_property_float_max(p),
+						      obs_property_float_step(p));
+		} else if (setting_type == OBS_PROPERTY_INT) {
+			obs_property_int_set_limits(value_int, obs_property_int_min(p), obs_property_int_max(p),
+						    obs_property_int_step(p));
+		}
+	}
+	obs_properties_destroy(ps);
+	obs_source_release(source);
+
+	obs_property_set_visible(enable, setting_type == OBS_PROPERTY_BOOL);
+	obs_property_set_visible(value_double, setting_type == OBS_PROPERTY_FLOAT);
+	obs_property_set_visible(value_int, setting_type == OBS_PROPERTY_INT);
+	obs_property_set_visible(value_color, setting_type == OBS_PROPERTY_COLOR || setting_type == OBS_PROPERTY_COLOR_ALPHA);
+	obs_property_set_visible(value_string, setting_type == OBS_PROPERTY_TEXT || setting_type == OBS_PROPERTY_PATH);
 	return true;
 }
 
@@ -509,20 +731,22 @@ static bool move_action_action_changed(obs_properties_t *props, obs_property_t *
 	}
 	obs_property_t *source = obs_properties_get(props, "source");
 	obs_property_t *filter = obs_properties_get(props, "filter");
+	obs_property_t *setting = obs_properties_get(props, "setting");
 	obs_property_t *hotkey = obs_properties_get(props, "hotkey");
 	if (action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_HOTKEY || action == MOVE_ACTION_SOURCE_MUTE ||
-	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK || action == MOVE_ACTION_SETTING) {
 		obs_property_list_clear(source);
 		obs_enum_sources(add_source_to_prop_list, source);
 		obs_enum_scenes(add_source_to_prop_list, source);
 		obs_property_set_visible(source, true);
-		obs_property_set_visible(filter, action == MOVE_ACTION_FILTER_ENABLE);
+		obs_property_set_visible(filter, action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SETTING);
 		obs_property_set_visible(hotkey, action == MOVE_ACTION_SOURCE_HOTKEY);
-
+		obs_property_set_visible(setting, action == MOVE_ACTION_SETTING);
 	} else {
 		obs_property_set_visible(source, false);
 		obs_property_set_visible(filter, false);
 		obs_property_set_visible(hotkey, action == MOVE_ACTION_FRONTEND_HOTKEY);
+		obs_property_set_visible(setting, false);
 	}
 	obs_property_t *audio_track = obs_properties_get(props, "audio_track");
 	obs_property_set_visible(audio_track, action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
@@ -536,7 +760,9 @@ static bool move_action_action_changed(obs_properties_t *props, obs_property_t *
 
 	obs_property_t *enable = obs_properties_get(props, "enable");
 	obs_property_set_visible(enable, action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_VISIBILITY ||
-						 action == MOVE_ACTION_SOURCE_MUTE || action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
+						 action == MOVE_ACTION_SOURCE_MUTE || action == MOVE_ACTION_SOURCE_AUDIO_TRACK ||
+						 (action == MOVE_ACTION_SETTING &&
+						  obs_data_get_int(settings, "setting_type") == OBS_PROPERTY_BOOL));
 
 	return true;
 }
@@ -559,20 +785,22 @@ static bool move_action_end_action_changed(obs_properties_t *props, obs_property
 	}
 	obs_property_t *source = obs_properties_get(props, "end_source");
 	obs_property_t *filter = obs_properties_get(props, "end_filter");
+	obs_property_t *setting = obs_properties_get(props, "end_setting");
 	obs_property_t *hotkey = obs_properties_get(props, "end_hotkey");
 	if (action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_HOTKEY || action == MOVE_ACTION_SOURCE_MUTE ||
-	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK) {
+	    action == MOVE_ACTION_SOURCE_AUDIO_TRACK || action == MOVE_ACTION_SETTING) {
 		obs_property_list_clear(source);
 		obs_enum_sources(add_source_to_prop_list, source);
 		obs_enum_scenes(add_source_to_prop_list, source);
 		obs_property_set_visible(source, true);
-		obs_property_set_visible(filter, action == MOVE_ACTION_FILTER_ENABLE);
+		obs_property_set_visible(filter, action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SETTING);
 		obs_property_set_visible(hotkey, action == MOVE_ACTION_SOURCE_HOTKEY);
-
+		obs_property_set_visible(setting, action == MOVE_ACTION_SETTING);
 	} else {
 		obs_property_set_visible(source, false);
 		obs_property_set_visible(filter, false);
 		obs_property_set_visible(hotkey, action == MOVE_ACTION_FRONTEND_HOTKEY);
+		obs_property_set_visible(setting, false);
 	}
 	obs_property_t *audio_track = obs_properties_get(props, "end_audio_track");
 	obs_property_set_visible(audio_track, action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
@@ -586,7 +814,9 @@ static bool move_action_end_action_changed(obs_properties_t *props, obs_property
 
 	obs_property_t *enable = obs_properties_get(props, "end_enable");
 	obs_property_set_visible(enable, action == MOVE_ACTION_FILTER_ENABLE || action == MOVE_ACTION_SOURCE_VISIBILITY ||
-						 action == MOVE_ACTION_SOURCE_MUTE || action == MOVE_ACTION_SOURCE_AUDIO_TRACK);
+						 action == MOVE_ACTION_SOURCE_MUTE || action == MOVE_ACTION_SOURCE_AUDIO_TRACK ||
+						 (action == MOVE_ACTION_SETTING &&
+						  obs_data_get_int(settings, "end_setting_type") == OBS_PROPERTY_BOOL));
 
 	return true;
 }
@@ -643,6 +873,7 @@ bool move_filter_start_button(obs_properties_t *props, obs_property_t *property,
 
 static obs_properties_t *move_action_properties(void *data)
 {
+	struct move_action_info *move_action = data;
 	obs_properties_t *ppts = obs_properties_create();
 
 	obs_properties_t *start_action = obs_properties_create();
@@ -657,6 +888,7 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("SourceHotkey"), MOVE_ACTION_SOURCE_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("FilterEnable"), MOVE_ACTION_FILTER_ENABLE);
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
+	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
 	obs_property_set_modified_callback(p, move_action_action_changed);
 
 	p = obs_properties_add_list(start_action, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -675,6 +907,16 @@ static obs_properties_t *move_action_properties(void *data)
 				    OBS_COMBO_FORMAT_STRING);
 
 	obs_property_set_modified_callback2(p, move_action_source_changed, data);
+
+	p = obs_properties_add_list(start_action, "setting", obs_module_text("Setting"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_set_modified_callback2(p, move_action_setting_changed, data);
+
+	obs_properties_add_float(start_action, "value_double", obs_module_text("Value"), 0.0, 0.0, 1.0);
+	obs_properties_add_int(start_action, "value_int", obs_module_text("Value"), 0, 0, 1);
+	obs_properties_add_color_alpha(start_action, "value_color", obs_module_text("Value"));
+	obs_properties_add_text(start_action, "value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE); //OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(start_action, "audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -722,7 +964,6 @@ static obs_properties_t *move_action_properties(void *data)
 	//obs_frontend_open_properties
 
 	//move_filter_properties(data, ppts);
-	struct move_action_info *move_action = data;
 
 	obs_properties_t *duration = obs_properties_create();
 
@@ -751,6 +992,7 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("SourceHotkey"), MOVE_ACTION_SOURCE_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("FilterEnable"), MOVE_ACTION_FILTER_ENABLE);
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
+	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
 	obs_property_set_modified_callback(p, move_action_end_action_changed);
 
 	p = obs_properties_add_list(end_action, "end_scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -769,6 +1011,16 @@ static obs_properties_t *move_action_properties(void *data)
 				    OBS_COMBO_FORMAT_STRING);
 
 	obs_property_set_modified_callback2(p, move_action_end_source_changed, data);
+
+	p = obs_properties_add_list(end_action, "end_setting", obs_module_text("Setting"), OBS_COMBO_TYPE_LIST,
+				    OBS_COMBO_FORMAT_STRING);
+
+	obs_property_set_modified_callback2(p, move_action_end_setting_changed, data);
+
+	obs_properties_add_float(end_action, "end_value_double", obs_module_text("Value"), 0.0, 0.0, 1.0);
+	obs_properties_add_int(end_action, "end_value_int", obs_module_text("Value"), 0, 0, 1);
+	obs_properties_add_color_alpha(end_action, "end_value_color", obs_module_text("Value"));
+	obs_properties_add_text(end_action, "end_value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE); //OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(end_action, "end_audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1010,6 +1262,64 @@ void move_action_execute(void *data)
 				}
 				obs_source_release(source);
 			}
+		}
+	} else if (move_action->action == MOVE_ACTION_SETTING) {
+		if (move_action->source_name && strlen(move_action->source_name)) {
+			obs_source_t *source = obs_get_source_by_name(move_action->source_name);
+			obs_source_t *target = source && move_action->filter_name && strlen(move_action->filter_name)
+						       ? obs_source_get_filter_by_name(source, move_action->filter_name)
+						       : NULL;
+			obs_source_release(target);
+			if (!target)
+				target = source;
+			if (target) {
+				obs_data_t *settings = obs_source_get_settings(target);
+				if (move_action->setting_type == OBS_PROPERTY_BOOL) {
+					if (move_action->enable == MOVE_ACTION_TOGGLE) {
+						obs_data_set_bool(settings, move_action->setting_name,
+								  !obs_data_get_bool(settings, move_action->setting_name));
+						obs_source_update(target, settings);
+					} else if (move_action->enable == MOVE_ACTION_ENABLE) {
+						if (!obs_data_get_bool(settings, move_action->setting_name)) {
+							obs_data_set_bool(settings, move_action->setting_name, true);
+							obs_source_update(target, settings);
+						}
+					} else if (move_action->enable == MOVE_ACTION_DISABLE) {
+						if (obs_data_get_bool(settings, move_action->setting_name)) {
+							obs_data_set_bool(settings, move_action->setting_name, false);
+							obs_source_update(target, settings);
+						}
+					}
+				} else if (move_action->setting_type == OBS_PROPERTY_TEXT ||
+					   move_action->setting_type == OBS_PROPERTY_PATH) {
+					if (move_action->value_string &&
+					    strcmp(obs_data_get_string(settings, move_action->setting_name),
+						   move_action->value_string) != 0) {
+						obs_data_set_string(settings, move_action->setting_name, move_action->value_string);
+						obs_source_update(target, settings);
+					}
+				} else if (move_action->setting_type == OBS_PROPERTY_INT ||
+					   move_action->setting_type == OBS_PROPERTY_COLOR ||
+					   move_action->setting_type == OBS_PROPERTY_COLOR_ALPHA) {
+					if (obs_data_get_int(settings, move_action->setting_name) != move_action->value_int) {
+						obs_data_set_int(settings, move_action->setting_name, move_action->value_int);
+						obs_source_update(target, settings);
+					}
+				} else if (move_action->setting_type == OBS_PROPERTY_FLOAT) {
+					if (obs_data_get_double(settings, move_action->setting_name) != move_action->value_float) {
+						obs_data_set_double(settings, move_action->setting_name, move_action->value_float);
+						obs_source_update(target, settings);
+					}
+				} else if (move_action->setting_type == OBS_PROPERTY_BUTTON) {
+					obs_properties_t *props = obs_source_properties(target);
+					obs_property_t *p = obs_properties_get(props, move_action->setting_name);
+					if (p)
+						obs_property_button_clicked(p, target);
+					obs_properties_destroy(props);
+				}
+				obs_data_release(settings);
+			}
+			obs_source_release(source);
 		}
 	}
 }
