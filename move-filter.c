@@ -220,9 +220,10 @@ static void *udp_server_thread(void *data)
 	si_me.sin_port = htons(udp_server->port);
 	si_me.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	if (bind(sockfd, (struct sockaddr *)&si_me, sizeof(si_me)) == -1)
+	if (bind(sockfd, (struct sockaddr *)&si_me, sizeof(si_me)) == -1) {
+		blog(LOG_ERROR, "[Move Transition] Error listening on udp port %i", udp_server->port);
 		return NULL;
-
+	}
 	struct sockaddr_in si_other;
 	int recv_len;
 	int port = udp_server->port;
@@ -234,8 +235,10 @@ static void *udp_server_thread(void *data)
 	while (true) {
 		recv_len = recvfrom(sockfd, buf, BUFLEN, 0, (struct sockaddr *)&si_other, &slen);
 		pthread_mutex_lock(&udp_servers_mutex);
-		if (recv_len == -1)
+		if (recv_len == -1) {
+			blog(LOG_ERROR, "[Move Transition] Error receiving udp");
 			break;
+		}
 
 		udp_server = NULL;
 		for (size_t i = 0; i < udp_servers.num; i++) {
