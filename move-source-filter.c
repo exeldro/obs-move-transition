@@ -1045,6 +1045,12 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Udp"), START_TRIGGER_UDP);
+
+	obs_property_set_modified_callback2(p, move_filter_start_trigger_changed, data);
+
+	obs_properties_add_int(ppts, S_START_TRIGGER_UDP_PORT, obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(ppts, S_START_TRIGGER_UDP_PACKET, obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(group, S_STOP_TRIGGER, obs_module_text("StopTrigger"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1064,6 +1070,11 @@ static obs_properties_t *move_source_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Udp"), START_TRIGGER_UDP);
+	obs_property_set_modified_callback2(p, move_filter_stop_trigger_changed, data);
+
+	obs_properties_add_int(ppts, S_STOP_TRIGGER_UDP_PORT, obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(ppts, S_STOP_TRIGGER_UDP_PACKET, obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(group, S_SIMULTANEOUS_MOVE, obs_module_text("SimultaneousMove"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);

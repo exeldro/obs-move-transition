@@ -6,7 +6,7 @@ extern "C" {
 #include <map>
 #include <strmif.h>
 #include <util/dstr.hpp>
-#include "util/threading.h"
+#include <util/threading.h>
 
 #define PROP_MAX 100
 

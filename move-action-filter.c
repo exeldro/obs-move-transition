@@ -1,6 +1,19 @@
 #include "move-transition.h"
 #include "obs-frontend-api.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <Mstcpip.h>
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <netdb.h>
+#define SOCKET int
+#define closesocket(s) close(s)
+#endif
+
 #define MOVE_ACTION_NONE 0
 #define MOVE_ACTION_FRONTEND 1
 #define MOVE_ACTION_SOURCE_HOTKEY 2
@@ -10,6 +23,7 @@
 #define MOVE_ACTION_SOURCE_MUTE 6
 #define MOVE_ACTION_SOURCE_AUDIO_TRACK 7
 #define MOVE_ACTION_SETTING 8
+#define MOVE_ACTION_UDP_PACKET 9
 
 #define MOVE_ACTION_ENABLE 0
 #define MOVE_ACTION_DISABLE 1
@@ -38,6 +52,9 @@ struct move_action_action {
 	char *value_string;
 	long long value_int;
 	double value_float;
+	char *udp_host;
+	int udp_port;
+	char *udp_packet;
 };
 
 struct move_action_info {
@@ -171,6 +188,51 @@ void move_action_update(void *data, obs_data_t *settings)
 		move_action->end_action.hotkey_name = NULL;
 		changed = true;
 	}
+
+	if (start_action == MOVE_ACTION_UDP_PACKET) {
+		const char *udp_host = obs_data_get_string(settings, "udp_host");
+		if (!move_action->start_action.udp_host || strcmp(udp_host, move_action->start_action.udp_host) != 0) {
+			bfree(move_action->start_action.udp_host);
+			move_action->start_action.udp_host = bstrdup(udp_host);
+			changed = true;
+		}
+		move_action->start_action.udp_port = (int)obs_data_get_int(settings, "udp_port");
+		const char *udp_packet = obs_data_get_string(settings, "udp_packet");
+		if (!move_action->start_action.udp_packet || strcmp(udp_packet, move_action->start_action.udp_packet) != 0) {
+			bfree(move_action->start_action.udp_packet);
+			move_action->start_action.udp_packet = bstrdup(udp_packet);
+			changed = true;
+		}
+	} else if (move_action->start_action.udp_host || move_action->start_action.udp_packet) {
+		bfree(move_action->start_action.udp_host);
+		move_action->start_action.udp_host = NULL;
+		bfree(move_action->start_action.udp_packet);
+		move_action->start_action.udp_packet = NULL;
+		changed = true;
+	}
+
+	if (end_action == MOVE_ACTION_UDP_PACKET) {
+		const char *udp_host = obs_data_get_string(settings, "end_udp_host");
+		if (!move_action->end_action.udp_host || strcmp(udp_host, move_action->end_action.udp_host) != 0) {
+			bfree(move_action->end_action.udp_host);
+			move_action->end_action.udp_host = bstrdup(udp_host);
+			changed = true;
+		}
+		move_action->end_action.udp_port = (int)obs_data_get_int(settings, "end_udp_port");
+		const char *udp_packet = obs_data_get_string(settings, "end_udp_packet");
+		if (!move_action->end_action.udp_packet || strcmp(udp_packet, move_action->end_action.udp_packet) != 0) {
+			bfree(move_action->end_action.udp_packet);
+			move_action->end_action.udp_packet = bstrdup(udp_packet);
+			changed = true;
+		}
+	} else if (move_action->end_action.udp_host || move_action->end_action.udp_packet) {
+		bfree(move_action->end_action.udp_host);
+		move_action->end_action.udp_host = NULL;
+		bfree(move_action->end_action.udp_packet);
+		move_action->end_action.udp_packet = NULL;
+		changed = true;
+	}
+
 	if (changed) {
 		move_action->start_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
 		if (move_action->start_action.hotkey_name && strlen(move_action->start_action.hotkey_name)) {
@@ -406,6 +468,8 @@ static void move_action_actual_destroy(void *data)
 	bfree(move_action->start_action.filter_name);
 	bfree(move_action->start_action.setting_name);
 	bfree(move_action->start_action.value_string);
+	bfree(move_action->start_action.udp_host);
+	bfree(move_action->start_action.udp_packet);
 	bfree(move_action->end_action.source_name);
 	bfree(move_action->end_action.hotkey_name);
 	bfree(move_action->end_action.scene_name);
@@ -413,6 +477,8 @@ static void move_action_actual_destroy(void *data)
 	bfree(move_action->end_action.filter_name);
 	bfree(move_action->end_action.setting_name);
 	bfree(move_action->end_action.value_string);
+	bfree(move_action->end_action.udp_host);
+	bfree(move_action->end_action.udp_packet);
 
 	bfree(move_action);
 }
@@ -546,7 +612,7 @@ static bool move_action_end_source_changed(void *data, obs_properties_t *props, 
 	return true;
 }
 
-#if LIBOBS_API_VER < MAKE_SEMANTIC_VERSION(31, 0, 0)
+#if LIBOBS_API_VER < MAKE_SEMANTIC_VERSION(30, 0, 0)
 #define OBS_COMBO_FORMAT_BOOL 4
 #endif
 
@@ -596,7 +662,7 @@ static bool move_action_setting_changed(void *data, obs_properties_t *props, obs
 						      obs_property_float_step(p));
 		} else if (setting_type == OBS_PROPERTY_INT) {
 			obs_property_int_set_limits(value_int, obs_property_int_min(p), obs_property_int_max(p),
-						      obs_property_int_step(p));
+						    obs_property_int_step(p));
 		}
 	}
 	obs_properties_destroy(ps);
@@ -764,6 +830,14 @@ static bool move_action_action_changed(obs_properties_t *props, obs_property_t *
 						 (action == MOVE_ACTION_SETTING &&
 						  obs_data_get_int(settings, "setting_type") == OBS_PROPERTY_BOOL));
 
+	move_action_setting_changed(NULL, props, property, settings);
+
+	obs_property_t *udp_host = obs_properties_get(props, "udp_host");
+	obs_property_set_visible(udp_host, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *udp_port = obs_properties_get(props, "udp_port");
+	obs_property_set_visible(udp_port, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *udp_packet = obs_properties_get(props, "udp_packet");
+	obs_property_set_visible(udp_packet, action == MOVE_ACTION_UDP_PACKET);
 	return true;
 }
 
@@ -818,6 +892,14 @@ static bool move_action_end_action_changed(obs_properties_t *props, obs_property
 						 (action == MOVE_ACTION_SETTING &&
 						  obs_data_get_int(settings, "end_setting_type") == OBS_PROPERTY_BOOL));
 
+	move_action_end_setting_changed(NULL, props, property, settings);
+
+	obs_property_t *udp_host = obs_properties_get(props, "end_udp_host");
+	obs_property_set_visible(udp_host, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *udp_port = obs_properties_get(props, "end_udp_port");
+	obs_property_set_visible(udp_port, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *udp_packet = obs_properties_get(props, "end_udp_packet");
+	obs_property_set_visible(udp_packet, action == MOVE_ACTION_UDP_PACKET);
 	return true;
 }
 
@@ -889,6 +971,7 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FilterEnable"), MOVE_ACTION_FILTER_ENABLE);
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
+	obs_property_list_add_int(p, obs_module_text("UdpPacket"), MOVE_ACTION_UDP_PACKET);
 	obs_property_set_modified_callback(p, move_action_action_changed);
 
 	p = obs_properties_add_list(start_action, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -916,7 +999,11 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_properties_add_float(start_action, "value_double", obs_module_text("Value"), 0.0, 0.0, 1.0);
 	obs_properties_add_int(start_action, "value_int", obs_module_text("Value"), 0, 0, 1);
 	obs_properties_add_color_alpha(start_action, "value_color", obs_module_text("Value"));
-	obs_properties_add_text(start_action, "value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE); //OBS_TEXT_DEFAULT);
+	obs_properties_add_text(start_action, "value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE);
+
+	obs_properties_add_text(start_action, "udp_host", obs_module_text("UdpHost"), OBS_TEXT_DEFAULT);
+	obs_properties_add_int(start_action, "udp_port", obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(start_action, "udp_packet", obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(start_action, "audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -993,6 +1080,7 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FilterEnable"), MOVE_ACTION_FILTER_ENABLE);
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
+	obs_property_list_add_int(p, obs_module_text("UdpPacket"), MOVE_ACTION_UDP_PACKET);
 	obs_property_set_modified_callback(p, move_action_end_action_changed);
 
 	p = obs_properties_add_list(end_action, "end_scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -1020,7 +1108,11 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_properties_add_float(end_action, "end_value_double", obs_module_text("Value"), 0.0, 0.0, 1.0);
 	obs_properties_add_int(end_action, "end_value_int", obs_module_text("Value"), 0, 0, 1);
 	obs_properties_add_color_alpha(end_action, "end_value_color", obs_module_text("Value"));
-	obs_properties_add_text(end_action, "end_value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE); //OBS_TEXT_DEFAULT);
+	obs_properties_add_text(end_action, "end_value_string", obs_module_text("Value"), OBS_TEXT_MULTILINE);
+
+	obs_properties_add_text(end_action, "end_udp_host", obs_module_text("UdpHost"), OBS_TEXT_DEFAULT);
+	obs_properties_add_int(end_action, "end_udp_port", obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(end_action, "end_udp_packet", obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(end_action, "end_audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1076,6 +1168,12 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Udp"), START_TRIGGER_UDP);
+
+	obs_property_set_modified_callback2(p, move_filter_start_trigger_changed, data);
+
+	obs_properties_add_int(ppts, S_START_TRIGGER_UDP_PORT, obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(ppts, S_START_TRIGGER_UDP_PACKET, obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	p = obs_properties_add_list(ppts, S_STOP_TRIGGER, obs_module_text("StopTrigger"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1089,6 +1187,11 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveMatch"), START_TRIGGER_MOVE_MATCH);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveIn"), START_TRIGGER_MOVE_IN);
 	obs_property_list_add_int(p, obs_module_text("StartTrigger.MoveOut"), START_TRIGGER_MOVE_OUT);
+	obs_property_list_add_int(p, obs_module_text("StartTrigger.Udp"), START_TRIGGER_UDP);
+	obs_property_set_modified_callback2(p, move_filter_stop_trigger_changed, data);
+
+	obs_properties_add_int(ppts, S_STOP_TRIGGER_UDP_PORT, obs_module_text("UdpPort"), 1, 65535, 1);
+	obs_properties_add_text(ppts, S_STOP_TRIGGER_UDP_PACKET, obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
 
 	obs_source_t *parent = obs_filter_get_parent(move_action->move_filter.source);
 
@@ -1320,6 +1423,23 @@ void move_action_execute(void *data)
 				obs_data_release(settings);
 			}
 			obs_source_release(source);
+		}
+	} else if (move_action->action == MOVE_ACTION_UDP_PACKET) {
+		SOCKET sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		if (sockfd >= 0) {
+			struct hostent *host = gethostbyname(
+				move_action->udp_host && strlen(move_action->udp_host) ? move_action->udp_host : "127.0.0.1");
+			if (host) {
+				struct sockaddr_in server;
+				memset(&server, 0, sizeof(server));
+				server.sin_family = AF_INET;
+				server.sin_addr = *((struct in_addr *)host->h_addr);
+				server.sin_port = htons(move_action->udp_port ? move_action->udp_port : 3000);
+				char *packet = move_action->udp_packet && strlen(move_action->udp_packet) ? move_action->udp_packet
+													  : "move-action";
+				sendto(sockfd, packet, (int)strlen(packet), 0, (const struct sockaddr *)&server, sizeof(server));
+				closesocket(sockfd);
+			}
 		}
 	}
 }

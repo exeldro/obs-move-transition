@@ -4,6 +4,7 @@
 #include "graphics/math-defs.h"
 #include "graphics/matrix4.h"
 #include "easing.h"
+#include <util/threading.h>
 
 struct move_info {
 	obs_source_t *source;
@@ -3225,9 +3226,14 @@ extern void unload_nvar(void);
 void SetMoveDirectShowFilter(struct obs_source_info *obs_source_info);
 #endif
 
+extern DARRAY(struct udp_server) udp_servers;
+extern pthread_mutex_t udp_servers_mutex;
+
 bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[Move Transition] loaded version %s", PROJECT_VERSION);
+	da_init(udp_servers);
+	pthread_mutex_init(&udp_servers_mutex, NULL);
 	obs_register_source(&move_transition);
 	obs_register_source(&move_transition_override_filter);
 	obs_register_source(&move_source_filter);
@@ -3245,4 +3251,8 @@ bool obs_module_load(void)
 	obs_register_source(&move_directshow_filter);
 #endif
 	return true;
+}
+
+void obs_module_unload() {
+	pthread_mutex_destroy(&udp_servers_mutex);
 }

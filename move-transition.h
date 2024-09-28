@@ -73,7 +73,11 @@
 #define S_CACHE_TRANSITIONS "cache_transitions"
 #define S_NESTED_SCENES "nested_scenes"
 #define S_START_TRIGGER "start_trigger"
+#define S_START_TRIGGER_UDP_PORT "start_trigger_udp_port"
+#define S_START_TRIGGER_UDP_PACKET "start_trigger_udp_packet"
 #define S_STOP_TRIGGER "stop_trigger"
+#define S_STOP_TRIGGER_UDP_PORT "stop_trigger_udp_port"
+#define S_STOP_TRIGGER_UDP_PACKET "stop_trigger_udp_packet"
 #define S_START_DELAY "start_delay"
 #define S_END_DELAY "end_delay"
 #define S_ACTIONS "actions"
@@ -171,6 +175,7 @@
 #define START_TRIGGER_MOVE_MATCH 14
 #define START_TRIGGER_MOVE_IN 15
 #define START_TRIGGER_MOVE_OUT 16
+#define START_TRIGGER_UDP 17
 
 #define MOVE_VALUE_UNKNOWN 0
 #define MOVE_VALUE_INT 1
@@ -276,6 +281,8 @@ void move_filter_stop(struct move_filter *move_filter);
 void move_filter_ended(struct move_filter *move_filter);
 bool move_filter_tick(struct move_filter *move_filter, float seconds, float *t);
 void move_filter_properties(struct move_filter *move_filter, obs_properties_t *ppts);
+bool move_filter_start_trigger_changed(void *priv, obs_properties_t *props, obs_property_t *property, obs_data_t *settings);
+bool move_filter_stop_trigger_changed(void *priv, obs_properties_t *props, obs_property_t *property, obs_data_t *settings);
 void move_filter_defaults(obs_data_t *settings);
 void move_filter_activate(void *data);
 void move_filter_deactivate(void *data);

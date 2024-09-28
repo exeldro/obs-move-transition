@@ -1,9 +1,6 @@
 # --- Detect if the plugin is build out of tree or not ---
 if(CMAKE_PROJECT_NAME STREQUAL "obs-studio")
   set(BUILD_OUT_OF_TREE OFF)
-  if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
-  	legacy_check()
-  endif()
 else()
   set(BUILD_OUT_OF_TREE ON)
   cmake_minimum_required(VERSION 3.18)
@@ -60,7 +57,8 @@ if(OS_WINDOWS)
 		nvidia-move-filter.c)
 	target_link_libraries(${PROJECT_NAME}
 		strmiids
-		w32-pthreads)
+		w32-pthreads
+		ws2_32)
 elseif(OS_MACOS)
 		set(MACOS_BUNDLEID "com.exeldro.${PROJECT_NAME}")
 		set(MACOSX_PLUGIN_GUI_IDENTIFIER "${MACOS_BUNDLEID}")
