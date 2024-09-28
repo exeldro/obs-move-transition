@@ -278,17 +278,17 @@ jobs:
           $env:FILE_NAME_X64="${{ env.PLUGIN_NAME }}-${{ github.sha }}-windows-x64"
           echo "FILE_NAME_X64=${env:FILE_NAME_X64}" >> ${env:GITHUB_ENV}
       - name: Retrieve x86 build
-        uses: actions/download-artifact@v4.1.2
+        uses: actions/download-artifact@v4.1.7
         with:
           name: '${{ env.FILE_NAME_X86 }}'
           path: ./package
       - name: Retrieve x64 build
-        uses: actions/download-artifact@v4.1.2
+        uses: actions/download-artifact@v4.1.7
         with:
           name: '${{ env.FILE_NAME_X64 }}'
           path: ./package
       - name: Retrieve installer files
-        uses: actions/download-artifact@v4.1.2
+        uses: actions/download-artifact@v4.1.7
         with:
           name: 'installer-files'
           path: .
