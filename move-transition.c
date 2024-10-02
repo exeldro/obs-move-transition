@@ -3265,5 +3265,5 @@ bool obs_module_load(void)
 
 void obs_module_unload()
 {
-	pthread_mutex_destroy(&udp_servers_mutex);
+	//pthread_mutex_destroy(&udp_servers_mutex);
 }
