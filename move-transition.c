@@ -253,8 +253,18 @@ static void move_update(void *data, obs_data_t *settings)
 	move->easing_function_in = obs_data_get_int(settings, S_EASING_FUNCTION_IN);
 	move->easing_function_out = obs_data_get_int(settings, S_EASING_FUNCTION_OUT);
 	move->position_in = obs_data_get_int(settings, S_POSITION_IN);
+	obs_data_item_t *item = obs_data_item_byname(settings, S_ZOOM_IN);
+	if (obs_data_item_gettype(item) == OBS_DATA_BOOLEAN) {
+		obs_data_set_double(settings, S_ZOOM_IN, obs_data_get_bool(settings, S_ZOOM_IN) ? 0.0 : 100.0);
+	}
+	obs_data_item_release(&item);
 	move->zoom_in = (float)obs_data_get_double(settings, S_ZOOM_IN) / 100.0f;
 	move->position_out = obs_data_get_int(settings, S_POSITION_OUT);
+	item = obs_data_item_byname(settings, S_ZOOM_IN);
+	if (obs_data_item_gettype(item) == OBS_DATA_BOOLEAN) {
+		obs_data_set_double(settings, S_ZOOM_OUT, obs_data_get_bool(settings, S_ZOOM_OUT) ? 0.0 : 100.0);
+	}
+	obs_data_item_release(&item);
 	move->zoom_out = (float)obs_data_get_double(settings, S_ZOOM_OUT) / 100.0f;
 	move->curve_move = (float)obs_data_get_double(settings, S_CURVE_MATCH);
 	move->curve_in = (float)obs_data_get_double(settings, S_CURVE_IN);
@@ -3253,6 +3263,7 @@ bool obs_module_load(void)
 	return true;
 }
 
-void obs_module_unload() {
+void obs_module_unload()
+{
 	pthread_mutex_destroy(&udp_servers_mutex);
 }
