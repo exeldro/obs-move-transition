@@ -5,6 +5,7 @@
 #include "graphics/matrix4.h"
 #include "easing.h"
 #include <util/threading.h>
+#include "obs-websocket-api.h"
 
 struct move_info {
 	obs_source_t *source;
@@ -3261,6 +3262,12 @@ bool obs_module_load(void)
 	obs_register_source(&move_directshow_filter);
 #endif
 	return true;
+}
+
+obs_websocket_vendor vendor = NULL;
+void obs_module_post_load()
+{
+	vendor = obs_websocket_register_vendor("move");
 }
 
 void obs_module_unload()

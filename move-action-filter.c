@@ -1,5 +1,6 @@
 #include "move-transition.h"
 #include "obs-frontend-api.h"
+#include "obs-websocket-api.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -24,6 +25,8 @@
 #define MOVE_ACTION_SOURCE_AUDIO_TRACK 7
 #define MOVE_ACTION_SETTING 8
 #define MOVE_ACTION_UDP_PACKET 9
+#define MOVE_ACTION_WEBSOCKET_REQUEST 10
+#define MOVE_ACTION_WEBSOCKET_EVENT 11
 
 #define MOVE_ACTION_ENABLE 0
 #define MOVE_ACTION_DISABLE 1
@@ -41,6 +44,8 @@ struct move_action_action {
 	char *filter_name;
 	char *setting_name;
 	char *hotkey_name;
+	char *request_name;
+	char *event_name;
 	obs_hotkey_id hotkey_id;
 	enum obs_property_type setting_type;
 
@@ -55,6 +60,7 @@ struct move_action_action {
 	char *udp_host;
 	int udp_port;
 	char *udp_packet;
+	obs_data_t *data;
 };
 
 struct move_action_info {
@@ -189,6 +195,25 @@ void move_action_update(void *data, obs_data_t *settings)
 		changed = true;
 	}
 
+	if (changed) {
+		move_action->start_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+		if (move_action->start_action.hotkey_name && strlen(move_action->start_action.hotkey_name)) {
+			if (move_action->start_action.action == MOVE_ACTION_SOURCE_HOTKEY &&
+			    move_action->start_action.source_name && strlen(move_action->start_action.source_name))
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
+			else if (start_action == MOVE_ACTION_FRONTEND_HOTKEY)
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
+		}
+		move_action->end_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
+		if (move_action->end_action.hotkey_name && strlen(move_action->end_action.hotkey_name)) {
+			if (move_action->end_action.action == MOVE_ACTION_SOURCE_HOTKEY && move_action->end_action.source_name &&
+			    strlen(move_action->end_action.source_name))
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
+			else if (end_action == MOVE_ACTION_FRONTEND_HOTKEY)
+				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
+		}
+	}
+
 	if (start_action == MOVE_ACTION_UDP_PACKET) {
 		const char *udp_host = obs_data_get_string(settings, "udp_host");
 		if (!move_action->start_action.udp_host || strcmp(udp_host, move_action->start_action.udp_host) != 0) {
@@ -233,23 +258,68 @@ void move_action_update(void *data, obs_data_t *settings)
 		changed = true;
 	}
 
-	if (changed) {
-		move_action->start_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
-		if (move_action->start_action.hotkey_name && strlen(move_action->start_action.hotkey_name)) {
-			if (move_action->start_action.action == MOVE_ACTION_SOURCE_HOTKEY &&
-			    move_action->start_action.source_name && strlen(move_action->start_action.source_name))
-				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
-			else if (start_action == MOVE_ACTION_FRONTEND_HOTKEY)
-				obs_enum_hotkeys(move_action_load_hotkey, &move_action->start_action);
+	if (start_action == MOVE_ACTION_WEBSOCKET_REQUEST) {
+		const char *request_name = obs_data_get_string(settings, "request");
+		if (!move_action->start_action.request_name || strcmp(request_name, move_action->start_action.request_name) != 0) {
+			bfree(move_action->start_action.request_name);
+			move_action->start_action.request_name = bstrdup(request_name);
 		}
-		move_action->end_action.hotkey_id = OBS_INVALID_HOTKEY_ID;
-		if (move_action->end_action.hotkey_name && strlen(move_action->end_action.hotkey_name)) {
-			if (move_action->end_action.action == MOVE_ACTION_SOURCE_HOTKEY && move_action->end_action.source_name &&
-			    strlen(move_action->end_action.source_name))
-				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
-			else if (end_action == MOVE_ACTION_FRONTEND_HOTKEY)
-				obs_enum_hotkeys(move_action_load_hotkey, &move_action->end_action);
+	} else if (move_action->start_action.request_name) {
+		bfree(move_action->start_action.request_name);
+		move_action->start_action.request_name = NULL;
+	}
+
+	if (end_action == MOVE_ACTION_WEBSOCKET_REQUEST) {
+		const char *request_name = obs_data_get_string(settings, "end_request");
+		if (!move_action->end_action.request_name || strcmp(request_name, move_action->end_action.request_name) != 0) {
+			bfree(move_action->end_action.request_name);
+			move_action->end_action.request_name = bstrdup(request_name);
 		}
+	} else if (move_action->end_action.request_name) {
+		bfree(move_action->end_action.request_name);
+		move_action->end_action.request_name = NULL;
+	}
+
+	if (start_action == MOVE_ACTION_WEBSOCKET_EVENT) {
+		const char *event_name = obs_data_get_string(settings, "event");
+		if (!move_action->start_action.event_name || strcmp(event_name, move_action->start_action.event_name) != 0) {
+			bfree(move_action->start_action.event_name);
+			move_action->start_action.event_name = bstrdup(event_name);
+		}
+	} else if (move_action->start_action.event_name) {
+		bfree(move_action->start_action.event_name);
+		move_action->start_action.event_name = NULL;
+	}
+
+	if (end_action == MOVE_ACTION_WEBSOCKET_EVENT) {
+		const char *event_name = obs_data_get_string(settings, "end_event");
+		if (!move_action->end_action.event_name || strcmp(event_name, move_action->end_action.event_name) != 0) {
+			bfree(move_action->end_action.event_name);
+			move_action->end_action.event_name = bstrdup(event_name);
+		}
+	} else if (move_action->end_action.event_name) {
+		bfree(move_action->end_action.event_name);
+		move_action->end_action.event_name = NULL;
+	}
+
+	if (start_action == MOVE_ACTION_WEBSOCKET_REQUEST || start_action == MOVE_ACTION_WEBSOCKET_EVENT) {
+		obs_data_release(move_action->start_action.data);
+		move_action->start_action.data = obs_data_create_from_json(obs_data_get_string(settings, "data"));
+		if (start_action == MOVE_ACTION_WEBSOCKET_EVENT && !move_action->start_action.data)
+			move_action->start_action.data = obs_data_create();
+	} else if (move_action->start_action.data) {
+		obs_data_release(move_action->start_action.data);
+		move_action->start_action.data = NULL;
+	}
+
+	if (end_action == MOVE_ACTION_WEBSOCKET_REQUEST || end_action == MOVE_ACTION_WEBSOCKET_EVENT) {
+		obs_data_release(move_action->end_action.data);
+		move_action->end_action.data = obs_data_create_from_json(obs_data_get_string(settings, "end_data"));
+		if (end_action == MOVE_ACTION_WEBSOCKET_EVENT && !move_action->end_action.data)
+			move_action->end_action.data = obs_data_create();
+	} else if (move_action->end_action.data) {
+		obs_data_release(move_action->end_action.data);
+		move_action->end_action.data = NULL;
 	}
 
 	if (start_action == MOVE_ACTION_FILTER_ENABLE || start_action == MOVE_ACTION_SETTING) {
@@ -467,18 +537,24 @@ static void move_action_actual_destroy(void *data)
 	bfree(move_action->start_action.sceneitem_name);
 	bfree(move_action->start_action.filter_name);
 	bfree(move_action->start_action.setting_name);
+	bfree(move_action->start_action.request_name);
+	bfree(move_action->start_action.event_name);
 	bfree(move_action->start_action.value_string);
 	bfree(move_action->start_action.udp_host);
 	bfree(move_action->start_action.udp_packet);
+	obs_data_release(move_action->start_action.data);
 	bfree(move_action->end_action.source_name);
 	bfree(move_action->end_action.hotkey_name);
 	bfree(move_action->end_action.scene_name);
 	bfree(move_action->end_action.sceneitem_name);
 	bfree(move_action->end_action.filter_name);
 	bfree(move_action->end_action.setting_name);
+	bfree(move_action->end_action.request_name);
+	bfree(move_action->end_action.event_name);
 	bfree(move_action->end_action.value_string);
 	bfree(move_action->end_action.udp_host);
 	bfree(move_action->end_action.udp_packet);
+	obs_data_release(move_action->end_action.data);
 
 	bfree(move_action);
 }
@@ -558,7 +634,8 @@ static bool move_action_source_changed(void *data, obs_properties_t *props, obs_
 		}
 		obs_properties_destroy(ps);
 	}
-	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
+	if (source)
+		obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	if (action == MOVE_ACTION_SOURCE_HOTKEY) {
 		obs_property_t *hotkey = obs_properties_get(props, "hotkey");
 		obs_property_list_clear(hotkey);
@@ -597,7 +674,8 @@ static bool move_action_end_source_changed(void *data, obs_properties_t *props, 
 		}
 		obs_properties_destroy(ps);
 	}
-	obs_source_enum_filters(source, add_filter_to_prop_list, filter);
+	if (source)
+		obs_source_enum_filters(source, add_filter_to_prop_list, filter);
 	if (action == MOVE_ACTION_SOURCE_HOTKEY) {
 		obs_property_t *hotkey = obs_properties_get(props, "end_hotkey");
 		obs_property_list_clear(hotkey);
@@ -838,6 +916,12 @@ static bool move_action_action_changed(obs_properties_t *props, obs_property_t *
 	obs_property_set_visible(udp_port, action == MOVE_ACTION_UDP_PACKET);
 	obs_property_t *udp_packet = obs_properties_get(props, "udp_packet");
 	obs_property_set_visible(udp_packet, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *request_name = obs_properties_get(props, "request");
+	obs_property_set_visible(request_name, action == MOVE_ACTION_WEBSOCKET_REQUEST);
+	obs_property_t *event_name = obs_properties_get(props, "event");
+	obs_property_set_visible(event_name, action == MOVE_ACTION_WEBSOCKET_EVENT);
+	obs_property_t *data = obs_properties_get(props, "data");
+	obs_property_set_visible(data, action == MOVE_ACTION_WEBSOCKET_REQUEST || action == MOVE_ACTION_WEBSOCKET_EVENT);
 	return true;
 }
 
@@ -900,6 +984,12 @@ static bool move_action_end_action_changed(obs_properties_t *props, obs_property
 	obs_property_set_visible(udp_port, action == MOVE_ACTION_UDP_PACKET);
 	obs_property_t *udp_packet = obs_properties_get(props, "end_udp_packet");
 	obs_property_set_visible(udp_packet, action == MOVE_ACTION_UDP_PACKET);
+	obs_property_t *request_name = obs_properties_get(props, "end_request");
+	obs_property_set_visible(request_name, action == MOVE_ACTION_WEBSOCKET_REQUEST);
+	obs_property_t *event_name = obs_properties_get(props, "end_event");
+	obs_property_set_visible(event_name, action == MOVE_ACTION_WEBSOCKET_EVENT);
+	obs_property_t *data = obs_properties_get(props, "end_data");
+	obs_property_set_visible(data, action == MOVE_ACTION_WEBSOCKET_REQUEST || action == MOVE_ACTION_WEBSOCKET_EVENT);
 	return true;
 }
 
@@ -972,6 +1062,8 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
 	obs_property_list_add_int(p, obs_module_text("UdpPacket"), MOVE_ACTION_UDP_PACKET);
+	obs_property_list_add_int(p, obs_module_text("WebsocketRequest"), MOVE_ACTION_WEBSOCKET_REQUEST);
+	obs_property_list_add_int(p, obs_module_text("WebsocketEvent"), MOVE_ACTION_WEBSOCKET_EVENT);
 	obs_property_set_modified_callback(p, move_action_action_changed);
 
 	p = obs_properties_add_list(start_action, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -1004,6 +1096,9 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_properties_add_text(start_action, "udp_host", obs_module_text("UdpHost"), OBS_TEXT_DEFAULT);
 	obs_properties_add_int(start_action, "udp_port", obs_module_text("UdpPort"), 1, 65535, 1);
 	obs_properties_add_text(start_action, "udp_packet", obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(start_action, "request", obs_module_text("WebsocketRequest"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(start_action, "event", obs_module_text("WebsocketEvent"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(start_action, "data", obs_module_text("WebsocketData"), OBS_TEXT_MULTILINE);
 
 	p = obs_properties_add_list(start_action, "audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1081,6 +1176,8 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("FrontendHotkey"), MOVE_ACTION_FRONTEND_HOTKEY);
 	obs_property_list_add_int(p, obs_module_text("Setting"), MOVE_ACTION_SETTING);
 	obs_property_list_add_int(p, obs_module_text("UdpPacket"), MOVE_ACTION_UDP_PACKET);
+	obs_property_list_add_int(p, obs_module_text("WebsocketRequest"), MOVE_ACTION_WEBSOCKET_REQUEST);
+	obs_property_list_add_int(p, obs_module_text("WebsocketEvent"), MOVE_ACTION_WEBSOCKET_EVENT);
 	obs_property_set_modified_callback(p, move_action_end_action_changed);
 
 	p = obs_properties_add_list(end_action, "end_scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
@@ -1113,6 +1210,9 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_properties_add_text(end_action, "end_udp_host", obs_module_text("UdpHost"), OBS_TEXT_DEFAULT);
 	obs_properties_add_int(end_action, "end_udp_port", obs_module_text("UdpPort"), 1, 65535, 1);
 	obs_properties_add_text(end_action, "end_udp_packet", obs_module_text("UdpPacket"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(end_action, "end_request", obs_module_text("WebsocketRequest"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(end_action, "end_event", obs_module_text("WebsocketEvent"), OBS_TEXT_DEFAULT);
+	obs_properties_add_text(end_action, "end_data", obs_module_text("WebsocketData"), OBS_TEXT_MULTILINE);
 
 	p = obs_properties_add_list(end_action, "end_audio_track", obs_module_text("AudioTrack"), OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_INT);
@@ -1215,6 +1315,8 @@ static obs_properties_t *move_action_properties(void *data)
 	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO, OBS_TEXT_INFO);
 	return ppts;
 }
+
+extern obs_websocket_vendor vendor;
 
 void move_action_execute(void *data)
 {
@@ -1441,6 +1543,12 @@ void move_action_execute(void *data)
 				closesocket(sockfd);
 			}
 		}
+	} else if (move_action->action == MOVE_ACTION_WEBSOCKET_REQUEST) {
+		struct obs_websocket_request_response *response =
+			obs_websocket_call_request(move_action->request_name, move_action->data);
+		obs_websocket_request_response_free(response);
+	} else if (move_action->action == MOVE_ACTION_WEBSOCKET_EVENT) {
+		obs_websocket_vendor_emit_event(vendor, move_action->event_name, move_action->data);
 	}
 }
 
