@@ -198,6 +198,7 @@ static void clear_items(struct move_info *move, bool in_graphics)
 		item->item_b = NULL;
 
 		if (item->transition) {
+			obs_source_remove_active_child(move->source, item->transition);
 			obs_transition_force_stop(item->transition);
 			obs_transition_clear(item->transition);
 			obs_source_release(item->transition);
@@ -1085,6 +1086,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set_alignment(item->transition, OBS_ALIGN_CENTER);
 				obs_transition_set_scale_type(item->transition, item->transition_scale);
 				obs_transition_set(item->transition, obs_sceneitem_get_source(item->item_a));
+				obs_source_add_active_child(move->source, item->transition);
 				obs_transition_start(item->transition,
 						     obs_transition_fixed(item->transition) ? OBS_TRANSITION_MODE_AUTO
 											    : OBS_TRANSITION_MODE_MANUAL,
@@ -1101,6 +1103,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set_alignment(item->transition, OBS_ALIGN_CENTER);
 				obs_transition_set_scale_type(item->transition, item->transition_scale);
 				obs_transition_set(item->transition, obs_sceneitem_get_source(scene_item));
+				obs_source_add_active_child(move->source, item->transition);
 				obs_transition_start(item->transition,
 						     obs_transition_fixed(item->transition) ? OBS_TRANSITION_MODE_AUTO
 											    : OBS_TRANSITION_MODE_MANUAL,
@@ -1115,6 +1118,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			obs_transition_set_alignment(item->transition, OBS_ALIGN_CENTER);
 			obs_transition_set_scale_type(item->transition, OBS_TRANSITION_SCALE_ASPECT);
 			obs_transition_set(item->transition, source);
+			obs_source_add_active_child(move->source, item->transition);
 			obs_transition_start(item->transition,
 					     obs_transition_fixed(item->transition) ? OBS_TRANSITION_MODE_AUTO
 										    : OBS_TRANSITION_MODE_MANUAL,
@@ -1129,6 +1133,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			obs_transition_set_alignment(item->transition, OBS_ALIGN_CENTER);
 			obs_transition_set_scale_type(item->transition, OBS_TRANSITION_SCALE_ASPECT);
 			obs_transition_set(item->transition, NULL);
+			obs_source_add_active_child(move->source, item->transition);
 			obs_transition_start(item->transition,
 					     obs_transition_fixed(item->transition) ? OBS_TRANSITION_MODE_AUTO
 										    : OBS_TRANSITION_MODE_MANUAL,
@@ -3193,6 +3198,26 @@ static void move_stop(void *data)
 	clear_items(move, false);
 }
 
+static void move_enum_active_sources(void *data, obs_source_enum_proc_t enum_callback, void *param)
+{
+	struct move_info *move = data;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if (item->transition)
+			enum_callback(move->source, item->transition, param);
+	}
+}
+
+static void move_enum_all_sources(void *data, obs_source_enum_proc_t enum_callback, void *param)
+{
+	struct move_info *move = data;
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if (item->transition)
+			enum_callback(move->source, item->transition, param);
+	}
+}
+
 struct obs_source_info move_transition = {
 	.id = "move_transition",
 	.type = OBS_SOURCE_TYPE_TRANSITION,
@@ -3207,6 +3232,8 @@ struct obs_source_info move_transition = {
 	.get_defaults = move_defaults,
 	.transition_start = move_start,
 	.transition_stop = move_stop,
+	.enum_active_sources = move_enum_active_sources,
+	.enum_all_sources = move_enum_all_sources,
 };
 
 OBS_DECLARE_MODULE()
