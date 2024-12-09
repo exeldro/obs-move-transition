@@ -265,7 +265,7 @@ if(OS_MACOS)
   # Set macOS-specific C++ standard library
   target_compile_options(
     ${CMAKE_PROJECT_NAME}
-    PRIVATE "$<$<COMPILE_LANG_AND_ID:OBJC,AppleClang,Clang>:-fcolor-diagnostics>" -stdlib=libc++)
+    PRIVATE "$<$<COMPILE_LANG_AND_ID:OBJC,AppleClang,Clang>:-fcolor-diagnostics>")
 
   # Set build architecture to host architecture by default
   if(NOT CMAKE_OSX_ARCHITECTURES)
