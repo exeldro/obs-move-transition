@@ -581,6 +581,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+		obs_source_update(move_value->move_filter.source, settings);
 		obs_data_release(settings);
 		return true;
 	} else if (strcmp(move_value->setting_name, BALANCE_SETTING) == 0) {
@@ -588,6 +589,7 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 		obs_data_set_double(settings, S_SETTING_FLOAT, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MIN, value);
 		obs_data_set_double(settings, S_SETTING_FLOAT_MAX, value);
+		obs_source_update(move_value->move_filter.source, settings);
 		obs_data_release(settings);
 		return true;
 	}
@@ -724,6 +726,8 @@ bool move_value_get_value(obs_properties_t *props, obs_property_t *property, voi
 		}
 		settings_changed = true;
 	}
+	if (settings_changed)
+		obs_source_update(move_value->move_filter.source, settings);
 	obs_data_release(settings);
 	obs_properties_destroy(sps);
 	return settings_changed;
