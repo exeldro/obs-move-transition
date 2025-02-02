@@ -809,7 +809,9 @@ static inline bool load_nv_ar_libs()
 
 	nv_ar = LoadLibrary(L"nvARPose.dll");
 	nv_cvimage = LoadLibrary(L"NVCVImage.dll");
-	nv_cudart = LoadLibrary(L"cudart64_110.dll");
+	nv_cudart = LoadLibrary(L"cudart64_12.dll");
+	if (!nv_cudart)
+		nv_cudart = LoadLibrary(L"cudart64_110.dll");
 	SetDllDirectoryA(NULL);
 	return !!nv_ar && !!nv_cvimage && !!nv_cudart;
 }
