@@ -41,7 +41,6 @@ extern "C" {
 #define MIN_AR_SDK_VERSION (0 << 24 | 7 << 16 | 1 << 8 | 0 << 0)
 static HMODULE nv_ar = NULL;
 static HMODULE nv_cvimage = NULL;
-static HMODULE nv_cudart = NULL;
 static HMODULE nv_cuda = NULL;
 
 //! Status codes returned from APIs.
@@ -649,18 +648,6 @@ typedef enum cudaMemcpyKind {
 	cudaMemcpyDefault = 4
 } cudaMemcpyKind;
 
-typedef enum cudaError cudaError_t;
-
-typedef cudaError_t CUDARTAPI (*cudaMalloc_t)(void **devPtr, size_t size);
-typedef cudaError_t CUDARTAPI (*cudaStreamSynchronize_t)(CUstream stream);
-typedef cudaError_t CUDARTAPI (*cudaFree_t)(void *devPtr);
-typedef cudaError_t CUDARTAPI (*cudaMemsetAsync_t)(void *devPtr, int value,
-						   size_t count,
-						   CUstream stream);
-typedef cudaError_t CUDARTAPI (*cudaMemcpy_t)(void *dst, const void *src,
-					      size_t count,
-					      enum cudaMemcpyKind kind);
-
 /* nvar */
 static NvAR_Create_t NvAR_Create = NULL;
 static NvAR_Load_t NvAR_Load = NULL;
@@ -716,12 +703,6 @@ static NvCVImage_InitFromD3D11Texture_t NvCVImage_InitFromD3D11Texture = NULL;
 /* error codes */
 static NvCV_GetErrorStringFromCode_t NvCV_GetErrorStringFromCode = NULL;
 
-/* cuda runtime */
-static cudaMalloc_t cudaMalloc = NULL;
-static cudaStreamSynchronize_t cudaStreamSynchronize = NULL;
-static cudaFree_t cudaFree = NULL;
-static cudaMemcpy_t cudaMemcpy = NULL;
-static cudaMemsetAsync_t cudaMemsetAsync = NULL;
 
 static inline void release_nv_ar()
 {
@@ -759,15 +740,6 @@ static inline void release_nv_ar()
 	if (nv_cvimage) {
 		FreeLibrary(nv_cvimage);
 		nv_cvimage = NULL;
-	}
-	cudaMalloc = NULL;
-	cudaStreamSynchronize = NULL;
-	cudaFree = NULL;
-	cudaMemcpy = NULL;
-	cudaMemsetAsync = NULL;
-	if (nv_cudart) {
-		FreeLibrary(nv_cudart);
-		nv_cudart = NULL;
 	}
 }
 
@@ -809,11 +781,8 @@ static inline bool load_nv_ar_libs()
 
 	nv_ar = LoadLibrary(L"nvARPose.dll");
 	nv_cvimage = LoadLibrary(L"NVCVImage.dll");
-	nv_cudart = LoadLibrary(L"cudart64_12.dll");
-	if (!nv_cudart)
-		nv_cudart = LoadLibrary(L"cudart64_110.dll");
 	SetDllDirectoryA(NULL);
-	return !!nv_ar && !!nv_cvimage && !!nv_cudart;
+	return !!nv_ar && !!nv_cvimage;
 }
 
 static unsigned int get_lib_version(void)
