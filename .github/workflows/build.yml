@@ -148,6 +148,9 @@ jobs:
       - name: Add plugin to obs cmake
         shell: bash
         run: echo "add_subdirectory(${{ env.PLUGIN_NAME }})" >> plugins/CMakeLists.txt
+      - name: Replace cmake version in jansson
+        shell: bash
+        run: sed -i 's/cmake_minimum_required(VERSION 2.8.12)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/deps/jansson/CMakeLists.txt"
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
       - name: 'Install dependencies'
@@ -156,7 +159,7 @@ jobs:
         shell: bash
         run: |
           mkdir ./build
-          cmake -S . -B "./build" -G Ninja -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DLINUX_PORTABLE=OFF -DENABLE_AJA=OFF -DENABLE_NEW_MPEGTS_OUTPUT=OFF -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF -DBUILD_VIRTUALCAM=OFF -DBUILD_VST=OFF -DENABLE_PIPEWIRE=OFF -DENABLE_SCRIPTING=OFF
+          cmake -S . -B "./build" -G Ninja -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DLINUX_PORTABLE=OFF -DENABLE_AJA=OFF -DENABLE_NEW_MPEGTS_OUTPUT=OFF -DBUILD_CAPTIONS=OFF -DWITH_RTMPS=OFF -DBUILD_BROWSER=OFF -DBUILD_VIRTUALCAM=OFF -DBUILD_VST=OFF -DENABLE_PIPEWIRE=OFF -DENABLE_SCRIPTING=OFF -DENABLE_WEBSOCKET=OFF
       - name: 'Build'
         shell: bash
         run: |
@@ -211,6 +214,12 @@ jobs:
       - name: Add plugin to obs cmake
         shell: cmd
         run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) >> plugins/CMakeLists.txt
+      - name: Replace cmake versions
+        shell: bash
+        run: |
+          sed -i 's/cmake_minimum_required(VERSION 2.8.12)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/deps/jansson/CMakeLists.txt"
+          sed -i 's/CMake_Minimum_Required(VERSION 3.1.0)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/plugins/enc-amf/CMakeLists.txt"
+          sed -i 's/cmake_minimum_required(VERSION 3.1.0)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/plugins/enc-amf/amf-test/CMakeLists.txt"
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
       - name: 'Install prerequisite: QT'
