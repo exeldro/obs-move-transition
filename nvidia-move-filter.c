@@ -1115,6 +1115,7 @@ bool nv_move_expression_changed(void *priv, obs_properties_t *props, obs_propert
 		obs_property_set_visible(expression2, visible && expression != FEATURE_EXPRESSION_SINGLE);
 		changed = true;
 	}
+	dstr_free(&name);
 	return changed;
 }
 
