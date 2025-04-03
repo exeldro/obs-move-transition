@@ -676,8 +676,14 @@ static void nv_move_update(void *data, obs_data_t *settings)
 			bfree(action->name);
 			action->name = NULL;
 		}
+		da_resize(filter->actions, actions);
+	} else if (actions > filter->actions.num) {
+		da_resize(filter->actions, actions);
+		for (size_t i = filter->actions.num; i < actions; i++) {
+			struct nvidia_move_action *action = filter->actions.array + i;
+			memset(action, 0, sizeof(struct nvidia_move_action));
+		}
 	}
-	da_resize(filter->actions, actions);
 
 	uint64_t feature_flags = 0;
 	struct dstr name = {0};
