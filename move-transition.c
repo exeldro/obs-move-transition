@@ -509,6 +509,8 @@ static inline bool item_texture_enabled(struct obs_scene_item *item)
 		return true;
 	if (scale_filter_enabled(item) || !default_blending_enabled(item))
 		return true;
+	if (obs_sceneitem_get_blending_method(item) == OBS_BLEND_METHOD_SRGB_OFF)
+		return true;
 	if (crop_to_bounds(item, obs_sceneitem_get_bounds_type(item)))
 		return true;
 	return false;
@@ -1580,7 +1582,7 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	gs_matrix_push();
 	gs_matrix_mul(&draw_transform);
-	const bool previous = gs_set_linear_srgb(true);
+	const bool previous = gs_set_linear_srgb(obs_sceneitem_get_blending_method(scene_item) != OBS_BLEND_METHOD_SRGB_OFF);
 	if (item->item_render) {
 		//render_item_texture(item);
 		gs_texture_t *tex = gs_texrender_get_texture(item->item_render);
