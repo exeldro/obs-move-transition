@@ -3323,6 +3323,8 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
+		if ((!item->item_a || !item->item_b) && !item->move_scene)
+			continue;
 		if ((item->item_a && obs_sceneitem_get_source(item->item_a) == source_from)) {
 			obs_source_t *source_to = obs_sceneitem_get_source(item->item_b);
 			if (filter_to && source_to) {
