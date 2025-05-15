@@ -55,6 +55,9 @@ struct move_info {
 	bool scene_flip_vertical;
 };
 
+DARRAY(struct move_info *) move_rendering;
+DARRAY(char *) move_render_filter_ids;
+
 struct move_item {
 	obs_sceneitem_t *item_a;
 	obs_sceneitem_t *item_b;
@@ -78,6 +81,8 @@ struct move_item {
 	struct matrix4 transform_b;
 	struct obs_sceneitem_crop bounds_crop_a;
 	struct obs_sceneitem_crop bounds_crop_b;
+	bool move_filter_a;
+	bool move_filter_b;
 };
 
 static const struct {
@@ -1055,7 +1060,11 @@ bool render2_item(struct move_info *move, struct move_item *item)
 {
 	obs_sceneitem_t *scene_item = NULL;
 	if (item->item_a && item->item_b) {
-		if (move->t <= 0.5) {
+		if (item->move_filter_a && !item->move_filter_b) {
+			scene_item = item->item_a;
+		} else if (!item->move_filter_a && item->move_filter_b) {
+			scene_item = item->item_b;
+		} else if (move->t <= 0.5) {
 			scene_item = item->item_a;
 		} else {
 			scene_item = item->item_b;
@@ -2345,6 +2354,19 @@ static void move_filter_start_matching(obs_source_t *parent, obs_source_t *child
 		move_filter_stop(move_filter);
 }
 
+static void move_filter_start_matching_and_check_move(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	bool *move_filter = param;
+	const char *filter_id = obs_source_get_unversioned_id(child);
+	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
+		if (strcmp(filter_id, move_render_filter_ids.array[i]) == 0) {
+			*move_filter = true;
+			break;
+		}
+	}
+	move_filter_start_matching(parent, child, NULL);
+}
+
 static void move_filter_start_in(obs_source_t *parent, obs_source_t *child, void *param)
 {
 	UNUSED_PARAMETER(param);
@@ -2688,9 +2710,11 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 				obs_source_enum_filters(source_a, move_filter_start_matching, NULL);
 			} else {
 				if (source_a)
-					obs_source_enum_filters(source_a, move_filter_start_matching, NULL);
+					obs_source_enum_filters(source_a, move_filter_start_matching_and_check_move,
+								&item->move_filter_a);
 				if (source_b)
-					obs_source_enum_filters(source_b, move_filter_start_matching, NULL);
+					obs_source_enum_filters(source_b, move_filter_start_matching_and_check_move,
+								&item->move_filter_b);
 			}
 
 		} else if (item->item_b) {
@@ -2949,6 +2973,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 {
 	struct move_info *move = data;
 
+	da_push_back(move_rendering, &move);
+
 	move_start_init(move, true);
 
 	if (move->t >= 0.0f && move->t < 1.0f) {
@@ -2992,6 +3018,8 @@ static void move_video_render(void *data, gs_effect_t *effect)
 			obs_transition_video_render_direct(move->source, OBS_TRANSITION_SOURCE_B);
 		}
 	}
+
+	da_pop_back(move_rendering);
 
 	UNUSED_PARAMETER(effect);
 }
@@ -3269,10 +3297,92 @@ void SetMoveDirectShowFilter(struct obs_source_info *obs_source_info);
 extern DARRAY(struct udp_server) udp_servers;
 extern pthread_mutex_t udp_servers_mutex;
 
+static void find_move_filter(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	UNUSED_PARAMETER(parent);
+	obs_source_t **filter_to = param;
+	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
+		if (strcmp(obs_source_get_unversioned_id(child), move_render_filter_ids.array[i]) == 0) {
+			*filter_to = child;
+			break;
+		}
+	}
+}
+
+static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t **filter_to)
+{
+	if (!filter_from)
+		return 0.0f;
+	if (!move_rendering.num)
+		return 0.0f;
+	struct move_info *move = move_rendering.array[move_rendering.num - 1];
+
+	obs_source_t *source_from = obs_filter_get_parent(filter_from);
+	if (!source_from)
+		return 0.0f;
+
+	for (size_t i = 0; i < move->items_a.num; i++) {
+		struct move_item *item = move->items_a.array[i];
+		if ((item->item_a && obs_sceneitem_get_source(item->item_a) == source_from)) {
+			obs_source_t *source_to = obs_sceneitem_get_source(item->item_b);
+			if (filter_to && source_to) {
+				if (source_to == source_from) {
+					*filter_to = filter_from;
+				} else {
+					*filter_to = obs_source_get_filter_by_name(source_to, obs_source_get_name(filter_from));
+					if (!*filter_to && item->move_filter_a && item->move_filter_b)
+						obs_source_enum_filters(source_to, find_move_filter, filter_to);
+					if (!*filter_to && !item->move_filter_a)
+						return 0.0f;
+					if (*filter_to && strcmp(obs_source_get_unversioned_id(*filter_to),
+								 obs_source_get_unversioned_id(filter_from)) != 0) {
+						*filter_to = NULL;
+						return 0.0f;
+					}
+				}
+			}
+			return obs_transition_get_time(move->source);
+		} else if (item->item_b && obs_sceneitem_get_source(item->item_b) == source_from) {
+			obs_source_t *source_to = obs_sceneitem_get_source(item->item_a);
+			if (filter_to && source_to) {
+				if (source_to == source_from) {
+					*filter_to = filter_from;
+				} else {
+					*filter_to = obs_source_get_filter_by_name(source_to, obs_source_get_name(filter_from));
+					if (!*filter_to && item->move_filter_a && item->move_filter_b)
+						obs_source_enum_filters(source_to, find_move_filter, filter_to);
+					if (!*filter_to && !item->move_filter_b)
+						return 0.0f;
+					if (*filter_to && strcmp(obs_source_get_unversioned_id(*filter_to),
+								 obs_source_get_unversioned_id(filter_from)) != 0) {
+						*filter_to = NULL;
+						return 0.0f;
+					}
+				}
+			}
+			return 1.0f - obs_transition_get_time(move->source);
+		}
+	}
+	return 0.0f;
+}
+
+static void move_get_transition_filter_function(void *data, calldata_t *calldata)
+{
+	UNUSED_PARAMETER(data);
+	calldata_set_ptr(calldata, "callback", move_get_transition_filter);
+	const char *filter_id = calldata_string(calldata, "filter_id");
+	if (filter_id) {
+		filter_id = bstrdup(filter_id);
+		da_push_back(move_render_filter_ids, &filter_id);
+	}
+}
+
 bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[Move Transition] loaded version %s", PROJECT_VERSION);
 	da_init(udp_servers);
+	da_init(move_rendering);
+	da_init(move_render_filter_ids);
 	pthread_mutex_init(&udp_servers_mutex, NULL);
 	obs_register_source(&move_transition);
 	obs_register_source(&move_transition_override_filter);
@@ -3290,6 +3400,11 @@ bool obs_module_load(void)
 	SetMoveDirectShowFilter(&move_directshow_filter);
 	obs_register_source(&move_directshow_filter);
 #endif
+
+	proc_handler_t *ph = obs_get_proc_handler();
+	proc_handler_add(ph, "void move_get_transition_filter_function(in string filter_id, out ptr callback)",
+			 move_get_transition_filter_function, NULL);
+
 	return true;
 }
 
@@ -3301,5 +3416,11 @@ void obs_module_post_load()
 
 void obs_module_unload()
 {
+	da_free(udp_servers);
+	da_free(move_rendering);
+	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
+		bfree(move_render_filter_ids.array[i]);
+	}
+	da_free(move_render_filter_ids);
 	//pthread_mutex_destroy(&udp_servers_mutex);
 }
