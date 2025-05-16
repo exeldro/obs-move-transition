@@ -3323,47 +3323,77 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
-		if ((!item->item_a || !item->item_b) && !item->move_scene)
+		if (!item->item_a || !item->item_b)
 			continue;
+		obs_source_t *source_to = NULL;
+		bool reverse = false;
 		if ((item->item_a && obs_sceneitem_get_source(item->item_a) == source_from)) {
-			obs_source_t *source_to = obs_sceneitem_get_source(item->item_b);
-			if (filter_to && source_to) {
-				if (source_to == source_from) {
-					*filter_to = filter_from;
-				} else {
-					*filter_to = obs_source_get_filter_by_name(source_to, obs_source_get_name(filter_from));
-					if (!*filter_to && item->move_filter_a && item->move_filter_b)
-						obs_source_enum_filters(source_to, find_move_filter, filter_to);
-					if (!*filter_to && !item->move_filter_a)
-						return 0.0f;
-					if (*filter_to && strcmp(obs_source_get_unversioned_id(*filter_to),
-								 obs_source_get_unversioned_id(filter_from)) != 0) {
-						*filter_to = NULL;
-						return 0.0f;
-					}
-				}
-			}
-			return obs_transition_get_time(move->source);
+			source_to = obs_sceneitem_get_source(item->item_b);
 		} else if (item->item_b && obs_sceneitem_get_source(item->item_b) == source_from) {
-			obs_source_t *source_to = obs_sceneitem_get_source(item->item_a);
-			if (filter_to && source_to) {
-				if (source_to == source_from) {
-					*filter_to = filter_from;
-				} else {
-					*filter_to = obs_source_get_filter_by_name(source_to, obs_source_get_name(filter_from));
-					if (!*filter_to && item->move_filter_a && item->move_filter_b)
-						obs_source_enum_filters(source_to, find_move_filter, filter_to);
-					if (!*filter_to && !item->move_filter_b)
-						return 0.0f;
-					if (*filter_to && strcmp(obs_source_get_unversioned_id(*filter_to),
-								 obs_source_get_unversioned_id(filter_from)) != 0) {
-						*filter_to = NULL;
-						return 0.0f;
-					}
+			source_to = obs_sceneitem_get_source(item->item_a);
+			reverse = true;
+		} else {
+			continue;
+		}
+		if (filter_to && source_to) {
+			if (source_to == source_from) {
+				*filter_to = filter_from;
+			} else {
+				const char *filter_name = obs_source_get_name(filter_from);
+				*filter_to = obs_source_get_filter_by_name(source_to, filter_name);
+				//if (!*filter_to && item->move_filter_a && item->move_filter_b)
+				//	obs_source_enum_filters(source_to, find_move_filter, filter_to);
+				if (!reverse && !*filter_to && !item->move_filter_a)
+					return 0.0f;
+				if (reverse && !*filter_to && !item->move_filter_b)
+					return 0.0f;
+
+				if (*filter_to &&
+				    (!obs_source_enabled(*filter_to) || strcmp(obs_source_get_unversioned_id(*filter_to),
+									       obs_source_get_unversioned_id(filter_from)) != 0)) {
+					*filter_to = NULL;
+					return 0.0f;
 				}
 			}
-			return 1.0f - obs_transition_get_time(move->source);
 		}
+		float t = move->t;
+		if (filter_to && !*filter_to && source_to && source_to != source_from && item->move_filter_a &&
+		    item->move_filter_b) {
+			if (reverse) {
+				if (t > 0.5f)
+					t = (t - 0.5f) * 2.0f;
+				else
+					t = 0.0f;
+			} else {
+				if (t <= 0.5)
+					t *= 2.0f;
+				else
+					t = 1.0f;
+			}
+			t = get_eased(t, item->easing, item->easing_function);
+		} else if (item->start_percentage > 0 || item->end_percentage < 100) {
+			if (item->start_percentage > item->end_percentage) {
+				float avg_switch_point = (float)(item->start_percentage + item->end_percentage) / 200.0f;
+				if (t > avg_switch_point) {
+					t = 1.0f;
+				}
+			} else if (t * 100.0 < item->start_percentage) {
+				t = 0.0f;
+			} else if (t * 100.0 > item->end_percentage) {
+				t = 1.0f;
+			} else {
+				int duration_percentage = item->end_percentage - item->start_percentage;
+				t = t - (float)item->start_percentage / 100.0f;
+				t = t / (float)duration_percentage * 100.0f;
+				t = get_eased(t, item->easing, item->easing_function);
+			}
+		} else {
+			t = get_eased(t, item->easing, item->easing_function);
+		}
+
+		if (reverse)
+			t = 1.0f - t;
+		return t;
 	}
 	return 0.0f;
 }
