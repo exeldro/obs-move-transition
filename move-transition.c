@@ -1982,6 +1982,49 @@ struct move_item *match_item_name_part(struct move_info *move, obs_sceneitem_t *
 	return item;
 }
 
+struct match_item_clone_match {
+	const char *name;
+	obs_sceneitem_t *matched;
+};
+
+bool match_item_clone_match(obs_scene_t *scene, obs_sceneitem_t *sceneitem, void *p)
+{
+	UNUSED_PARAMETER(scene);
+	if (!obs_sceneitem_visible(sceneitem))
+		return true;
+	struct match_item_clone_match *mi = p;
+	obs_source_t *source = obs_sceneitem_get_source(sceneitem);
+	const char *id = obs_source_get_unversioned_id(source);
+	bool match = false;
+	if (strcmp(id, "source-clone") == 0) {
+		obs_data_t *s = obs_source_get_settings(source);
+		match = strcmp(obs_data_get_string(s, "clone"), mi->name) == 0;
+		obs_data_release(s);
+	} else if (strcmp(id, "streamfx-source-mirror") == 0) {
+		obs_data_t *s = obs_source_get_settings(source);
+		match = strcmp(obs_data_get_string(s, "Source.Mirror.Source"), mi->name) == 0;
+		obs_data_release(s);
+	}
+	if (match) {
+		mi->matched = sceneitem;
+		return false;
+	}
+	return true;
+}
+
+obs_sceneitem_t *scene_find_source(obs_scene_t *scene, const char *name)
+{
+	obs_sceneitem_t *item = obs_scene_find_source(scene, name);
+	if (!item) {
+		struct match_item_clone_match mi;
+		mi.name = name;
+		mi.matched = NULL;
+		obs_scene_enum_items(scene, match_item_clone_match, &mi);
+		item = mi.matched;
+	}
+	return item;
+}
+
 struct match_item_nested_match {
 	obs_source_t *check_source;
 	bool matched;
@@ -2002,7 +2045,22 @@ bool match_item_nested_all_match(obs_scene_t *obs_scene, obs_sceneitem_t *scenei
 	if (!scene)
 		scene = obs_group_from_source(mi->check_source);
 	const char *source_name = obs_source_get_name(source);
-	obs_sceneitem_t *item = obs_scene_find_source(scene, source_name);
+	obs_sceneitem_t *item = scene_find_source(scene, source_name);
+	if (!item) {
+		source_name = NULL;
+		const char *id = obs_source_get_unversioned_id(source);
+		if (strcmp(id, "source-clone") == 0) {
+			obs_data_t *s = obs_source_get_settings(source);
+			source_name = obs_data_get_string(s, "clone");
+			obs_data_release(s);
+		} else if (strcmp(id, "streamfx-source-mirror") == 0) {
+			obs_data_t *s = obs_source_get_settings(source);
+			source_name = obs_data_get_string(s, "Source.Mirror.Source");
+			obs_data_release(s);
+		}
+		if (source_name)
+			item = scene_find_source(scene, source_name);
+	}
 	if (!item) {
 		mi->matched = false;
 		return false;
@@ -2190,7 +2248,22 @@ bool match_item_nested_any_match(obs_scene_t *obs_scene, obs_sceneitem_t *scenei
 	if (!scene)
 		scene = obs_group_from_source(mi->check_source);
 	const char *source_name = obs_source_get_name(source);
-	obs_sceneitem_t *item = obs_scene_find_source(scene, source_name);
+	obs_sceneitem_t *item = scene_find_source(scene, source_name);
+	if (!item) {
+		source_name = NULL;
+		const char *id = obs_source_get_unversioned_id(source);
+		if (strcmp(id, "source-clone") == 0) {
+			obs_data_t *s = obs_source_get_settings(source);
+			source_name = obs_data_get_string(s, "clone");
+			obs_data_release(s);
+		} else if (strcmp(id, "streamfx-source-mirror") == 0) {
+			obs_data_t *s = obs_source_get_settings(source);
+			source_name = obs_data_get_string(s, "Source.Mirror.Source");
+			obs_data_release(s);
+		}
+		if (source_name)
+			item = scene_find_source(scene, source_name);
+	}
 	if (item && obs_sceneitem_visible(item)) {
 		mi->matched = true;
 		return false;
@@ -3297,18 +3370,6 @@ void SetMoveDirectShowFilter(struct obs_source_info *obs_source_info);
 extern DARRAY(struct udp_server) udp_servers;
 extern pthread_mutex_t udp_servers_mutex;
 
-static void find_move_filter(obs_source_t *parent, obs_source_t *child, void *param)
-{
-	UNUSED_PARAMETER(parent);
-	obs_source_t **filter_to = param;
-	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
-		if (strcmp(obs_source_get_unversioned_id(child), move_render_filter_ids.array[i]) == 0) {
-			*filter_to = child;
-			break;
-		}
-	}
-}
-
 static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t **filter_to)
 {
 	if (!filter_from)
@@ -3341,8 +3402,6 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 			} else {
 				const char *filter_name = obs_source_get_name(filter_from);
 				*filter_to = obs_source_get_filter_by_name(source_to, filter_name);
-				//if (!*filter_to && item->move_filter_a && item->move_filter_b)
-				//	obs_source_enum_filters(source_to, find_move_filter, filter_to);
 				if (!reverse && !*filter_to && !item->move_filter_a)
 					return 0.0f;
 				if (reverse && !*filter_to && !item->move_filter_b)
