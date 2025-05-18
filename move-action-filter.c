@@ -725,23 +725,48 @@ static bool move_action_setting_changed(void *data, obs_properties_t *props, obs
 		if (setting_type == OBS_PROPERTY_LIST) {
 			int list_format = obs_property_list_format(p);
 			if (list_format == OBS_COMBO_FORMAT_INT) {
+				size_t c = obs_property_list_item_count(p);
+				if (c) {
+					int int_min = (int)obs_property_list_item_int(p, 0);
+					int int_max = int_min;
+					for (size_t i = 1; i < c; i++) {
+						int v = (int)obs_property_list_item_int(p, i);
+						if (v < int_min)
+							int_min = v;
+						if (v > int_max)
+							int_max = v;
+					}
+					obs_property_int_set_limits(value_int, int_min, int_max, 1);
+				}
 				setting_type = OBS_PROPERTY_INT;
 			} else if (list_format == OBS_COMBO_FORMAT_FLOAT) {
+				size_t c = obs_property_list_item_count(p);
+				if (c) {
+					double double_min = obs_property_list_item_float(p, 0);
+					double double_max = double_min;
+					for (size_t i = 1; i < c; i++) {
+						double v = obs_property_list_item_float(p, i);
+						if (v < double_min)
+							double_min = v;
+						if (v > double_max)
+							double_max = v;
+					}
+					obs_property_float_set_limits(value_double, double_min, double_max, 0.001);
+				}
 				setting_type = OBS_PROPERTY_FLOAT;
 			} else if (list_format == OBS_COMBO_FORMAT_STRING) {
 				setting_type = OBS_PROPERTY_TEXT;
 			} else if (list_format == OBS_COMBO_FORMAT_BOOL) {
 				setting_type = OBS_PROPERTY_BOOL;
 			}
-		}
-		obs_data_set_int(settings, "setting_type", setting_type);
-		if (setting_type == OBS_PROPERTY_FLOAT) {
+		} else if (setting_type == OBS_PROPERTY_FLOAT) {
 			obs_property_float_set_limits(value_double, obs_property_float_min(p), obs_property_float_max(p),
 						      obs_property_float_step(p));
 		} else if (setting_type == OBS_PROPERTY_INT) {
 			obs_property_int_set_limits(value_int, obs_property_int_min(p), obs_property_int_max(p),
 						    obs_property_int_step(p));
 		}
+		obs_data_set_int(settings, "setting_type", setting_type);
 	}
 	obs_properties_destroy(ps);
 	obs_source_release(source);
