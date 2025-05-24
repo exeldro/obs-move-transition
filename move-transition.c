@@ -2434,11 +2434,13 @@ static void move_filter_start_matching(obs_source_t *parent, obs_source_t *child
 static void move_filter_start_matching_and_check_move(obs_source_t *parent, obs_source_t *child, void *param)
 {
 	bool *move_filter = param;
-	const char *filter_id = obs_source_get_unversioned_id(child);
-	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
-		if (strcmp(filter_id, move_render_filter_ids.array[i]) == 0) {
-			*move_filter = true;
-			break;
+	if (obs_source_enabled(child)) {
+		const char *filter_id = obs_source_get_unversioned_id(child);
+		for (size_t i = 0; i < move_render_filter_ids.num; i++) {
+			if (strcmp(filter_id, move_render_filter_ids.array[i]) == 0) {
+				*move_filter = true;
+				break;
+			}
 		}
 	}
 	move_filter_start_matching(parent, child, NULL);
