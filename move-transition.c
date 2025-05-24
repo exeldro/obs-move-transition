@@ -1558,7 +1558,9 @@ bool render2_item(struct move_info *move, struct move_item *item)
 				obs_transition_set_manual_time(item->transition, ot);
 				if (!move->first_frame || item->scene_flip_horizontal || item->scene_flip_vertical) {
 					obs_source_video_render(item->transition);
-				} else if (item->item_a || item->move_scene) {
+				} else if (item->item_a) {
+					obs_source_video_render(obs_sceneitem_get_source(item->item_a));
+				} else if (item->move_scene) {
 					obs_source_video_render(source);
 				}
 			} else {
@@ -1664,6 +1666,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 			if (!move->first_frame || item->scene_flip_horizontal || item->scene_flip_vertical) {
 				obs_source_video_render(item->transition);
 			} else if (item->item_a) {
+				obs_source_video_render(obs_sceneitem_get_source(item->item_a));
+			} else if (item->move_scene) {
 				obs_source_video_render(source);
 			}
 		} else {
