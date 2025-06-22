@@ -3413,10 +3413,12 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 					return 0.0f;
 				if (reverse && !*filter_to && !item->move_filter_b)
 					return 0.0f;
+				if (*filter_to && !obs_source_enabled(*filter_to)) {
+					*filter_to = NULL;
+				}
 
-				if (*filter_to &&
-				    (!obs_source_enabled(*filter_to) || strcmp(obs_source_get_unversioned_id(*filter_to),
-									       obs_source_get_unversioned_id(filter_from)) != 0)) {
+				if (*filter_to && strcmp(obs_source_get_unversioned_id(*filter_to),
+							 obs_source_get_unversioned_id(filter_from)) != 0) {
 					*filter_to = NULL;
 					return 0.0f;
 				}
