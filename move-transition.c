@@ -3408,6 +3408,7 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 			} else {
 				const char *filter_name = obs_source_get_name(filter_from);
 				*filter_to = obs_source_get_filter_by_name(source_to, filter_name);
+				obs_source_release(*filter_to);
 				if (!reverse && !*filter_to && !item->move_filter_a)
 					return 0.0f;
 				if (reverse && !*filter_to && !item->move_filter_b)
