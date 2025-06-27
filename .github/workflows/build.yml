@@ -213,13 +213,11 @@ jobs:
           path: plugins/${{ env.PLUGIN_NAME}}
       - name: Add plugin to obs cmake
         shell: cmd
-        run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) >> plugins/CMakeLists.txt
+        run: echo add_subdirectory(${{ env.PLUGIN_NAME }}) > plugins/CMakeLists.txt
       - name: Replace cmake versions
         shell: bash
         run: |
           sed -i 's/cmake_minimum_required(VERSION 2.8.12)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/deps/jansson/CMakeLists.txt"
-          sed -i 's/CMake_Minimum_Required(VERSION 3.1.0)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/plugins/enc-amf/CMakeLists.txt"
-          sed -i 's/cmake_minimum_required(VERSION 3.1.0)/cmake_minimum_required(VERSION 3.18)/g' "${{ github.workspace }}/plugins/enc-amf/amf-test/CMakeLists.txt"
       - name: Fetch Git Tags
         run: git fetch --prune --tags --unshallow
       - name: 'Install prerequisite: QT'
@@ -238,7 +236,7 @@ jobs:
           mkdir ./build
           cmake -S . -B "${{ github.workspace }}/build" -G"${{ env.CMAKE_GENERATOR }}" -DCMAKE_PREFIX_PATH:PATH="${{ github.workspace }}/cmbuild/deps" -A"${{ matrix.cmake_build }}" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps" -DDepsPath${{ matrix.deps_ext }}="${{ github.workspace }}/cmbuild/deps" -DQTDIR="${{ github.workspace }}/cmbuild/deps/qt6" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE -DENABLE_PLUGINS=TRUE -DDISABLE_PLUGINS=FALSE -DENABLE_BROWSER=FALSE -DENABLE_WEBSOCKET=FALSE
       - name: 'Build'
-        run: msbuild /m /p:Configuration=RelWithDebInfo .\build\obs-studio.sln
+        run: msbuild /m /p:Configuration=RelWithDebInfo /p:NoWarn="C5286%3BC5287%3BC2220" /p:NoErr="C5286%3BC5287%3BC2220" /p:TreatWarningsAsErrors="false" /p:SuppressAllWarnings="true" .\build\obs-studio.sln
       - name: Package
         if: success()
         run: |

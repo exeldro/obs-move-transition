@@ -1070,6 +1070,8 @@ bool move_value_setting_changed(void *data, obs_properties_t *props, obs_propert
 	} else {
 		source = obs_filter_get_parent(move_value->move_filter.source);
 	}
+	if (!source)
+		return refresh;
 	if (source == move_value->move_filter.source)
 		return refresh;
 
