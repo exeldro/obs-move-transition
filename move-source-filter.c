@@ -620,6 +620,8 @@ static void *move_source_create(obs_data_t *settings, obs_source_t *source)
 	return move_source;
 }
 
+extern bool move_exit;
+
 static void move_source_destroy(void *data)
 {
 	struct move_source_info *move_source = data;
@@ -637,7 +639,7 @@ static void move_source_destroy(void *data)
 	if (move_source->scene_item) {
 		source = obs_source_get_ref(obs_sceneitem_get_source(move_source->scene_item));
 	}
-	if (!source && move_source->source_name && strlen(move_source->source_name)) {
+	if (!source && move_source->source_name && strlen(move_source->source_name) && !move_exit) {
 		source = obs_get_source_by_name(move_source->source_name);
 	}
 	if (source) {

@@ -3477,6 +3477,15 @@ static void move_get_transition_filter_function(void *data, calldata_t *calldata
 	}
 }
 
+bool move_exit = false;
+
+void move_frontend_event(enum obs_frontend_event event, void* data) {
+	UNUSED_PARAMETER(data);
+	if (event == OBS_FRONTEND_EVENT_EXIT) {
+		move_exit = true;
+	}
+}
+
 bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[Move Transition] loaded version %s", PROJECT_VERSION);
@@ -3505,6 +3514,7 @@ bool obs_module_load(void)
 	proc_handler_add(ph, "void move_get_transition_filter_function(in string filter_id, out ptr callback)",
 			 move_get_transition_filter_function, NULL);
 
+	obs_frontend_add_event_callback(move_frontend_event, NULL);
 	return true;
 }
 
@@ -3516,6 +3526,7 @@ void obs_module_post_load()
 
 void obs_module_unload()
 {
+	obs_frontend_remove_event_callback(move_frontend_event, NULL);
 	da_free(udp_servers);
 	da_free(move_rendering);
 	for (size_t i = 0; i < move_render_filter_ids.num; i++) {
