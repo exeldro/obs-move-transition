@@ -236,7 +236,7 @@ jobs:
           mkdir ./build
           cmake -S . -B "${{ github.workspace }}/build" -G"${{ env.CMAKE_GENERATOR }}" -DCMAKE_PREFIX_PATH:PATH="${{ github.workspace }}/cmbuild/deps" -A"${{ matrix.cmake_build }}" -DCMAKE_SYSTEM_VERSION="${{ env.CMAKE_SYSTEM_VERSION }}" -DBUILD_BROWSER=false -DBUILD_VST=false -DBUILD_VIRTUALCAM=false -DBUILD_CAPTIONS=false -DCOMPILE_D3D12_HOOK=false -DENABLE_SCRIPTING=false -DDepsPath="${{ github.workspace }}/cmbuild/deps" -DDepsPath${{ matrix.deps_ext }}="${{ github.workspace }}/cmbuild/deps" -DQTDIR="${{ github.workspace }}/cmbuild/deps/qt6" -DCOPIED_DEPENDENCIES=FALSE -DCOPY_DEPENDENCIES=TRUE -DENABLE_PLUGINS=TRUE -DDISABLE_PLUGINS=FALSE -DENABLE_BROWSER=FALSE -DENABLE_WEBSOCKET=FALSE
       - name: 'Build'
-        run: msbuild /m /p:Configuration=RelWithDebInfo /p:NoWarn="C5286%3BC5287%3BC2220" /p:NoErr="C5286%3BC5287%3BC2220" /p:TreatWarningsAsErrors="false" /p:SuppressAllWarnings="true" .\build\obs-studio.sln
+        run: msbuild /m /p:Configuration=RelWithDebInfo .\build\obs-studio.sln
       - name: Package
         if: success()
         run: |
