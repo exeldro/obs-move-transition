@@ -1878,6 +1878,7 @@ void move_value_tick(void *data, float seconds)
 				const long long value_int = vec4_to_rgba(&color);
 				obs_data_set_int(ss, setting_name, value_int);
 			}
+			obs_data_release(item);
 		}
 	} else if (move_value->value_type == MOVE_VALUE_INT) {
 		const long long value_int = (long long)((1.0 - t) * (double)move_value->int_from + t * (double)move_value->int_to);
