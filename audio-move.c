@@ -171,9 +171,17 @@ void audio_move_update(void *data, obs_data_t *settings)
 	audio_move->base_value = obs_data_get_double(settings, "base_value");
 	audio_move->factor = obs_data_get_double(settings, "factor");
 
+	const char *canvas_name = obs_data_get_string(settings, "canvas");
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
 	const char *scene_name = obs_data_get_string(settings, "scene");
 	const char *sceneitem_name = obs_data_get_string(settings, "sceneitem");
-	obs_source_t *source = obs_get_source_by_name(scene_name);
+	obs_source_t *source = NULL;
+	if (canvas) {
+		source = obs_canvas_get_source_by_name(canvas, scene_name);
+		obs_canvas_release(canvas);
+	}
+	if (!source)
+		source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
 	if (source && obs_source_removed(source))
 		source = NULL;
@@ -320,6 +328,16 @@ static void audio_move_destroy(void *data)
 	bfree(audio_move);
 }
 
+static bool add_canvas_to_prop_list(void *data, obs_canvas_t *canvas)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	const char *name = obs_canvas_get_name(canvas);
+	if (!name || !strlen(name))
+		return true;
+	obs_property_list_add_string(p, name, name);
+	return true;
+}
+
 static bool add_source_to_prop_list(void *data, obs_source_t *source)
 {
 	obs_property_t *p = (obs_property_t *)data;
@@ -354,15 +372,20 @@ static bool audio_move_action_changed(obs_properties_t *props, obs_property_t *p
 {
 	UNUSED_PARAMETER(property);
 	long long action = obs_data_get_int(settings, "value_action");
+	obs_property_t *canvas = obs_properties_get(props, "canvas");
 	obs_property_t *scene = obs_properties_get(props, "scene");
 	obs_property_t *sceneitem = obs_properties_get(props, "sceneitem");
 	if (action == VALUE_ACTION_TRANSFORM || action == VALUE_ACTION_SOURCE_VISIBILITY) {
+		obs_property_list_clear(canvas);
 		obs_property_list_clear(scene);
+		obs_enum_canvases(add_canvas_to_prop_list, canvas);
 		obs_enum_scenes(add_source_to_prop_list, scene);
 		obs_enum_sources(add_group_to_prop_list, scene);
+		obs_property_set_visible(canvas, true);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 	} else {
+		obs_property_set_visible(canvas, false);
 		obs_property_set_visible(scene, false);
 		obs_property_set_visible(sceneitem, false);
 	}
@@ -408,6 +431,33 @@ static bool audio_move_action_changed(obs_properties_t *props, obs_property_t *p
 	return true;
 }
 
+static bool add_scene_to_prop_list(void *data, obs_source_t *source)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	const char *name = obs_source_get_name(source);
+	if (name && strlen(name))
+		obs_property_list_add_string(p, name, name);
+	return true;
+}
+
+static bool audio_move_canvas_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(property);
+	const char *canvas_name = obs_data_get_string(settings, "canvas");
+
+	obs_property_t *scene = obs_properties_get(props, "scene");
+	obs_property_list_clear(scene);
+
+	obs_canvas_t *canvas = obs_get_canvas_by_name(canvas_name);
+	if (!canvas)
+		return true;
+
+	obs_canvas_enum_scenes(canvas, add_scene_to_prop_list, scene);
+	obs_canvas_release(canvas);
+	return true;
+}
+
 static bool add_sceneitem_to_prop_list(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
 {
 	UNUSED_PARAMETER(scene);
@@ -423,10 +473,18 @@ static bool audio_move_scene_changed(void *data, obs_properties_t *props, obs_pr
 {
 	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(property);
+	const char *canvas_name = obs_data_get_string(settings, "canvas");
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
 	const char *scene_name = obs_data_get_string(settings, "scene");
 	obs_property_t *sceneitem = obs_properties_get(props, "sceneitem");
 	obs_property_list_clear(sceneitem);
-	obs_source_t *source = obs_get_source_by_name(scene_name);
+	obs_source_t *source = NULL;
+	if (canvas) {
+		source = obs_canvas_get_source_by_name(canvas, scene_name);
+		obs_canvas_release(canvas);
+	}
+	if (!source)
+		source = obs_get_source_by_name(scene_name);
 	obs_source_release(source);
 	obs_scene_t *scene = obs_scene_from_source(source);
 	if (!scene)
@@ -517,6 +575,9 @@ static obs_properties_t *audio_move_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("ValueAction.SourceVisibility"), VALUE_ACTION_SOURCE_VISIBILITY);
 	obs_property_list_add_int(p, obs_module_text("ValueAction.FilterEnable"), VALUE_ACTION_FILTER_ENABLE);
 	obs_property_set_modified_callback(p, audio_move_action_changed);
+
+	p = obs_properties_add_list(ppts, "canvas", obs_module_text("Canvas"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
+	obs_property_set_modified_callback2(p, audio_move_canvas_changed, data);
 
 	p = obs_properties_add_list(ppts, "scene", obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 	obs_property_set_modified_callback2(p, audio_move_scene_changed, data);
