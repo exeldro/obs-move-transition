@@ -11,5 +11,3 @@
 # ignore generated files
 *.generated.*
 **/.Brewfile.lock.json
-version.h
-move-transition.rc
