@@ -449,7 +449,7 @@ static bool audio_move_canvas_changed(void *data, obs_properties_t *props, obs_p
 	obs_property_t *scene = obs_properties_get(props, "scene");
 	obs_property_list_clear(scene);
 
-	obs_canvas_t *canvas = obs_get_canvas_by_name(canvas_name);
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
 	if (!canvas)
 		return true;
 

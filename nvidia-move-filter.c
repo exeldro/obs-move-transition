@@ -699,9 +699,18 @@ static void nv_move_update(void *data, obs_data_t *settings)
 		action->name = NULL;
 		if (action->action == ACTION_MOVE_SOURCE || action->action == ACTION_SOURCE_VISIBILITY ||
 		    action->action == ACTION_ATTACH_SOURCE) {
+			dstr_printf(&name, "action_%lld_canvas", i);
+			const char *canvas_name = obs_data_get_string(settings, name.array);
+			obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
 			dstr_printf(&name, "action_%lld_scene", i);
 			const char *scene_name = obs_data_get_string(settings, name.array);
-			obs_source_t *source = obs_get_source_by_name(scene_name);
+			obs_source_t *source = NULL;
+			if (canvas) {
+				source = obs_canvas_get_source_by_name(canvas, scene_name);
+				obs_canvas_release(canvas);
+			}
+			if (!source)
+				source = obs_get_source_by_name(scene_name);
 			if (source) {
 				if (obs_source_is_scene(source) || obs_source_is_group(source))
 					action->target = obs_source_get_weak_source(source);
@@ -1075,6 +1084,18 @@ static void *nv_move_create(obs_data_t *settings, obs_source_t *context)
 	return filter;
 }
 
+
+static bool add_canvas_to_prop_list(void *data, obs_canvas_t *canvas)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	const char *name = obs_canvas_get_name(canvas);
+	if (!name || !strlen(name))
+		return true;
+
+	obs_property_list_add_string(p, name, name);
+	return true;
+}
+
 bool list_add_scene(void *data, obs_source_t *source)
 {
 	obs_property_t *p = data;
@@ -1396,6 +1417,8 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props, obs_property_t 
 	struct dstr name = {0};
 	//dstr_printf(&name, "action_%lld_group", action_number);
 	//obs_property_t *group = obs_properties_get(props, name.array);
+	dstr_printf(&name, "action_%lld_canvas", action_number);
+	obs_property_t *canvas = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_scene", action_number);
 	obs_property_t *scene = obs_properties_get(props, name.array);
 	dstr_printf(&name, "action_%lld_sceneitem", action_number);
@@ -1419,6 +1442,7 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props, obs_property_t 
 	dstr_printf(&name, "action_%lld_get_value", action_number);
 	obs_property_t *get_value = obs_properties_get(props, name.array);
 
+	obs_property_set_visible(canvas, false);
 	obs_property_set_visible(scene, false);
 	obs_property_set_visible(sceneitem, false);
 	obs_property_set_visible(source, false);
@@ -1432,6 +1456,7 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props, obs_property_t 
 	obs_property_set_visible(get_value, true);
 
 	if (action == ACTION_MOVE_SOURCE) {
+		obs_property_set_visible(canvas, true);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(sceneitem_property, true);
@@ -1445,12 +1470,14 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props, obs_property_t 
 		obs_property_set_visible(enable, true);
 		obs_property_set_visible(threshold, true);
 	} else if (action == ACTION_SOURCE_VISIBILITY) {
+		obs_property_set_visible(canvas, true);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(enable, true);
 		obs_property_set_visible(threshold, true);
 	} else if (action == ACTION_ATTACH_SOURCE) {
 		obs_property_set_visible(attach, true);
+		obs_property_set_visible(canvas, true);
 		obs_property_set_visible(scene, true);
 		obs_property_set_visible(sceneitem, true);
 		obs_property_set_visible(feature, false);
@@ -1460,6 +1487,10 @@ bool nv_move_action_changed(void *priv, obs_properties_t *props, obs_property_t 
 			obs_data_set_int(settings, name.array, FEATURE_LANDMARK);
 			nv_move_feature_changed(priv, props, feature, settings);
 		}
+	}
+	if (obs_property_visible(canvas) && !obs_property_list_item_count(canvas)) {
+		obs_property_list_add_string(canvas, "", "");
+		obs_enum_canvases(add_canvas_to_prop_list, canvas);
 	}
 	if (obs_property_visible(scene) && !obs_property_list_item_count(scene)) {
 		obs_property_list_add_string(scene, "", "");
@@ -1487,9 +1518,18 @@ bool nv_move_attach_changed(void *priv, obs_properties_t *props, obs_property_t 
 		dstr_free(&name);
 		return false;
 	}
-
+	dstr_printf(&name, "action_%lld_canvas", action_number);
+	const char *canvas_name = obs_data_get_string(settings, name.array);
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
 	dstr_printf(&name, "action_%lld_scene", action_number);
-	obs_source_t *scene_source = obs_get_source_by_name(obs_data_get_string(settings, name.array));
+	const char *scene_name = obs_data_get_string(settings, name.array);
+	obs_source_t *scene_source = NULL;
+	if (canvas) {
+		scene_source = obs_canvas_get_source_by_name(canvas, scene_name);
+		obs_canvas_release(canvas);
+	}
+	if (!scene_source)
+		scene_source = obs_get_source_by_name(scene_name);
 	if (!scene_source) {
 		dstr_free(&name);
 		return false;
@@ -1523,6 +1563,38 @@ bool nv_move_attach_changed(void *priv, obs_properties_t *props, obs_property_t 
 	return false;
 }
 
+
+static bool add_scene_to_prop_list(void *data, obs_source_t *source)
+{
+	obs_property_t *p = (obs_property_t *)data;
+	const char *name = obs_source_get_name(source);
+	if (name && strlen(name))
+		obs_property_list_add_string(p, name, name);
+	return true;
+}
+
+static bool nv_move_canvas_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	const char *action_prop = obs_property_name(property);
+	const char *canvas_name = obs_data_get_string(settings, action_prop);
+	long long action_number = 0;
+	if (sscanf(action_prop, "action_%lld_canvas", &action_number) != 1 || !action_number)
+		return false;
+
+	struct dstr name = {0};
+	dstr_printf(&name, "action_%lld_scene", action_number);
+	obs_property_t *scene = obs_properties_get(props, name.array);
+	dstr_free(&name);
+	obs_property_list_clear(scene);
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
+	if (!canvas)
+		return true;
+	obs_canvas_enum_scenes(canvas, add_scene_to_prop_list, scene);
+	obs_canvas_release(canvas);
+	return true;
+}
+
 bool nv_move_add_sceneitems(obs_scene_t *scene, obs_sceneitem_t *sceneitem, void *data)
 {
 	obs_property_t *p = data;
@@ -1549,7 +1621,16 @@ bool nv_move_scene_changed(void *priv, obs_properties_t *props, obs_property_t *
 	obs_property_list_clear(sceneitem);
 	obs_property_list_add_string(sceneitem, "", "");
 
-	obs_source_t *scene_source = obs_get_source_by_name(scene_name);
+	dstr_printf(&name, "action_%lld_canvas", action_number);
+	const char *canvas_name = obs_data_get_string(settings, name.array);
+	obs_canvas_t *canvas = canvas_name[0] == '\0' ? obs_get_main_canvas() : obs_get_canvas_by_name(canvas_name);
+	obs_source_t *scene_source = NULL;
+	if (canvas) {
+		scene_source = obs_canvas_get_source_by_name(canvas, scene_name);
+		obs_canvas_release(canvas);
+	}
+	if (!scene_source)
+		scene_source = obs_get_source_by_name(scene_name);
 	if (!scene_source)
 		return true;
 	obs_scene_t *scene = obs_scene_from_source(scene_source);
@@ -1995,6 +2076,10 @@ static obs_properties_t *nv_move_properties(void *data)
 
 		obs_property_set_modified_callback2(p, nv_move_attach_changed, data);
 
+		dstr_printf(&name, "action_%lld_canvas", i);
+		p = obs_properties_add_list(group, name.array, obs_module_text("Canvas"), OBS_COMBO_TYPE_EDITABLE,
+					    OBS_COMBO_FORMAT_STRING);
+		obs_property_set_modified_callback2(p, nv_move_canvas_changed, data);
 		dstr_printf(&name, "action_%lld_scene", i);
 		p = obs_properties_add_list(group, name.array, obs_module_text("Scene"), OBS_COMBO_TYPE_EDITABLE,
 					    OBS_COMBO_FORMAT_STRING);
