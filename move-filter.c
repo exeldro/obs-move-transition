@@ -240,26 +240,26 @@ static void *udp_server_thread(void *data)
 			break;
 		}
 
-		udp_server = NULL;
+		struct udp_server *udp_server2 = NULL;
 		for (size_t i = 0; i < udp_servers.num; i++) {
 			if (udp_servers.array[i].port == port) {
-				udp_server = &udp_servers.array[i];
+				udp_server2 = &udp_servers.array[i];
 				break;
 			} else if (pthread_equal(udp_servers.array[i].thread, self)) {
-				udp_server = &udp_servers.array[i];
+				udp_server2 = &udp_servers.array[i];
 				break;
 			}
 		}
-		if (!udp_server)
+		if (!udp_server2)
 			break;
 
-		if (!udp_server->start_triggers.num && !udp_server->stop_triggers.num)
+		if (!udp_server2->start_triggers.num && !udp_server2->stop_triggers.num)
 			break;
 
 		if (recv_len < BUFLEN) {
 			buf[recv_len] = 0;
-			for (size_t i = 0; i < udp_server->start_triggers.num; i++) {
-				struct move_filter *move_filter = udp_server->start_triggers.array[i];
+			for (size_t i = 0; i < udp_server2->start_triggers.num; i++) {
+				struct move_filter *move_filter = udp_server2->start_triggers.array[i];
 				obs_data_t *settings = obs_source_get_settings(move_filter->source);
 				const char *packet = obs_data_get_string(settings, "start_trigger_udp_packet");
 				if (!strlen(packet) || strcmp(packet, buf) == 0) {
@@ -267,8 +267,8 @@ static void *udp_server_thread(void *data)
 				}
 				obs_data_release(settings);
 			}
-			for (size_t i = 0; i < udp_server->stop_triggers.num; i++) {
-				struct move_filter *move_filter = udp_server->stop_triggers.array[i];
+			for (size_t i = 0; i < udp_server2->stop_triggers.num; i++) {
+				struct move_filter *move_filter = udp_server2->stop_triggers.array[i];
 				obs_data_t *settings = obs_source_get_settings(move_filter->source);
 				const char *packet = obs_data_get_string(settings, "stop_trigger_udp_packet");
 				if (!strlen(packet) || strcmp(packet, buf) == 0) {
