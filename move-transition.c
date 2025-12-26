@@ -343,38 +343,7 @@ static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
 {
 	if (bt != OBS_BOUNDS_SCALE_OUTER && bt != OBS_BOUNDS_SCALE_TO_HEIGHT && bt != OBS_BOUNDS_SCALE_TO_WIDTH)
 		return false;
-#if LIBOBS_API_VER >= MAKE_SEMANTIC_VERSION(30, 1, 0)
 	return obs_sceneitem_get_bounds_crop(item);
-#else
-	if (obs_get_version() < MAKE_SEMANTIC_VERSION(30, 1, 0))
-		return false;
-	obs_source_t *item_source = obs_sceneitem_get_source(item);
-	if (!item_source)
-		return false;
-	obs_scene_t *scene = obs_sceneitem_get_scene(item);
-	obs_source_t *scene_source = obs_scene_get_source(scene);
-	if (!scene_source)
-		return false;
-	obs_data_t *settings = obs_source_get_settings(scene_source);
-	obs_data_array_t *items = obs_data_get_array(settings, "items");
-	obs_data_release(settings);
-	if (!items)
-		return false;
-	size_t count = obs_data_array_count(items);
-	bool crop_to_bounds = false;
-	for (size_t i = 0; i < count; i++) {
-		obs_data_t *item_data = obs_data_array_item(items, i);
-		if (obs_sceneitem_get_id(item) == obs_data_get_int(item_data, "id") &&
-		    strcmp(obs_data_get_string(item_data, "name"), obs_source_get_name(item_source)) == 0) {
-			crop_to_bounds = obs_data_get_bool(item_data, "bounds_crop");
-			obs_data_release(item_data);
-			break;
-		}
-		obs_data_release(item_data);
-	}
-	obs_data_array_release(items);
-	return crop_to_bounds;
-#endif
 }
 
 static void calculate_bounds_data(struct obs_scene_item *item, struct vec2 *origin, struct vec2 *scale, int32_t *cx, int32_t *cy,
