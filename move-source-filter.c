@@ -295,8 +295,20 @@ void move_source_start(struct move_source_info *move_source)
 	if (!move_source->move_filter.reverse) {
 		move_source->rot_from = obs_sceneitem_get_rot(move_source->scene_item);
 		obs_sceneitem_get_pos(move_source->scene_item, &move_source->pos_from);
+		if (isinf(move_source->pos_from.x) || isnan(move_source->pos_from.x))
+			move_source->pos_from.x = 0.0f;
+		if (isinf(move_source->pos_from.y) || isnan(move_source->pos_from.y))
+			move_source->pos_from.y = 0.0f;
 		obs_sceneitem_get_scale(move_source->scene_item, &move_source->scale_from);
+		if (isinf(move_source->scale_from.x) || isnan(move_source->scale_from.x))
+			move_source->scale_from.x = 0.0f;
+		if (isinf(move_source->scale_from.y) || isnan(move_source->scale_from.y))
+			move_source->scale_from.y = 0.0f;
 		obs_sceneitem_get_bounds(move_source->scene_item, &move_source->bounds_from);
+		if (isinf(move_source->bounds_from.x) || isnan(move_source->bounds_from.x))
+			move_source->bounds_from.x = 0.0f;
+		if (isinf(move_source->bounds_from.y) || isnan(move_source->bounds_from.y))
+			move_source->bounds_from.y = 0.0f;
 		obs_sceneitem_get_crop(move_source->scene_item, &move_source->crop_from);
 		obs_source_t *scene_source = obs_scene_get_source(obs_sceneitem_get_scene(move_source->scene_item));
 		move_source->canvas_width = obs_source_get_width(scene_source);
