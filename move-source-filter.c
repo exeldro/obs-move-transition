@@ -75,6 +75,7 @@ void move_source_item_remove(void *data, calldata_t *call_data)
 void move_source_scene_remove(void *data, calldata_t *call_data)
 {
 	struct move_source_info *move_source = data;
+	move_source->scene_item = NULL;
 	obs_source_t *source = (obs_source_t *)calldata_ptr(call_data, "source");
 
 	signal_handler_t *sh = obs_source_get_signal_handler(source);
