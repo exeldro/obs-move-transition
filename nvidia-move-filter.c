@@ -3168,6 +3168,11 @@ static enum gs_color_space nv_move_get_color_space(void *data, size_t count, con
 
 bool load_nvar(void)
 {
+	obs_enter_graphics();
+	int device_type = gs_get_device_type();
+	obs_leave_graphics();
+	if (device_type == GS_DEVICE_OPENGL)
+		return false;
 	bool old_sdk_loaded = false;
 	unsigned int version = get_lib_version();
 	uint8_t major = (version >> 24) & 0xff;
