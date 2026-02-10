@@ -165,7 +165,7 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	move->source = source;
 	da_init(move->items_a);
 	da_init(move->items_b);
-	da_init(move->transition_pool_out);
+	da_init(move->transition_pool_move);
 	da_init(move->transition_pool_in);
 	da_init(move->transition_pool_out);
 	obs_source_update(source, settings);
