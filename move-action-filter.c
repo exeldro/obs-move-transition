@@ -631,6 +631,23 @@ static void add_filter_to_prop_list(obs_source_t *parent, obs_source_t *child, v
 		obs_property_list_add_string(p, name, name);
 }
 
+static void add_properties_to_list(obs_properties_t* ps, obs_property_t* list) {
+	obs_property_t *p = obs_properties_first(ps);
+	for (; p != NULL; obs_property_next(&p)) {
+		enum obs_property_type pt = obs_property_get_type(p);
+		if (pt == OBS_PROPERTY_GROUP) {
+			if (obs_property_group_type(p) == OBS_GROUP_CHECKABLE)
+				obs_property_list_add_string(list, obs_property_description(p), obs_property_name(p));
+			add_properties_to_list(obs_property_group_content(p), list);
+		} else if (pt == OBS_PROPERTY_TEXT){
+			if (obs_property_text_type(p) != OBS_TEXT_INFO)
+				obs_property_list_add_string(list, obs_property_description(p), obs_property_name(p));
+		} else {
+			obs_property_list_add_string(list, obs_property_description(p), obs_property_name(p));
+		}
+	}
+}
+
 static bool move_action_source_changed(void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(data);
@@ -649,10 +666,7 @@ static bool move_action_source_changed(void *data, obs_properties_t *props, obs_
 			f = source;
 		obs_property_list_add_string(filter, "", "");
 		obs_properties_t *ps = obs_source_properties(f);
-		obs_property_t *p = obs_properties_first(ps);
-		for (; p != NULL; obs_property_next(&p)) {
-			obs_property_list_add_string(setting, obs_property_description(p), obs_property_name(p));
-		}
+		add_properties_to_list(ps, setting);
 		obs_properties_destroy(ps);
 	}
 	if (source)
@@ -792,7 +806,7 @@ static bool move_action_setting_changed(void *data, obs_properties_t *props, obs
 	obs_properties_destroy(ps);
 	obs_source_release(source);
 
-	obs_property_set_visible(enable, setting_type == OBS_PROPERTY_BOOL);
+	obs_property_set_visible(enable, setting_type == OBS_PROPERTY_BOOL || setting_type == OBS_PROPERTY_GROUP);
 	obs_property_set_visible(value_double, setting_type == OBS_PROPERTY_FLOAT);
 	obs_property_set_visible(value_int, setting_type == OBS_PROPERTY_INT);
 	obs_property_set_visible(value_color, setting_type == OBS_PROPERTY_COLOR || setting_type == OBS_PROPERTY_COLOR_ALPHA);
