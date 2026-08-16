@@ -1780,12 +1780,12 @@ static obs_properties_t *move_value_properties(void *data)
 	p = obs_properties_add_text(setting_value, S_SETTING_TEXT, obs_module_text("Text"), OBS_TEXT_MULTILINE);
 	obs_property_set_visible(p, false);
 
-	obs_properties_add_button(setting_value, "value_get", obs_module_text("GetValue"), move_value_get_value);
+	obs_properties_add_button2(setting_value, "value_get", obs_module_text("GetValue"), move_value_get_value, NULL);
 
 	obs_properties_add_group(ppts, S_SETTING_VALUE, obs_module_text("Setting"), OBS_GROUP_NORMAL, setting_value);
 
 	obs_properties_t *settings = obs_properties_create();
-	obs_properties_add_button(settings, "values_get", obs_module_text("GetValues"), move_value_get_values);
+	obs_properties_add_button2(settings, "values_get", obs_module_text("GetValues"), move_value_get_values, NULL);
 	obs_properties_add_group(ppts, S_SETTINGS, obs_module_text("Settings"), OBS_GROUP_NORMAL, settings);
 
 	move_filter_properties(&move_value->move_filter, ppts);

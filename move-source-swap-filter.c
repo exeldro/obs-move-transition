@@ -706,7 +706,7 @@ static obs_properties_t *move_source_swap_properties(void *data)
 	obs_property_list_add_int(p, obs_module_text("NextMoveOn.End"), NEXT_MOVE_ON_END);
 	obs_property_list_add_int(p, obs_module_text("NextMoveOn.Hotkey"), NEXT_MOVE_ON_HOTKEY);
 
-	obs_properties_add_button(group, "move_source_start", obs_module_text("Start"), move_source_swap_start_button);
+	obs_properties_add_button2(group, "move_source_start", obs_module_text("Start"), move_source_swap_start_button, NULL);
 
 	p = obs_properties_add_group(ppts, S_ACTIONS, obs_module_text("Actions"), OBS_GROUP_NORMAL, group);
 	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO, OBS_TEXT_INFO);

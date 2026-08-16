@@ -758,7 +758,7 @@ void move_filter_properties(struct move_filter *move_filter, obs_properties_t *p
 	obs_property_list_add_int(p, obs_module_text("NextMoveOn.End"), NEXT_MOVE_ON_END);
 	obs_property_list_add_int(p, obs_module_text("NextMoveOn.Hotkey"), NEXT_MOVE_ON_HOTKEY);
 
-	obs_properties_add_button(ppts, "move_filter_start", obs_module_text("Start"), move_filter_start_button);
+	obs_properties_add_button2(ppts, "move_filter_start", obs_module_text("Start"), move_filter_start_button, NULL);
 	obs_properties_add_text(ppts, "plugin_info", PLUGIN_INFO, OBS_TEXT_INFO);
 }
 
