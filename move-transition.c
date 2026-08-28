@@ -1144,8 +1144,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 	float ot = t;
 	if (t > 1.0f)
 		ot = 1.0f;
-	else if (t < 0.0f)
-		ot = 0.0f;
+	else if (t <= 0.0f)
+		ot = 0.0001f;
 
 	if (item->item_a && item->item_b && item->transition &&
 	    (!move->first_frame || item->scene_flip_horizontal || item->scene_flip_vertical)) {
