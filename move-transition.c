@@ -3491,6 +3491,8 @@ obs_websocket_vendor vendor = NULL;
 void obs_module_post_load()
 {
 	vendor = obs_websocket_register_vendor("move");
+	if (vendor)
+		obs_websocket_vendor_register_request(vendor, "CaptureTransform", move_source_capture_transform_request, NULL);
 }
 
 void obs_module_unload()
