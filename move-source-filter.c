@@ -743,6 +743,71 @@ bool move_source_get_transform(obs_properties_t *props, obs_property_t *property
 	return settings_changed;
 }
 
+struct move_source_capture_transform {
+	struct move_source_info *move_source;
+	const char *item_name;
+	const char *error;
+};
+
+static void move_source_capture_transform_task(void *param)
+{
+	struct move_source_capture_transform *capture = param;
+	struct move_source_info *move_source = capture->move_source;
+	if (strlen(capture->item_name)) {
+		obs_source_t *parent = obs_filter_get_parent(move_source->move_filter.source);
+		obs_scene_t *scene = obs_scene_from_source(parent);
+		if (!scene)
+			scene = obs_group_from_source(parent);
+		if (!obs_scene_find_source(scene, capture->item_name)) {
+			capture->error = "itemName not found in the scene";
+			return;
+		}
+		obs_data_t *settings = obs_source_get_settings(move_source->move_filter.source);
+		obs_data_set_string(settings, S_SOURCE, capture->item_name);
+		obs_data_release(settings);
+		move_source_source_changed(move_source, capture->item_name);
+	}
+	if (!move_source_get_transform(NULL, NULL, move_source))
+		capture->error = "the filter's source was not found in the scene";
+}
+
+// obs-websocket vendor request "CaptureTransform": does what the Get Transform button does, and with
+// itemName first sets the filter's source, like picking one in its properties.
+void move_source_capture_transform_request(obs_data_t *request_data, obs_data_t *response_data, void *priv_data)
+{
+	UNUSED_PARAMETER(priv_data);
+	const char *source_name = obs_data_get_string(request_data, "sourceName");
+	const char *filter_name = obs_data_get_string(request_data, "filterName");
+	const char *item_name = obs_data_get_string(request_data, "itemName");
+	const char *error = NULL;
+	obs_source_t *source = NULL;
+	obs_source_t *filter = NULL;
+	if (!strlen(source_name) || !strlen(filter_name)) {
+		error = "sourceName and filterName are required";
+	} else if (!(source = obs_get_source_by_name(source_name))) {
+		error = "source not found";
+	} else if (!(filter = obs_source_get_filter_by_name(source, filter_name))) {
+		error = "filter not found";
+	} else if (strcmp(obs_source_get_unversioned_id(filter), MOVE_SOURCE_FILTER_ID) != 0) {
+		error = "filter is not a Move Source filter";
+	} else {
+		// On the graphics thread, between ticks, so no move can start with a source but no transform yet
+		struct move_source_capture_transform capture = {obs_obj_get_data(filter), item_name, NULL};
+		obs_queue_task(OBS_TASK_GRAPHICS, move_source_capture_transform_task, &capture, true);
+		error = capture.error;
+		if (!error)
+			obs_source_update_properties(filter);
+	}
+	obs_source_release(filter);
+	obs_source_release(source);
+
+	obs_data_set_bool(response_data, "success", !error);
+	if (error) {
+		obs_data_set_string(response_data, "error", error);
+		blog(LOG_WARNING, "[Move Transition] CaptureTransform failed: %s", error);
+	}
+}
+
 bool move_source_relative(obs_properties_t *props, obs_property_t *property, void *data)
 {
 	UNUSED_PARAMETER(props);
