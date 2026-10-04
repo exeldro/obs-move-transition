@@ -11,6 +11,7 @@ struct move_info {
 	obs_source_t *source;
 	bool start_init;
 	bool first_frame;
+	pthread_mutex_t item_mutex;
 	DARRAY(struct move_item *) items_a;
 	DARRAY(struct move_item *) items_b;
 	float t;
@@ -163,6 +164,7 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 	UNUSED_PARAMETER(settings);
 	struct move_info *move = bzalloc(sizeof(struct move_info));
 	move->source = source;
+	pthread_mutex_init(&move->item_mutex, NULL);
 	da_init(move->items_a);
 	da_init(move->items_b);
 	da_init(move->transition_pool_move);
@@ -175,6 +177,7 @@ static void *move_create(obs_data_t *settings, obs_source_t *source)
 static void clear_items(struct move_info *move, bool in_graphics)
 {
 	bool graphics = false;
+	pthread_mutex_lock(&move->item_mutex);
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
 		if (item->item_render) {
@@ -214,6 +217,7 @@ static void clear_items(struct move_info *move, bool in_graphics)
 	}
 	move->items_a.num = 0;
 	move->items_b.num = 0;
+	pthread_mutex_unlock(&move->item_mutex);
 }
 
 void clear_transition_pool(void *data)
@@ -247,6 +251,7 @@ static void move_destroy(void *data)
 		gs_samplerstate_destroy(move->point_sampler);
 		obs_leave_graphics();
 	}
+	pthread_mutex_destroy(&move->item_mutex);
 	bfree(move);
 }
 
@@ -2474,6 +2479,7 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 	if (move->scene_source_b)
 		obs_source_enum_filters(move->scene_source_b, move_filter_start_in, NULL);
 
+	pthread_mutex_lock(&move->item_mutex);
 	obs_scene_t *scene_a = obs_scene_from_source(move->scene_source_a);
 	if (!scene_a)
 		scene_a = obs_group_from_source(move->scene_source_a);
@@ -3007,6 +3013,7 @@ static void move_start_init(struct move_info *move, bool in_graphics)
 			item->transition_name = bstrdup(move->transition_move);
 		}
 	}
+	pthread_mutex_unlock(&move->item_mutex);
 }
 
 static void move_video_tick(void *data, float seconds)
@@ -3279,21 +3286,29 @@ static void move_stop(void *data)
 static void move_enum_active_sources(void *data, obs_source_enum_proc_t enum_callback, void *param)
 {
 	struct move_info *move = data;
+	if (!obs_in_task_thread(OBS_TASK_GRAPHICS))
+		pthread_mutex_lock(&move->item_mutex);
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
 		if (item->transition)
 			enum_callback(move->source, item->transition, param);
 	}
+	if (!obs_in_task_thread(OBS_TASK_GRAPHICS))
+		pthread_mutex_unlock(&move->item_mutex);
 }
 
 static void move_enum_all_sources(void *data, obs_source_enum_proc_t enum_callback, void *param)
 {
 	struct move_info *move = data;
+	if (!obs_in_task_thread(OBS_TASK_GRAPHICS))
+		pthread_mutex_lock(&move->item_mutex);
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
 		if (item->transition)
 			enum_callback(move->source, item->transition, param);
 	}
+	if (!obs_in_task_thread(OBS_TASK_GRAPHICS))
+		pthread_mutex_unlock(&move->item_mutex);
 }
 
 struct obs_source_info move_transition = {
@@ -3357,6 +3372,7 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 	if (!source_from)
 		return 0.0f;
 
+	pthread_mutex_lock(&move->item_mutex);
 	for (size_t i = 0; i < move->items_a.num; i++) {
 		struct move_item *item = move->items_a.array[i];
 		if (!item->item_a || !item->item_b)
@@ -3371,6 +3387,7 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 		} else {
 			continue;
 		}
+		pthread_mutex_unlock(&move->item_mutex);
 		if (filter_to && source_to) {
 			if (source_to == source_from) {
 				*filter_to = filter_from;
@@ -3432,6 +3449,7 @@ static float move_get_transition_filter(obs_source_t *filter_from, obs_source_t 
 			t = 1.0f - t;
 		return t;
 	}
+	pthread_mutex_unlock(&move->item_mutex);
 	return 0.0f;
 }
 
@@ -3448,7 +3466,8 @@ static void move_get_transition_filter_function(void *data, calldata_t *calldata
 
 bool move_exit = false;
 
-void move_frontend_event(enum obs_frontend_event event, void* data) {
+void move_frontend_event(enum obs_frontend_event event, void *data)
+{
 	UNUSED_PARAMETER(data);
 	if (event == OBS_FRONTEND_EVENT_EXIT) {
 		move_exit = true;
