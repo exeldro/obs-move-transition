@@ -1245,12 +1245,12 @@ void move_source_tick(void *data, float seconds)
 			struct vec2 control_pos;
 			vec2_set(&control_pos, 0.5f * move_source->pos_from.x + 0.5f * move_source->pos_to.x,
 				 0.5f * move_source->pos_from.y + 0.5f * move_source->pos_to.y);
-			if (control_pos.x >= (move_source->canvas_width >> 1)) {
+			if (control_pos.x >= ((float)move_source->canvas_width / 2.0f)) {
 				control_pos.x += diff_y * move_source->curve;
 			} else {
 				control_pos.x -= diff_y * move_source->curve;
 			}
-			if (control_pos.y >= (move_source->canvas_height >> 1)) {
+			if (control_pos.y >= ((float)move_source->canvas_height / 2.0f)) {
 				control_pos.y += diff_x * move_source->curve;
 			} else {
 				control_pos.y -= diff_x * move_source->curve;

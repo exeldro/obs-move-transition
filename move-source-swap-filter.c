@@ -799,12 +799,12 @@ static void move_source_swap_tick(void *data, float seconds)
 		vec2_set(&control_pos, 0.5f * move_source_swap->pos1.x + 0.5f * move_source_swap->pos2.x,
 			 0.5f * move_source_swap->pos1.y + 0.5f * move_source_swap->pos2.y);
 
-		if (control_pos.x >= (move_source_swap->canvas_width >> 1)) {
+		if (control_pos.x >= ((float)move_source_swap->canvas_width / 2.0f)) {
 			control_pos.x += diff_y * move_source_swap->curve;
 		} else {
 			control_pos.x -= diff_y * move_source_swap->curve;
 		}
-		if (control_pos.y >= (move_source_swap->canvas_height >> 1)) {
+		if (control_pos.y >= ((float)move_source_swap->canvas_height / 2.0f)) {
 			control_pos.y += diff_x * move_source_swap->curve;
 		} else {
 			control_pos.y -= diff_x * move_source_swap->curve;

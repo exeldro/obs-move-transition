@@ -313,12 +313,12 @@ void add_alignment(struct vec2 *v, uint32_t align, int32_t cx, int32_t cy)
 	if (align & OBS_ALIGN_RIGHT)
 		v->x += (float)cx;
 	else if ((align & OBS_ALIGN_LEFT) == 0)
-		v->x += (float)(cx >> 1);
+		v->x += (float)cx / 2.0f;
 
 	if (align & OBS_ALIGN_BOTTOM)
 		v->y += (float)cy;
 	else if ((align & OBS_ALIGN_TOP) == 0)
-		v->y += (float)(cy >> 1);
+		v->y += (float)cy / 2.0f;
 }
 
 void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b, float t, int32_t cx, int32_t cy)
@@ -326,22 +326,22 @@ void add_move_alignment(struct vec2 *v, uint32_t align_a, uint32_t align_b, floa
 	if (align_a & OBS_ALIGN_RIGHT)
 		v->x += (float)cx * (1.0f - t);
 	else if ((align_a & OBS_ALIGN_LEFT) == 0)
-		v->x += (float)(cx >> 1) * (1.0f - t);
+		v->x += (float)cx / 2.0f * (1.0f - t);
 
 	if (align_a & OBS_ALIGN_BOTTOM)
 		v->y += (float)cy * (1.0f - t);
 	else if ((align_a & OBS_ALIGN_TOP) == 0)
-		v->y += (float)(cy >> 1) * (1.0f - t);
+		v->y += (float)cy / 2.0f * (1.0f - t);
 
 	if (align_b & OBS_ALIGN_RIGHT)
 		v->x += (float)cx * t;
 	else if ((align_b & OBS_ALIGN_LEFT) == 0)
-		v->x += (float)(cx >> 1) * t;
+		v->x += (float)cx / 2.0f * t;
 
 	if (align_b & OBS_ALIGN_BOTTOM)
 		v->y += (float)cy * t;
 	else if ((align_b & OBS_ALIGN_TOP) == 0)
-		v->y += (float)(cy >> 1) * t;
+		v->y += (float)cy / 2.0f * t;
 }
 
 static bool crop_to_bounds(const obs_sceneitem_t *item, enum obs_bounds_type bt)
@@ -498,28 +498,28 @@ static inline bool item_texture_enabled(struct obs_scene_item *item)
 void pos_add_center(struct vec2 *pos, uint32_t alignment, uint32_t cx, uint32_t cy)
 {
 	if (alignment & OBS_ALIGN_LEFT) {
-		pos->x -= cx >> 1;
+		pos->x -= (float)cx / 2.0f;
 	} else if (alignment & OBS_ALIGN_RIGHT) {
-		pos->x += cx >> 1;
+		pos->x += (float)cx / 2.0f;
 	}
 	if (alignment & OBS_ALIGN_TOP) {
-		pos->y -= cy >> 1;
+		pos->y -= (float)cy / 2.0f;
 	} else if (alignment & OBS_ALIGN_BOTTOM) {
-		pos->y += cy >> 1;
+		pos->y += (float)cy / 2.0f;
 	}
 }
 
 void pos_subtract_center(struct vec2 *pos, uint32_t alignment, int32_t cx, int32_t cy)
 {
 	if (alignment & OBS_ALIGN_LEFT) {
-		pos->x += cx >> 1;
+		pos->x += (float)cx / 2.0f;
 	} else if (alignment & OBS_ALIGN_RIGHT) {
-		pos->x -= cx >> 1;
+		pos->x -= (float)cx / 2.0f;
 	}
 	if (alignment & OBS_ALIGN_TOP) {
-		pos->y += cy >> 1;
+		pos->y += (float)cy / 2.0f;
 	} else if (alignment & OBS_ALIGN_BOTTOM) {
-		pos->y -= cy >> 1;
+		pos->y -= (float)cy / 2.0f;
 	}
 }
 
@@ -585,24 +585,24 @@ void calc_edge_position(struct vec2 *pos, long long position, uint32_t canvas_wi
 				//left edge
 				const float move_x = -(pos->x + cx2);
 				const float move_y = diff_y * (diff_x + move_x) / diff_x;
-				vec2_set(pos, -(float)cx2, (float)(canvas_height >> 1) + move_y);
+				vec2_set(pos, -(float)cx2, ((float)canvas_height / 2.0f) + move_y);
 			} else {
 				//right edge
 				const float move_x = (canvas_width - pos->x) + cx2;
 				const float move_y = diff_y * (diff_x + move_x) / diff_x;
-				vec2_set(pos, (float)canvas_width + cx2, (float)(canvas_height >> 1) + move_y);
+				vec2_set(pos, (float)canvas_width + cx2, ((float)canvas_height / 2.0f) + move_y);
 			}
 		} else {
 			if (diff_y < 0.0f) {
 				//top edge
 				const float move_y = -(pos->y + cy2);
 				const float move_x = diff_x * (diff_y + move_y) / diff_y;
-				vec2_set(pos, (float)(canvas_width >> 1) + move_x, -(float)cy2);
+				vec2_set(pos, ((float)canvas_width / 2.0f) + move_x, -(float)cy2);
 			} else {
 				//bottom edge
 				const float move_y = (canvas_height - pos->y) + cy2;
 				const float move_x = diff_x * (diff_y + move_y) / diff_y;
-				vec2_set(pos, (float)(canvas_width >> 1) + move_x, (float)canvas_height + cy2);
+				vec2_set(pos, ((float)canvas_width / 2.0f) + move_x, (float)canvas_height + cy2);
 			}
 		}
 		pos->x -= alignment_diff_x;
@@ -1348,19 +1348,19 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		} else if (alignment & OBS_ALIGN_LEFT) {
 
 		} else {
-			pos_a.x += canvas_width >> 1;
+			pos_a.x += (float)canvas_width / 2.0f;
 		}
 		if (alignment & OBS_ALIGN_BOTTOM) {
 			pos_a.y += canvas_height;
 		} else if (alignment & OBS_ALIGN_TOP) {
 
 		} else {
-			pos_a.x += canvas_height >> 1;
+			pos_a.x += (float)canvas_height / 2.0f;
 		}
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
-			vec2_set(&pos_a, (float)(canvas_width >> 1), (float)(canvas_height >> 1));
+			vec2_set(&pos_a, (float)canvas_width / 2.0f, (float)canvas_height / 2.0f);
 			if (item->zoom == 1.0f)
 				pos_add_center(&pos_a, alignment, cx, cy);
 		} else if (item->position & POS_EDGE || item->position & POS_SWIPE) {
@@ -1385,19 +1385,19 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		} else if (alignment & OBS_ALIGN_LEFT) {
 
 		} else {
-			pos_b.x += canvas_width >> 1;
+			pos_b.x += (float)canvas_width / 2.0f;
 		}
 		if (alignment & OBS_ALIGN_BOTTOM) {
 			pos_b.y += canvas_height;
 		} else if (alignment & OBS_ALIGN_TOP) {
 
 		} else {
-			pos_b.x += canvas_height >> 1;
+			pos_b.x += (float)canvas_height / 2.0f;
 		}
 	} else {
 		uint32_t alignment = obs_sceneitem_get_alignment(scene_item);
 		if (item->position & POS_CENTER) {
-			vec2_set(&pos_b, (float)(canvas_width >> 1), (float)(canvas_height >> 1));
+			vec2_set(&pos_b, (float)canvas_width / 2.0f, (float)canvas_height / 2.0f);
 			if (item->zoom == 1.0f)
 				pos_add_center(&pos_b, alignment, cx, cy);
 		} else if (item->position & POS_EDGE || item->position & POS_SWIPE) {
@@ -1417,12 +1417,12 @@ bool render2_item(struct move_info *move, struct move_item *item)
 		float diff_y = fabsf(pos_a.y - pos_b.y);
 		struct vec2 control_pos;
 		vec2_set(&control_pos, 0.5f * pos_a.x + 0.5f * pos_b.x, 0.5f * pos_a.y + 0.5f * pos_b.y);
-		if (control_pos.x >= (canvas_width >> 1)) {
+		if (control_pos.x >= ((float)canvas_width / 2.0f)) {
 			control_pos.x += diff_y * item->curve;
 		} else {
 			control_pos.x -= diff_y * item->curve;
 		}
-		if (control_pos.y >= (canvas_height >> 1)) {
+		if (control_pos.y >= ((float)canvas_height / 2.0f)) {
 			control_pos.y += diff_x * item->curve;
 		} else {
 			control_pos.y -= diff_x * item->curve;
