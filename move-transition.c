@@ -1436,12 +1436,17 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	struct vec2 output_scale = scale;
 
-	if (item->item_render && !item_texture_enabled(item->item_a) && !item_texture_enabled(item->item_b)) {
+	const enum gs_color_space space = gs_get_color_space();
+	const enum gs_color_format format = gs_get_format_from_space(space);
+
+	if (item->item_render && ((!item_texture_enabled(item->item_a) && !item_texture_enabled(item->item_b)) ||
+				  gs_texrender_get_format(item->item_render) != format)) {
 		gs_texrender_destroy(item->item_render);
 		item->item_render = NULL;
-	} else if (!item->item_render &&
-		   ((item->item_a && item_texture_enabled(item->item_a)) || (item->item_b && item_texture_enabled(item->item_b)))) {
-		item->item_render = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+	}
+	if (!item->item_render &&
+	    ((item->item_a && item_texture_enabled(item->item_a)) || (item->item_b && item_texture_enabled(item->item_b)))) {
+		item->item_render = gs_texrender_create(format, GS_ZS_NONE);
 	} else if (item->item_render) {
 		gs_texrender_reset(item->item_render);
 	}
@@ -1482,8 +1487,8 @@ bool render2_item(struct move_info *move, struct move_item *item)
 
 	if (item->item_render) {
 		if (width && height &&
-		    gs_texrender_begin(item->item_render, width - (bounds_crop.left + bounds_crop.right),
-				       height - (bounds_crop.top + bounds_crop.bottom))) {
+		    gs_texrender_begin_with_color_space(item->item_render, width - (bounds_crop.left + bounds_crop.right),
+							height - (bounds_crop.top + bounds_crop.bottom), space)) {
 			float cx_scale = (float)original_width / (float)(width - (bounds_crop.left + bounds_crop.right));
 			float cy_scale = (float)original_height / (float)(height - (bounds_crop.top + bounds_crop.bottom));
 			struct vec4 clear_color;
@@ -3046,6 +3051,21 @@ static void move_video_render(void *data, gs_effect_t *effect)
 	UNUSED_PARAMETER(effect);
 }
 
+static enum gs_color_space move_video_get_color_space(void *data, size_t count, const enum gs_color_space *preferred_spaces)
+{
+	struct move_info *move = data;
+	const enum gs_color_space transition_space = obs_transition_video_get_color_space(move->source);
+
+	enum gs_color_space space = transition_space;
+	for (size_t i = 0; i < count; ++i) {
+		space = preferred_spaces[i];
+		if (space == transition_space)
+			break;
+	}
+
+	return space;
+}
+
 static float mix_a(void *data, float t)
 {
 	UNUSED_PARAMETER(data);
@@ -3294,6 +3314,7 @@ struct obs_source_info move_transition = {
 	.transition_stop = move_stop,
 	.enum_active_sources = move_enum_active_sources,
 	.enum_all_sources = move_enum_all_sources,
+	.video_get_color_space = move_video_get_color_space,
 };
 
 OBS_DECLARE_MODULE()
