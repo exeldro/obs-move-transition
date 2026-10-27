@@ -42,7 +42,9 @@ if (( ! (${skips[(Ie)all]} + ${skips[(Ie)deps]}) )) {
     build-essential \
     libgles2-mesa-dev \
     libsimde-dev \
-    obs-studio
+    libobs-dev
+
+  sudo apt-get install ${apt_args} obs-studio
 
   local -a _qt_packages=()
 
