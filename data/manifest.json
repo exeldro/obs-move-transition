@@ -1,0 +1,16 @@
+{
+    "display_name": "Move",
+    "id": "5fd70497-4ad5-4445-958c-9b3f9f40cfab",
+    "version": "3.2.2",
+    "authors": ["Exeldro"],
+    "name": "move-transition",
+    "description": "Moves sources and setting values",
+    "long_description": "Plugin for OBS Studio adding Move filters and Move transitions. Move filters allow you to move sources and settings, while Move transitions allow you to move sources between scenes.",
+    "urls": {
+        "repository": "https://github.com/exeldro/obs-move-transition",
+        "website": "https://obsproject.com/forum/resources/move.913/",
+        "support": "https://obsproject.com/forum/threads/move.117568/"
+    },
+    "has_banner": false,
+    "has_icon": false
+}
