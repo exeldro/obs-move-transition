@@ -292,3 +292,5 @@ void move_filter_hide(void *data);
 void prop_list_add_easings(obs_property_t *p);
 void prop_list_add_easing_functions(obs_property_t *p);
 void prop_list_add_move_source_filter(obs_source_t *parent, obs_source_t *child, void *data);
+
+void move_source_capture_transform_request(obs_data_t *request_data, obs_data_t *response_data, void *priv_data);
