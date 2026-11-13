@@ -33,6 +33,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "..\release\Package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\LICENSE"; Flags: dontcopy
+Source: "..\release\package\obs-plugins\64bit\*"; DestDir: "{commonappdata}\obs-studio\plugins\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\release\package\data\obs-plugins\{#MyAppName}\*"; DestDir: "{commonappdata}\obs-studio\plugins\{#MyAppName}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
+
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

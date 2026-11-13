@@ -101,6 +101,17 @@ function Package {
     }
     Compress-Archive -Force @CompressArgs
 
+    Copy-Item -Path "${ProjectRoot}/release/${Configuration}/${ProductName}/bin/64bit" -Destination "${ProjectRoot}/release/plugins/${ProductName}" -Recurse
+    Copy-Item -Path "${ProjectRoot}/release/${Configuration}/${ProductName}/data" -Destination "${ProjectRoot}/release/plugins/${ProductName}/data" -Recurse
+
+        $CompressArgs = @{
+        Path = "${ProjectRoot}/release/plugins"
+        CompressionLevel = 'Optimal'
+        DestinationPath = "${ProjectRoot}/release/${OutputName}-OBS33.zip"
+        Verbose = ($Env:CI -ne $null)
+    }
+    Compress-Archive -Force @CompressArgs
+
     Log-Group
 }
 
